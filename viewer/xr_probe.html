@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Capture capability probe</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; background:#0b0f14; color:#e6edf3; font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:14px 14px 120px; }
+  h1 { font-size:19px; margin:6px 0 2px; }
+  .sub { color:#8b949e; font-size:12.5px; margin-bottom:14px; }
+  .card { background:#111820; border:1px solid #1f2933; border-radius:12px; padding:12px; margin-bottom:12px; }
+  .card h2 { font-size:13px; margin:0 0 8px; letter-spacing:.06em; color:#58a6ff; text-transform:uppercase; }
+  button { width:100%; padding:14px; margin:6px 0 0; border-radius:10px; border:1px solid #30363d;
+           background:linear-gradient(135deg,#238636,#2ea043); color:#fff; font-size:16px; font-weight:600; }
+  button.alt { background:linear-gradient(135deg,#1f6feb,#388bfd); }
+  button.ghost { background:#161b22; }
+  button:disabled { opacity:.45; }
+  pre { white-space:pre-wrap; word-break:break-word; font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace;
+        margin:0; color:#c9d1d9; }
+  .verdict { font-weight:700; font-size:15px; padding:10px; border-radius:10px; margin-top:8px; }
+  .go { background:#0d2f1a; color:#3fb950; border:1px solid #238636; }
+  .warn { background:#2f2410; color:#e3b341; border:1px solid #9e6a03; }
+  .no { background:#2f1416; color:#f85149; border:1px solid #da3633; }
+  #hud { position:fixed; top:0; left:0; right:0; display:none; padding:18px 12px;
+         background:transparent; z-index:99; text-align:center; pointer-events:none; }
+  #hud b { font-size:56px; display:block; color:#fff; text-shadow:0 0 12px #000, 0 2px 6px #000; }
+  #hud span { display:inline-block; background:rgba(0,0,0,.6); color:#fff; font-weight:700;
+              padding:8px 14px; border-radius:20px; text-shadow:none; }
+  .hint { font-size:12.5px; color:#8b949e; }
+</style>
+</head>
+<body>
+  <h1>Capture capability probe</h1>
+  <div class="sub">Answers one question: <b>what live coverage signal can this phone actually give a web page?</b><br>
+  Run it on the phone you record with, over the <b>https</b> URL. Then copy the report back.</div>
+
+  <div class="card">
+    <h2>Step 1 — automatic</h2>
+    <div class="hint">Grants camera + motion permission, reads sensors for 3 s, lists camera capabilities.</div>
+    <button id="b-auto" onclick="runAuto()">▶ Run automatic tests</button>
+  </div>
+
+  <div class="card">
+    <h2>Step 2 — live AR test</h2>
+    <div class="hint">Takes over the screen for 12 s. <b>Stand still 3 s, then walk 3 steps left, 3 steps right, and crouch once.</b>
+    This measures whether the phone gives real 6-DoF tracking (dots can stick to walls) or only a compass (dots will always swim).</div>
+    <button id="b-ar" class="alt" onclick="runAr()">▶ Run live AR test (12 s)</button>
+  </div>
+
+  <div class="card">
+    <h2>Report</h2>
+    <button class="ghost" onclick="copyReport()">⧉ Copy report</button>
+    <button class="ghost" style="margin-top:4px" onclick="location.reload()">↺ Reset</button>
+    <pre id="out" style="margin-top:10px">— nothing run yet —</pre>
+    <div id="verdict"></div>
+  </div>
+
+  <div id="hud">AR TEST<b id="hud-n">12</b><span id="hud-msg">walk sideways now</span></div>
+
+<script>
+const out = document.getElementById("out");
+const L = [];
+function log(s) { L.push(s); out.textContent = L.join("\n"); out.scrollTop = out.scrollHeight; }
+function copyReport() {
+  const t = L.join("\n");
+  navigator.clipboard.writeText(t).then(() => alert("Copied — paste it to me.")).catch(() => prompt("Copy everything below:", t));
+}
+const V = (v) => (v === undefined ? "undefined" : v === null ? "null" : String(v));
+const yn = (b) => (b ? "YES" : "no");
+const pct = (x) => (isFinite(x) ? (x * 100).toFixed(0) + "%" : "—");
+
+/* ---------------- step 1: automatic ---------------- */
+async function runAuto() {
+  document.getElementById("b-auto").disabled = true;
+  L.length = 0;
+  log("=== CAPTURE PROBE " + new Date().toISOString() + " ===");
+  log("UA        : " + navigator.userAgent);
+  log("secureCtx : " + yn(isSecureContext) + "  (" + location.protocol + "//" + location.host + ")");
+  log("cores/ram : " + navigator.hardwareConcurrency + " cores, " + V(navigator.deviceMemory) + " GB");
+  try {
+    const c = document.createElement("canvas");
+    const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+    const dbg = gl && gl.getExtension("WEBGL_debug_renderer_info");
+    log("GPU       : " + (dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "hidden"));
+  } catch (e) { log("GPU       : err " + e.message); }
+
+  /* --- WebXR support matrix (no screen takeover) --- */
+  log("\n--- WebXR ---");
+  if (!navigator.xr) {
+    log("navigator.xr : ABSENT  (iOS Safari has no WebXR; Android needs Chrome + ARCore)");
+  } else {
+    const combos = {
+      "immersive-ar minimal":            { requiredFeatures: ["local"] },
+      "immersive-ar +local-floor":       { requiredFeatures: ["local", "local-floor"] },
+      "immersive-ar +depth-sensing":     { requiredFeatures: ["local", "depth-sensing"],
+                                           depthSensing: { usagePreference: ["cpu-optimized"],
+                                                           dataFormatPreference: ["luminance-alpha", "float32"] } },
+      "immersive-ar +camera-access":     { requiredFeatures: ["local", "camera-access"] },
+      "immersive-ar +camera-framework":  { requiredFeatures: ["local", "camera-framework"] },
+      "immersive-ar +dom-overlay":       { requiredFeatures: ["local"], domOverlay: { root: document.getElementById("hud") } },
+      "immersive-ar +hit-test":          { requiredFeatures: ["local", "hit-test"] },
+      "immersive-ar +plane-detection":   { requiredFeatures: ["local", "plane-detection"] },
+      "immersive-ar +mesh-detection":    { requiredFeatures: ["local", "mesh-detection"] },
+      "immersive-ar +anchors":           { requiredFeatures: ["local", "anchors"] },
+    };
+    for (const name in combos) {
+      let ok = false, err = "";
+      try { ok = await navigator.xr.isSessionSupported("immersive-ar", combos[name]); }
+      catch (e) { err = e.name + ": " + e.message; }
+      log("  " + (ok ? "[support] " : "[  none ] ") + name + (err ? "  (" + err + ")" : ""));
+    }
+    try { log("  immersive-vr supported: " + yn(await navigator.xr.isSessionSupported("immersive-vr"))); } catch (e) {}
+  }
+
+  /* --- orientation / compass --- */
+  log("\n--- Motion & compass ---");
+  const DOE = window.DeviceOrientationEvent, DME = window.DeviceMotionEvent;
+  log("DeviceOrientationEvent: " + V(DOE) + (DOE && typeof DOE.requestPermission === "function" ? "  (needs iOS permission prompt)" : ""));
+  let oCount = 0, alpha = null, compass = null, compassAcc = null, accCount = 0, mag = null;
+  const onOri = (e) => { oCount++; if (e.alpha !== null) alpha = e.alpha;
+                         if (typeof e.webkitCompassHeading === "number") compass = e.webkitCompassHeading;
+                         if (typeof e.webkitCompassAccuracy === "number") compassAcc = e.webkitCompassAccuracy; };
+  const onMot = (e) => { accCount++; if (e.magnetometer) mag = e.magnetometer; };
+  try {
+    if (DOE && typeof DOE.requestPermission === "function") {
+      const g = await DOE.requestPermission(); log("orientation permission: " + g);
+    }
+    if (DME && typeof DME.requestPermission === "function") {
+      const g = await DME.requestPermission(); log("motion permission: " + g);
+    }
+  } catch (e) { log("permission error: " + e.message); }
+  addEventListener("deviceorientation", onOri, true);
+  addEventListener("deviceorientationabsolute", onOri, true);
+  addEventListener("devicemotion", onMot, true);
+  log("TIP: rotate the phone while this runs (3 s).");
+  await new Promise(r => setTimeout(r, 3000));
+  removeEventListener("deviceorientation", onOri, true);
+  removeEventListener("deviceorientationabsolute", onOri, true);
+  removeEventListener("devicemotion", onMot, true);
+  log("orientation events/s: " + (oCount / 3).toFixed(1) + "   alpha seen: " + yn(alpha !== null));
+  log("webkitCompassHeading : " + V(compass) + "   accuracy: " + V(compassAcc) + " deg");
+  log("devicemotion events/s: " + (accCount / 3).toFixed(1) + "   magnetometer: " + (mag ? "YES" : "no (accel+gyro only)"));
+
+  /* --- camera --- */
+  log("\n--- Camera ---");
+  let fps = 0;
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: { exact: "environment" } }, audio: false });
+    const tr = st.getVideoTracks();
+    const s = tr[0].getSettings();
+    const cap = tr[0].getCapabilities ? tr[0].getCapabilities() : {};
+    log("live     : " + s.width + "x" + s.height + " @ " + V(s.frameRate) + " fps, facing=" + V(s.facingMode));
+    log("cap.range: width=" + V(cap.width) + " height=" + V(cap.height) + " frameRate=" + V(cap.frameRate));
+    const fancy = ["torch", "zoom", "focalLength", "exposureMode", "exposureCompensation", "focusMode", "whiteBalanceMode", "colorTemperature"];
+    log("advanced : " + fancy.filter(k => k in cap).map(k => k + "=" + JSON.stringify(cap[k])).join(", ") || "advanced : (none exposed)");
+    // measured fps
+    const v = document.createElement("video"); v.srcObject = st; v.playsInline = true; v.muted = true;
+    await v.play();
+    let n = 0, t0 = performance.now();
+    await new Promise(r => {
+      const tick = () => { n++; if (performance.now() - t0 < 2000) v.requestVideoFrameCallback ? v.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); else r(); };
+      tick();
+    });
+    fps = n / ((performance.now() - t0) / 1000);
+    log("measured : " + fps.toFixed(1) + " fps delivered");
+    st.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    log("camera error: " + e.name + " " + e.message + "  (must use the https URL)");
+  }
+  verdict();
+}
+
+/* ---------------- step 2: live AR ---------------- */
+async function runAr() {
+  const btn = document.getElementById("b-ar");
+  btn.disabled = true;
+  if (!navigator.xr) { log("\n--- AR TEST ---\nnavigator.xr absent: cannot run. See WebXR section above."); btn.disabled = false; return; }
+
+  const need = ["local"];
+  const opt = ["local-floor", "dom-overlay", "depth-sensing", "camera-access", "hit-test", "anchors"];
+  const init = { optionalFeatures: opt, domOverlay: { root: document.getElementById("hud") },
+                 depthSensing: { usagePreference: ["cpu-optimized"], dataFormatPreference: ["luminance-alpha", "float32"] } };
+  let session = null;
+  log("\n--- AR TEST (live) ---");
+  const hud = document.getElementById("hud");
+  hud.style.display = "block";
+  document.getElementById("hud-n").textContent = "…";
+  document.getElementById("hud-msg").textContent = "starting AR — grant the prompt";
+  try { session = await navigator.xr.requestSession("immersive-ar", init); }
+  catch (e1) {
+    log("requestSession(full) failed: " + e1.name + " " + e1.message);
+    try { session = await navigator.xr.requestSession("immersive-ar", { requiredFeatures: need }); }
+    catch (e2) {
+      log("requestSession(bare) failed: " + e2.name + " " + e2.message);
+      hud.style.display = "none";
+      btn.disabled = false; verdict(); return;
+    }
+  }
+  log("session granted. enabledFeatures = " + JSON.stringify(session.enabledFeatures || []));
+
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl2", { xrCompatible: true, alpha: true })
+          || canvas.getContext("webgl", { xrCompatible: true, alpha: true });
+  await gl.makeXRCompatible();
+  const layer = new XRWebGLLayer(session, gl, { alpha: true });
+  session.updateRenderState({ baseLayer: layer });
+  let ref, refName = "?";
+  for (const n of ["local-floor", "local", "viewer"]) { try { ref = await session.requestReferenceSpace(n); refName = n; break; } catch (e) {} }
+  log("reference space: " + refName);
+  log("dom-overlay granted: " + yn((session.enabledFeatures || []).includes("dom-overlay")) +
+      "  (if no, the screen may look black while the test runs — that is normal, keep walking)");
+
+  let binding = null, camImgOK = false;
+  try { binding = new XRWebGLBinding(session, gl); } catch (e) { log("XRWebGLBinding: " + e.message); }
+  const t0 = performance.now();
+  let frames = 0, emul = 0, depthFrames = 0, dw = 0, dh = 0, depthValid = 0, depthTotal = 0;
+  let rawValid = 0, metaSeen = false, dists = [], camSize = "", camErr = "";
+  let xs = [], ys = [], zs = [], fpsMax = 0, camTry = 0;
+  let poseTimes = [];
+
+  const done = (why) => {
+    hud.style.display = "none";
+    const secs = (performance.now() - t0) / 1000;
+    log("frames=" + frames + " over " + secs.toFixed(1) + "s => " + (frames / secs).toFixed(1) + " fps, peak pose rate " + fpsMax.toFixed(1) + " Hz  (" + why + ")");
+    const ext = (a) => (a.length ? (Math.max(...a) - Math.min(...a)) : 0);
+    let path = 0;
+    for (let i = 1; i < xs.length; i++)
+      path += Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1], zs[i] - zs[i - 1]);
+    log("pose: samples=" + xs.length + " emulatedPosition=true on " + pct(emul / Math.max(1, frames)) + " of frames");
+    log("tracked span  x=" + ext(xs).toFixed(2) + "m  y=" + ext(ys).toFixed(2) + "m  z=" + ext(zs).toFixed(2) + "m");
+    log("walked path length: " + path.toFixed(2) + "m  (expect 3-8m if you stepped sideways)");
+    const depthUsable = depthValid > depthTotal * 0.1;
+    dists.sort((a, b) => a - b);
+    log("depth: object on " + depthFrames + "/" + frames + " frames, res=" + dw + "x" + dh +
+        ", getDepthInMeters valid=" + pct(depthValid / Math.max(1, depthTotal)) +
+        ", raw decode valid=" + pct(rawValid / Math.max(1, depthTotal)) +
+        (dists.length ? ", median " + dists[dists.length >> 1].toFixed(2) + " m, max " +
+          dists[dists.length - 1].toFixed(2) + " m" : ""));
+    log("camera image: " + (camImgOK ? "YES " + camSize + " (after " + camTry + " tries)"
+                                      : "no — " + (camErr || "frame.getCamera() returned nothing")));
+    const real6dof = path > 1.2 && emul / Math.max(1, frames) < 0.5;
+    window.__probe = { real6dof, hasDepth: depthUsable, camImgOK, refName, fps: frames / secs };
+    log("VERDICT INPUTS: real 6-DoF=" + yn(real6dof) + "  usable depth=" + yn(depthUsable) +
+        "  cameraImage=" + yn(camImgOK));
+    try { session.end(); } catch (e) {}
+    btn.disabled = false;
+    verdict();
+  };
+
+  const onFrame = (t, frame) => {
+    const el = performance.now() - t0;
+    document.getElementById("hud-n").textContent = Math.max(0, Math.ceil((12000 - el) / 1000));
+    document.getElementById("hud-msg").textContent = el < 3000 ? "STAND STILL" : "walk 3 steps left / right, crouch";
+    frames++;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (el > 12000) return done("time");
+    const pose = frame.getViewerPose(ref);
+    if (!pose) { session.requestAnimationFrame(onFrame); return; }
+    if (pose.emulatedPosition) emul++;
+    const p = pose.transform.position;
+    xs.push(p.x); ys.push(p.y); zs.push(p.z); poseTimes.push(t);
+    if (poseTimes.length > 2) {
+      const d = (poseTimes[poseTimes.length - 1] - poseTimes[poseTimes.length - 2]) / 1000;
+      if (d > 0) fpsMax = Math.max(fpsMax, 1 / d);
+    }
+    const view = pose.views[0];
+    if (view && frame.getDepthInformation) {
+      let info = null;
+      try { info = frame.getDepthInformation(view); } catch (e) {}
+      if (info) {
+        depthFrames++; dw = info.width; dh = info.height;
+        if (!metaSeen) {
+          metaSeen = true;
+          log("depth obj: type=" + info.type + " " + info.width + "x" + info.height +
+              " rawValueToMeters=" + info.rawValueToMeters +
+              " depthSpace=" + (info.depthSpace === ref ? "refSpace" : (info.depthSpace ? "other" : "none")) +
+              " data=" + (info.data ? info.data.constructor.name : "none"));
+        }
+        // getDepthInMeters takes NORMALIZED coords (0..1), not pixel indices.
+        const step = 8;
+        for (let iy = 0; iy < step; iy++) {
+          for (let ix = 0; ix < step; ix++) {
+            const nx = (ix + 0.5) / step, ny = (iy + 0.5) / step;
+            depthTotal++;
+            let m = 0;
+            try { m = info.getDepthInMeters(nx, ny); } catch (e) { continue; }
+            if (m > 0.05 && m < 20) { depthValid++; dists.push(m); }
+            if (info.data && info.rawValueToMeters) {
+              const px = Math.min(dw - 1, Math.floor(nx * dw)), py = Math.min(dh - 1, Math.floor(ny * dh));
+              const raw = info.data[py * dw + px];
+              if (raw > 0 && raw * info.rawValueToMeters > 0.05) rawValid++;
+            }
+          }
+        }
+      }
+    }
+    if (binding && !camImgOK && (frames % 15 === 1)) {
+      camTry++;
+      try {
+        const xrCam = frame.getCamera ? frame.getCamera() : null;
+        if (xrCam) {
+          const img = binding.getCameraImage(xrCam);
+          if (img) { camImgOK = true; camSize = xrCam.width + "x" + xrCam.height; }
+        }
+      } catch (e) { if (!camErr) camErr = e.name + ": " + e.message; }
+    }
+    session.requestAnimationFrame(onFrame);
+  };
+  session.requestAnimationFrame(onFrame);
+  session.addEventListener("end", () => { if (hud.style.display === "block") done("ended early"); });
+}
+
+/* ---------------- verdict ---------------- */
+function verdict() {
+  const el = document.getElementById("verdict");
+  const hasXR = !!navigator.xr;
+  const p = window.__probe;
+  let cls = "no", msg;
+  if (!hasXR) {
+    msg = "NO WebXR on this phone/browser. World-anchored lidar-style dots are impossible in the browser. " +
+          "Coverage UI must be built on compass + pitch + orbit progress only.";
+  } else if (!p) {
+    msg = "Run Step 2 (live AR test) — the decisive number is how far the tracked pose moved while you walked.";
+    cls = "warn";
+  } else if (!p.camImgOK) {
+    msg = "BLOCKED for AR recording: pose" + (p.real6dof ? " is good" : " is weak") + " but the raw camera module did not deliver a frame. " +
+          "ARCore holds the camera for the whole session, so without it there is no video to record and the capture page " +
+          "will fall back to plain camera mode. This is the one line that matters most in this report.";
+    cls = "no";
+  } else if (p.real6dof && p.hasDepth) {
+    msg = "BEST CASE: real 6-DoF + usable depth + camera image. True world-anchored surface coverage — patches that stick " +
+          "to walls, red/amber/green by how many angles they have been seen from.";
+    cls = "go";
+  } else if (p.real6dof) {
+    msg = "GOOD: real 6-DoF + camera image, but no usable depth values. Recording and 6-DoF poses work; the coverage map " +
+          "stays empty because it is built from the depth image, so dots will not appear.";
+    cls = "warn";
+  } else {
+    msg = "WEAK: WebXR present but the pose did not translate while walking (emulated position). World dots will still swim — " +
+          "treat as orientation-only.";
+    cls = "warn";
+  }
+  el.innerHTML = '<div class="verdict ' + cls + '">' + msg + "</div>";
+  log("\nVERDICT: " + msg);
+}
+</script>
+</body>
+</html>

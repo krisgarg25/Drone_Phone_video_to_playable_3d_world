@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drone3D Pipeline Studio — Real-Time Control, Live ETA & Monitoring</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-main: #0a0e17;
+    --bg-card: rgba(17, 24, 39, 0.85);
+    --border-card: rgba(255, 255, 255, 0.1);
+    --primary: #3b82f6;
+    --primary-glow: rgba(59, 130, 246, 0.4);
+    --accent: #8b5cf6;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: radial-gradient(circle at top center, #111e38 0%, var(--bg-main) 70%);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 32px;
+    background: rgba(10, 15, 26, 0.75);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-card);
+    position: sticky; top: 0; z-index: 50;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800; box-shadow: 0 0 15px var(--primary-glow);
+  }
+  .brand-title { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+  .nav-btns { display: flex; gap: 10px; }
+  .nav-link {
+    text-decoration: none; font-size: 13px; font-weight: 600;
+    padding: 8px 16px; border-radius: 8px; color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-card);
+    transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .nav-link:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+  .nav-link.primary {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff; border: none; box-shadow: 0 4px 15px var(--primary-glow);
+  }
+
+  main {
+    flex: 1; max-width: 1320px; width: 100%; margin: 0 auto;
+    padding: 24px 20px 60px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px;
+  }
+  @media(max-width: 1020px) { main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-card);
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .panel-title { font-size: 16.5px; font-weight: 700; color: #f1f5f9; display: flex; align-items: center; gap: 8px; }
+
+  /* Form Elements */
+  .field-group { display: flex; flex-direction: column; gap: 6px; }
+  label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  select, input[type="text"], input[type="number"] {
+    background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-main); font-family: 'Outfit', sans-serif; font-size: 13.5px;
+    padding: 10px 12px; border-radius: 10px; outline: none; transition: border-color 0.2s;
+  }
+  select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+
+  /* Preset Selector Grid */
+  .presets-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px;
+  }
+  .preset-card {
+    background: rgba(0, 0, 0, 0.3); border: 1.5px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px; padding: 10px; cursor: pointer; transition: all 0.2s ease;
+    display: flex; flex-direction: column; gap: 4px; user-select: none;
+  }
+  .preset-card:hover {
+    border-color: rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.05); transform: translateY(-2px);
+  }
+  .preset-card.active {
+    border-color: #3b82f6; background: rgba(59, 130, 246, 0.18);
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+  }
+  .preset-card-top { display: flex; justify-content: space-between; align-items: center; }
+  .preset-icon { font-size: 18px; }
+  .preset-name { font-size: 13px; font-weight: 700; color: #fff; }
+  .preset-desc { font-size: 10.5px; color: var(--text-muted); line-height: 1.3; }
+
+  /* Advice Box */
+  .advice-banner {
+    background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 10px; padding: 10px 12px; font-size: 11.5px; color: #bfdbfe; line-height: 1.45;
+  }
+  .advice-banner b { color: #60a5fa; }
+
+  /* Quality Selector */
+  .quality-pills { display: flex; gap: 10px; }
+  .quality-pill {
+    flex: 1; padding: 10px; text-align: center; font-size: 12.5px; font-weight: 600;
+    background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px; cursor: pointer; transition: all 0.2s;
+  }
+  .quality-pill.active {
+    background: rgba(139, 92, 246, 0.25); border-color: #8b5cf6; color: #c4b5fd;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  }
+
+  /* Collapsible Advanced */
+  details summary {
+    font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+    cursor: pointer; padding: 4px 0; outline: none; user-select: none;
+  }
+  details[open] summary { color: var(--primary); margin-bottom: 10px; }
+  .adv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* ETA & Live Stats Grid */
+  .stats-strip {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  @media(max-width: 600px) { .stats-strip { grid-template-columns: 1fr 1fr; } }
+  .stat-box {
+    background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+  .stat-val { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #93c5fd; }
+
+  /* Stepper */
+  .stepper {
+    display: flex; justify-content: space-between; position: relative; margin: 4px 0;
+  }
+  .step-node {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px;
+    color: var(--text-muted); font-weight: 600; z-index: 2;
+  }
+  .step-circle {
+    width: 22px; height: 22px; border-radius: 50%; background: #1e293b;
+    border: 2px solid #475569; display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #fff;
+  }
+  .step-node.active .step-circle {
+    background: var(--primary); border-color: #93c5fd; box-shadow: 0 0 10px var(--primary-glow);
+  }
+  .step-node.done .step-circle {
+    background: var(--success); border-color: #6ee7b7;
+  }
+
+  /* Progress Bar */
+  .prog-bar-box {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .prog-track {
+    width: 100%; height: 8px; background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 99px; overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981);
+    transition: width 0.3s ease;
+  }
+
+  /* Terminal */
+  .terminal {
+    background: #050811; border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px; padding: 12px; height: 320px; overflow-y: auto;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5;
+    color: #cbd5e1; display: flex; flex-direction: column-reverse;
+  }
+  .term-line { white-space: pre-wrap; word-break: break-all; }
+  .term-line.info { color: #60a5fa; }
+  .term-line.success { color: #34d399; }
+  .term-line.warn { color: #fbbf24; }
+  .term-line.err { color: #f87171; }
+
+  /* Control buttons */
+  .btn-bar { display: flex; gap: 10px; margin-top: auto; }
+  .btn-primary {
+    flex: 1; padding: 13px; font-size: 13.5px; font-weight: 700; border-radius: 10px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6); color: #fff; border: none;
+    cursor: pointer; box-shadow: 0 4px 15px var(--primary-glow); transition: all 0.2s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-kill {
+    padding: 13px 18px; font-size: 13px; font-weight: 700; border-radius: 10px;
+    background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-kill:hover { background: rgba(239, 68, 68, 0.35); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-icon">⚡</div>
+    <div>
+      <div class="brand-title">Drone3D Pipeline Studio</div>
+      <div style="font-size: 11px; color: var(--text-muted);">Real-Time GPU Progress, Live ETA & Calibration</div>
+    </div>
+  </div>
+  <div class="nav-btns">
+    <a href="/viewer/capture.html" class="nav-link">📱 Capture Studio</a>
+    <a href="/viewer/pc.html?asset=/work/room_w_jsonl/viewer_assets" class="nav-link primary">🌐 Open 3D Viewer</a>
+  </div>
+</header>
+
+<main>
+  <!-- Left Column: Config Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">⚙️ Reconstruction Parameters</div>
+      <span style="font-size: 11.5px; color: var(--text-muted);">RTX 3050 Optimized</span>
+    </div>
+
+    <!-- Shown when we arrive straight from a phone transfer -->
+    <div id="uploaded-banner" style="display:none; background:rgba(52,211,153,0.10);
+         border:1px solid rgba(52,211,153,0.4); border-radius:10px; padding:11px 13px;
+         margin-bottom:14px; font-size:12px; line-height:1.5;">
+      <b style="color:#6ee7b7;">📥 Transfer complete — <span id="uploaded-scene"></span></b><br>
+      <span style="color:var(--text-muted);">Nothing is running yet. Pick a capture preset and
+      quality below, then press Start.</span>
+    </div>
+
+    <!-- Scene Selector -->
+    <div class="field-group">
+      <label>Target Scene / Mobile Dataset</label>
+      <select id="scene-select">
+        <option value="room_w_jsonl">room_w_jsonl (Spectacular Rec Dataset)</option>
+        <option value="rocks">rocks (Outdoor Rock Outcrop)</option>
+        <option value="temple">temple (Temple Monument)</option>
+        <option value="room_multi_video">room_multi_video (Multi-Clip Room)</option>
+      </select>
+    </div>
+
+    <!-- Presets Selector Grid -->
+    <div class="field-group">
+      <label>Capture Preset Profile</label>
+      <div class="presets-grid" id="presets-container">
+        <!-- Injected dynamically via JS -->
+      </div>
+    </div>
+
+    <!-- Advice Banner -->
+    <div class="advice-banner" id="preset-advice">
+      <b>💡 Strategy:</b> Move in smooth arcs/orbits. Make three passes: waist-height, tilted up (ceiling), tilted down (floor).
+    </div>
+
+    <!-- Quality Selection -->
+    <div class="field-group">
+      <label>Quality & Resolution Preset</label>
+      <div class="quality-pills">
+        <div class="quality-pill active" id="q-high" onclick="setQuality('high')">
+          <div>✨ High (1280p)</div>
+          <div style="font-size:10.5px; color:var(--text-muted);">30k steps • 3.0M cap • antialiased</div>
+        </div>
+        <div class="quality-pill" id="q-ultra" onclick="setQuality('ultra')">
+          <div>💎 Ultra (1440p)</div>
+          <div style="font-size:10.5px; color:var(--text-muted);">45k steps • 4.0M cap • 8GB+ GPU</div>
+        </div>
+        <div class="quality-pill" id="q-std" onclick="setQuality('standard')">
+          <div>⚡ Standard (640p)</div>
+          <div style="font-size:10.5px; color:var(--text-muted);">12k steps • 350k cap</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Advanced Accordion -->
+    <details>
+      <summary>🔧 Advanced Hyperparameters (SIFT, BA & GPU)</summary>
+      <div class="adv-grid">
+        <div class="field-group">
+          <label>SIFT Peak Threshold</label>
+          <input type="number" id="adv-peak" step="0.001" value="0.002">
+        </div>
+        <div class="field-group">
+          <label>SIFT Max Features</label>
+          <input type="number" id="adv-max-feat" step="512" value="8192">
+        </div>
+        <div class="field-group">
+          <label>CPU Threads Allocated</label>
+          <input type="number" id="adv-threads" min="1" max="16" value="13">
+        </div>
+        <div class="field-group">
+          <label>3DGS Hard Cap</label>
+          <input type="number" id="adv-cap" step="50000" value="2000000">
+        </div>
+      </div>
+    </details>
+
+    <div class="btn-bar">
+      <button class="btn-primary" id="btn-start" onclick="launchPipeline()">
+        🚀 Start 3D Reconstruction
+      </button>
+      <button class="btn-kill" id="btn-kill" onclick="killPipeline()" style="display:none;">
+        ⏹ Abort
+      </button>
+    </div>
+  </div>
+
+  <!-- Right Column: Live Terminal, ETA & GPU Stats -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">📊 Live Reconstruction Status</div>
+      <div class="stat-val" id="job-status-badge" style="font-size:12px; color:#9ca3af;">IDLE</div>
+    </div>
+
+    <!-- Stats Strip -->
+    <div class="stats-strip">
+      <div class="stat-box">
+        <div class="stat-lbl">CURRENT STEP</div>
+        <div class="stat-val" id="s-step">0 / 15k</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">ESTIMATED ETA</div>
+        <div class="stat-val" id="s-eta" style="color:#f59e0b;">--:--</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">SPEED & PSNR</div>
+        <div class="stat-val" id="s-speed" style="color:#10b981;">-- it/s</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">GPU VRAM</div>
+        <div class="stat-val" id="s-vram" style="color:#8b5cf6;">-- GiB</div>
+      </div>
+    </div>
+
+    <!-- Stepper -->
+    <div class="stepper">
+      <div class="step-node" id="step-colmap"><div class="step-circle">1</div><span>COLMAP</span></div>
+      <div class="step-node" id="step-poses"><div class="step-circle">2</div><span>POSES</span></div>
+      <div class="step-node" id="step-train"><div class="step-circle">3</div><span>3DGS</span></div>
+      <div class="step-node" id="step-mesh"><div class="step-circle">4</div><span>COLLIDER</span></div>
+      <div class="step-node" id="step-walktest"><div class="step-circle">5</div><span>VIEWER</span></div>
+    </div>
+
+    <!-- Overall Progress Bar -->
+    <div class="prog-bar-box">
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted);">
+        <span id="prog-label">Pipeline Progress</span>
+        <b id="prog-pct" style="color:#60a5fa;">0%</b>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+    </div>
+
+    <!-- Terminal Box -->
+    <div class="terminal" id="term-box">
+      <div class="term-line info">Ready. Select dataset and click 'Start 3D Reconstruction' to launch.</div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:var(--text-muted);">
+      <span>Server: <b id="srv-ip" style="color:#60a5fa;">127.0.0.1:8137</b></span>
+      <a id="btn-view-result" href="/viewer/pc.html?asset=/work/room_w_jsonl/viewer_assets" target="_blank" style="color:#34d399; font-weight:700; text-decoration:none; display:none;">
+        ✨ Open in 3D Viewer ➔
+      </a>
+    </div>
+  </div>
+</main>
+
+<script>
+  let selectedPreset = "room";
+  let selectedQuality = "high";
+  let presetsData = {};
+
+  const PRESET_ICONS = {
+    room: "🏠",
+    indoor_large: "🏢",
+    outdoor_building: "🏛️",
+    drone: "🚁",
+    drone_mapping: "🗺️",
+    object: "🏺",
+    sky_heavy: "⛅",
+    corridor: "🚶",
+    auto: "✨"
+  };
+
+  async function loadInitialData() {
+    // ?scene=<name> arrives from a phone transfer; &uploaded=1 means the files
+    // just landed and the user still has to choose preset + quality.
+    const qs = new URLSearchParams(location.search);
+    const wantScene = qs.get("scene");
+    if (wantScene && qs.get("uploaded") === "1") {
+      document.getElementById("uploaded-scene").textContent = wantScene;
+      document.getElementById("uploaded-banner").style.display = "block";
+    }
+
+    try {
+      const res = await fetch("/api/info");
+      const data = await res.json();
+      document.getElementById("srv-ip").textContent = `${data.local_ip}:${data.port}`;
+
+      if (data.scenes?.length) {
+        const sel = document.getElementById("scene-select");
+        const scenes = data.scenes.slice();
+        // A just-uploaded scene can be missing if /api/info was cached mid-write.
+        if (wantScene && !scenes.includes(wantScene)) scenes.unshift(wantScene);
+        const pick = (wantScene && scenes.includes(wantScene)) ? wantScene : "room_w_jsonl";
+        sel.innerHTML = scenes.map(s =>
+          `<option value="${s}" ${s === pick ? "selected" : ""}>${s}</option>`).join("");
+      }
+
+      const pRes = await fetch("/api/presets");
+      const pData = await pRes.json();
+      presetsData = pData.presets || {};
+      renderPresets();
+    } catch (e) {
+      console.warn("Failed to load backend info:", e);
+    }
+  }
+
+  function renderPresets() {
+    const cont = document.getElementById("presets-container");
+    cont.innerHTML = Object.entries(presetsData).map(([k, v]) => `
+      <div class="preset-card ${k === selectedPreset ? 'active' : ''}" onclick="selectPreset('${k}')">
+        <div class="preset-card-top">
+          <span class="preset-icon">${PRESET_ICONS[k] || "📦"}</span>
+          <span style="font-size:9.5px; background:rgba(255,255,255,0.1); padding:2px 5px; border-radius:99px;">${k}</span>
+        </div>
+        <div class="preset-name">${v.label || k}</div>
+        <div class="preset-desc">${v.advice ? v.advice.slice(0, 48) + '...' : ''}</div>
+      </div>
+    `).join("");
+    updateAdvice();
+  }
+
+  function selectPreset(k) {
+    selectedPreset = k;
+    renderPresets();
+  }
+
+  function updateAdvice() {
+    const p = presetsData[selectedPreset];
+    if (p && p.advice) {
+      document.getElementById("preset-advice").innerHTML = `<b>💡 Strategy for ${p.label || selectedPreset}:</b> ${p.advice}`;
+      if (p.sift_peak_threshold) document.getElementById("adv-peak").value = p.sift_peak_threshold;
+    }
+  }
+
+  function setQuality(q) {
+    selectedQuality = q;
+    document.getElementById("q-high").classList.toggle("active", q === "high");
+    document.getElementById("q-ultra").classList.toggle("active", q === "ultra");
+    document.getElementById("q-std").classList.toggle("active", q === "standard");
+  }
+
+  async function launchPipeline() {
+    const scene = document.getElementById("scene-select").value;
+    const btn = document.getElementById("btn-start");
+    btn.disabled = true;
+
+    try {
+      await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scene: scene,
+          preset: selectedPreset,
+          quality: selectedQuality,
+          extra_args: [
+            "--sift-peak-threshold", document.getElementById("adv-peak").value,
+            "--cap", document.getElementById("adv-cap").value
+          ]
+        })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function killPipeline() {
+    await fetch("/api/kill", { method: "POST" });
+  }
+
+  // Poll status loop
+  setInterval(async () => {
+    try {
+      const res = await fetch("/api/status");
+      const status = await res.json();
+
+      const badge = document.getElementById("job-status-badge");
+      const btnStart = document.getElementById("btn-start");
+      const btnKill = document.getElementById("btn-kill");
+      const btnView = document.getElementById("btn-view-result");
+
+      const isRunning = status.status === "running";
+      badge.textContent = isRunning ? "RUNNING" : (status.status ? status.status.toUpperCase() : "IDLE");
+      badge.style.color = isRunning ? "#60a5fa" : (status.status.startsWith("completed") ? "#34d399" : "#9ca3af");
+
+      btnStart.disabled = isRunning;
+      btnKill.style.display = isRunning ? "inline-block" : "none";
+      btnView.style.display = status.status.startsWith("completed") ? "inline-block" : "none";
+
+      // Stepper highlight
+      const st = (status.step || "").toLowerCase();
+      document.getElementById("step-colmap").className = `step-node ${st.includes("colmap") ? "active" : ""}`;
+      document.getElementById("step-poses").className = `step-node ${st.includes("poses") ? "active" : ""}`;
+      document.getElementById("step-train").className = `step-node ${st.includes("train") ? "active" : ""}`;
+      document.getElementById("step-mesh").className = `step-node ${st.includes("collider") ? "active" : ""}`;
+      document.getElementById("step-walktest").className = `step-node ${st.includes("walktest") || st.includes("export") ? "active" : ""}`;
+
+      // Parse latest log lines for ETA, Step, and GPU metrics
+      if (status.logs?.length) {
+        let maxStep = 15000;
+        let curStep = 0;
+        let itPerSec = 0;
+        let psnr = 0;
+        let vram = 0;
+
+        for (let i = status.logs.length - 1; i >= 0; i--) {
+          const l = status.logs[i];
+          const m = l.match(/step\s+(\d+)\s+loss\s+[\d\.]+\s+psnr\s+([\d\.]+)\s+N\s+\d+\s+\d+s\s+\(([\d\.]+)\s+it\/s\)\s+mem\s+([\d\.]+)GiB/);
+          if (m) {
+            curStep = parseInt(m[1], 10);
+            psnr = parseFloat(m[2]);
+            itPerSec = parseFloat(m[3]);
+            vram = parseFloat(m[4]);
+            break;
+          }
+        }
+
+        if (curStep > 0) {
+          document.getElementById("s-step").textContent = `${curStep} / ${maxStep}`;
+          document.getElementById("s-speed").textContent = `${itPerSec.toFixed(1)} it/s • ${psnr.toFixed(1)} dB`;
+          document.getElementById("s-vram").textContent = `${vram.toFixed(2)} GiB`;
+
+          if (itPerSec > 0) {
+            const remSec = Math.max(0, Math.round((maxStep - curStep) / itPerSec));
+            const mm = Math.floor(remSec / 60);
+            const ss = remSec % 60;
+            document.getElementById("s-eta").textContent = `${mm}m ${ss}s`;
+          }
+
+          const pct = Math.round((curStep / maxStep) * 100);
+          document.getElementById("prog-fill").style.width = pct + "%";
+          document.getElementById("prog-pct").textContent = pct + "%";
+        }
+
+        // Update terminal
+        const term = document.getElementById("term-box");
+        term.innerHTML = status.logs.slice(-150).reverse().map(l => {
+          let cls = "term-line";
+          if (l.includes("[colmap]") || l.includes("[train]")) cls += " info";
+          if (l.includes("DONE") || l.includes("PASS") || l.includes("exit 0")) cls += " success";
+          if (l.includes("WARNING") || l.includes("warn")) cls += " warn";
+          if (l.includes("ERROR") || l.includes("failed")) cls += " err";
+          return `<div class="${cls}">${escapeHtml(l)}</div>`;
+        }).join("");
+      }
+    } catch (e) {}
+  }, 1000);
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  loadInitialData();
+</script>
+</body>
+</html>

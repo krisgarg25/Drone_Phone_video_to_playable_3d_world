@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D Room Walk & Drone Flight — PlayCanvas Viewer</title>
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:#0b0e14;
+               font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'JetBrains Mono', monospace; }
+  #app { width:100%; height:100%; }
+  canvas { display:block; width:100%; height:100%; outline:none; }
+  
+  #hud-container {
+    position:fixed; left:16px; top:16px; z-index:10;
+    display:flex; flex-direction:column; gap:10px;
+    max-width:560px; pointer-events:none;
+  }
+  
+  #toolbar {
+    display:flex; flex-wrap:wrap; gap:7px;
+    pointer-events:auto;
+  }
+  
+  .btn {
+    background:rgba(18, 24, 38, 0.88);
+    backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.14);
+    color:#e2ecf7;
+    font-size:12px;
+    font-weight:500;
+    font-family:inherit;
+    padding:6px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    transition:all 0.15s ease;
+    display:flex; align-items:center; gap:6px;
+    user-select:none;
+    box-shadow:0 3px 10px rgba(0,0,0,0.35);
+  }
+  .btn:hover {
+    background:rgba(30, 44, 68, 0.95);
+    border-color:rgba(100, 180, 255, 0.5);
+    color:#ffffff;
+    transform:translateY(-1px);
+  }
+  .btn.active {
+    background:#1e4f8a;
+    border-color:#63b3ed;
+    color:#ffffff;
+    font-weight:600;
+    box-shadow:0 0 14px rgba(66, 153, 225, 0.55);
+  }
+  .btn .badge {
+    background:rgba(255,255,255,0.18);
+    padding:2px 5px;
+    border-radius:4px;
+    font-size:10px;
+    font-weight:700;
+  }
+  
+  #hud {
+    padding:10px 14px;
+    background:rgba(13, 17, 26, 0.88);
+    backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.1);
+    color:#d7e3f0;
+    font-size:11.5px;
+    line-height:1.6;
+    border-radius:10px;
+    white-space:pre;
+    box-shadow:0 6px 20px rgba(0,0,0,0.4);
+  }
+
+  /* Camera Inspector Floating Card */
+  #cam-inspector {
+    position:fixed; right:16px; top:16px; z-index:12;
+    width:310px;
+    background:rgba(13, 18, 28, 0.92);
+    backdrop-filter:blur(16px);
+    border:1px solid rgba(100, 180, 255, 0.35);
+    border-radius:12px;
+    padding:12px;
+    color:#e4effa;
+    box-shadow:0 10px 30px rgba(0,0,0,0.55), 0 0 15px rgba(66, 153, 225, 0.2);
+    display:none;
+    flex-direction:column;
+    gap:10px;
+    animation:fadeIn 0.2s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  #cam-inspector .header {
+    display:flex; justify-content:space-between; align-items:center;
+    border-bottom:1px solid rgba(255,255,255,0.1);
+    padding-bottom:6px;
+    font-size:12.5px; font-weight:600; color:#63b3ed;
+  }
+  #cam-inspector .close-btn {
+    background:none; border:none; color:#a0aec0; cursor:pointer; font-size:14px;
+    padding:2px 6px; border-radius:4px;
+  }
+  #cam-inspector .close-btn:hover { color:#fff; background:rgba(255,255,255,0.1); }
+  #cam-inspector .thumb-container {
+    width:100%; height:160px; background:#080b10; border-radius:8px;
+    overflow:hidden; position:relative; display:flex; align-items:center; justify-content:center;
+    border:1px solid rgba(255,255,255,0.08);
+  }
+  #cam-inspector img {
+    width:100%; height:100%; object-fit:cover; display:block;
+  }
+  #cam-inspector .details {
+    font-size:11px; line-height:1.55; color:#cbd5e0;
+    background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px;
+  }
+  #cam-inspector .details b { color:#90cdf4; }
+  #cam-inspector .actions {
+    display:flex; gap:6px;
+  }
+  .action-btn {
+    flex:1; padding:7px; font-size:11.5px; font-weight:600; border-radius:6px;
+    cursor:pointer; text-align:center; border:none; transition:all 0.15s ease;
+  }
+  .btn-primary { background:#3182ce; color:#fff; }
+  .btn-primary:hover { background:#4299e1; transform:translateY(-1px); }
+  .btn-nav { background:rgba(255,255,255,0.12); color:#e2e8f0; flex:0.4; }
+  .btn-nav:hover { background:rgba(255,255,255,0.22); }
+
+  /* Coverage Diagnostics Drawer */
+  #cov-panel {
+    position:fixed; right:16px; bottom:16px; z-index:11;
+    width:320px; max-height:400px;
+    background:rgba(12, 16, 25, 0.92);
+    backdrop-filter:blur(16px);
+    border:1px solid rgba(72, 187, 120, 0.35);
+    border-radius:12px;
+    padding:12px 14px;
+    color:#e2ecf7;
+    box-shadow:0 8px 25px rgba(0,0,0,0.5);
+    display:none;
+    flex-direction:column;
+    gap:8px;
+    overflow-y:auto;
+  }
+  #cov-panel .title {
+    font-size:12.5px; font-weight:700; color:#68d391;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  #cov-panel .stat-row {
+    display:flex; justify-content:space-between; font-size:11px;
+    padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  #cov-panel .advice-box {
+    background:rgba(237, 137, 54, 0.15);
+    border:1px solid rgba(237, 137, 54, 0.4);
+    border-radius:6px; padding:7px 9px;
+    font-size:10.5px; line-height:1.45; color:#fbd38d;
+  }
+  
+  #load { position:fixed; inset:0; display:flex; align-items:center;
+          justify-content:center; color:#cfe0f2; font-size:16px;
+          font-weight:500; letter-spacing:.04em; background:#0b0e14; z-index:30;
+          transition:opacity .35s; }
+  #load.err { color:#ff8f7a; }
+</style>
+<script type="importmap">
+{ "imports": { "playcanvas": "./pc/playcanvas.mjs" } }
+</script>
+</head>
+<body>
+<canvas id="app"></canvas>
+
+<!-- Top-Left HUD & Controls Toolbar -->
+<div id="hud-container">
+  <div id="toolbar">
+    <button id="btn-mode" class="btn" title="Toggle Drone Fly Mode vs Ground Walk Mode (Press F)"><span id="lbl-mode">🚁 Drone Fly</span> <span class="badge">F</span></button>
+    <button id="btn-cams" class="btn" title="Toggle COLMAP Camera Frustum Pyramids & Trajectory (Press P)"><span>📸 Cameras</span> <span class="badge">P</span></button>
+    <button id="btn-inspect" class="btn" title="Inspect Training Photos & Camera Views (Press [ or ])"><span>🔍 Inspect Frame</span> <span class="badge">[ ]</span></button>
+    <button id="btn-points" class="btn" title="Toggle COLMAP Sparse 3D Tie Points (Press O)"><span>🌐 Tie Points</span> <span class="badge">O</span></button>
+    <button id="btn-cov" class="btn" title="Toggle 3D Coverage Density Grid & Missing Region Heatmap (Press V)"><span>🎯 Coverage</span> <span class="badge">V</span></button>
+    <button id="btn-splat-vis" class="btn active" title="Toggle Gaussian Splats Visibility ON/OFF (Press G)"><span id="lbl-splat-vis">✨ Splats: ON</span> <span class="badge">G</span></button>
+    <button id="btn-splat" class="btn" title="Switch between Cleaned vs Full Splat (Press U)"><span id="lbl-splat">📦 Model: Clean</span> <span class="badge">U</span></button>
+    <button id="btn-cam" class="btn" title="Toggle 1st / 3rd Person Camera (Press C)">👁️ <span id="lbl-cam">1st/3rd</span> <span class="badge">C</span></button>
+    <button id="btn-auto" class="btn" title="Autopilot Room Tour (Press T)">▶ Tour <span class="badge">T</span></button>
+    <button id="btn-reset" class="btn" title="Reset Spawn Position (Press R)">🔄 Reset <span class="badge">R</span></button>
+    <a href="/viewer/pipeline_gui.html" class="btn" style="text-decoration:none; color:#93c5fd; background:rgba(59,130,246,0.15); border-color:rgba(59,130,246,0.4);" title="Open Pipeline Control Center GUI">⚡ Pipeline GUI</a>
+    <a href="/viewer/capture.html" class="btn" style="text-decoration:none; color:inherit;" title="Open Web Capture & Spectacular Rec Decoder Studio">📱 Capture Studio</a>
+  </div>
+  <div id="hud"></div>
+</div>
+
+<!-- Floating Camera Inspector -->
+<div id="cam-inspector">
+  <div class="header">
+    <span id="insp-title">📷 Frame #0</span>
+    <button class="close-btn" id="insp-close">✕</button>
+  </div>
+  <div class="thumb-container">
+    <img id="insp-img" src="" alt="Camera View Preview">
+  </div>
+  <div style="display:flex; flex-direction:column; gap:4px; margin-top:2px;">
+    <div style="display:flex; justify-content:space-between; font-size:11px; color:#a0aec0;">
+      <span>Frame Scrub:</span>
+      <b id="insp-frame-num" style="color:#63b3ed;">1 / 442</b>
+    </div>
+    <input type="range" id="insp-slider" min="0" max="441" value="0" style="width:100%; accent-color:#3182ce; cursor:pointer;">
+  </div>
+  <div class="details" id="insp-details">
+    Loading camera metadata...
+  </div>
+  <div class="actions">
+    <button class="action-btn btn-nav" id="insp-prev" title="Previous Camera ([)">◀</button>
+    <button class="action-btn btn-primary" id="insp-jump" title="Fly Into Camera View (J)">🚀 Snap to View (J)</button>
+    <button class="action-btn btn-nav" id="insp-next" title="Next Camera (])">▶</button>
+  </div>
+  <button class="action-btn" id="insp-play-seq" style="background:rgba(72,187,120,0.25); border:1px solid rgba(72,187,120,0.5); color:#68d391; margin-top:2px;" title="Play through all camera poses in sequence">🎬 Play Drone Flight Sequence</button>
+</div>
+
+<!-- Coverage Diagnostics Panel -->
+<div id="cov-panel">
+  <div class="title">
+    <span>🎯 Multi-View Coverage Report</span>
+    <button class="close-btn" id="cov-close">✕</button>
+  </div>
+  <div id="cov-stats"></div>
+  <div class="advice-box" id="cov-advice"></div>
+</div>
+
+<div id="load">loading engine…</div>
+<script>
+  window.addEventListener("error", function(e) {
+    var l = document.getElementById("load");
+    if (l) { l.textContent = "ERROR: " + (e.message || e); l.className = "err"; }
+  });
+  window.addEventListener("unhandledrejection", function(e) {
+    var l = document.getElementById("load");
+    if (l) { l.textContent = "ERROR: " + (e.reason && e.reason.message ? e.reason.message : e.reason); l.className = "err"; }
+  });
+</script>
+<script type="module" src="./pc.js"></script>
+</body>
+</html>

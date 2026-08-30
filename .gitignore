@@ -1,0 +1,36 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv310/
+venv/
+env/
+
+# --- Virtual env / tooling dirs (large, machine-specific) ---
+.opencode/
+.claude/
+
+# --- Large data / build artifacts ---
+videos/
+work/
+scratch/
+tools/
+
+# --- Secrets / certificates ---
+*.pem
+*.key
+*.crt
+
+# --- Outputs / temp files ---
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+
+# --- Node (viewer deps, if any) ---
+node_modules/
