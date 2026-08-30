@@ -1,0 +1,6 @@
+[submodule "tools/pc-engine"]
+	path = tools/pc-engine
+	url = https://github.com/playcanvas/engine
+[submodule "tools/gsplat"]
+	path = tools/gsplat
+	url = https://github.com/nerfstudio-project/gsplat.git

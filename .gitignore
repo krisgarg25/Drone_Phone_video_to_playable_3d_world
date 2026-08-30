@@ -15,7 +15,10 @@ env/
 videos/
 work/
 scratch/
-tools/
+
+# --- tools/: keep binaries, exclude redundant archives (over GitHub's 100MB/file limit) ---
+tools/colmap.zip
+tools/ffmpeg.zip
 
 # --- Secrets / certificates ---
 *.pem

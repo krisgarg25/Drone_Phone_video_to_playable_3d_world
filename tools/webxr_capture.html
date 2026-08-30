@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<!--
+  webxr_capture.html - EXPERIMENTAL phone AR pose + video recorder (single file, zero install)
+
+  WHAT IT DOES
+    Records an Android Chrome "immersive-ar" WebXR session and produces two artifacts:
+      poses.jsonl - one JSON object per XR frame:
+        {"t": <seconds since start>, "pxyz":[x,y,z], "qxyzw":[qx,qy,qz,qw]}
+        camera-to-world, right-handed, metres, Y-up, quaternion SCALAR-LAST (x,y,z,w).
+      capture.webm - the composited camera image + reticle, recorded from a canvas.
+
+  SYNC CAVEAT - READ THIS
+    Pose timestamps come from performance.now() at XR frame time. Video frame
+    timestamps come from MediaRecorder (canvas.captureStream PTS at encode time).
+    These two clocks drift and jitter by tens of milliseconds, more under load,
+    and there is an arbitrary constant offset between recording start and the
+    first encoded frame. Treat video<->pose alignment as APPROXIMATE.
+    Practical mitigation: at the very start, fully COVER the camera (hand over
+    lens) for ~0.5 s. That shows up as an obvious black segment in the video at
+    a known pose-time and gives you a manual alignment mark. A clap works too,
+    if your logger records audio.
+
+  REQUIREMENTS
+    - Android Chrome with WebXR immersive-ar AND the raw camera access feature
+      ("camera-access"). iPhone/Safari: NOT supported.
+    - A secure context. Serving from localhost (or adb reverse) qualifies;
+      plain http://<lan-ip> needs the chrome://flags insecure-origin override.
+
+  SERVE IT
+    From the repo root:  python _serve.py 8137 .
+    (_serve.py binds 127.0.0.1 - use adb reverse tcp:8137 tcp:8137 on the phone,
+     or temporarily widen the bind, see docs/PHONE_CAPTURE.md section 5.)
+
+  No network requests, no external assets, no libraries. Everything runs locally.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EXPERIMENTAL - WebXR AR pose capture</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #14161a; color: #d8dbe0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  #banner {
+    background: #b00020; color: #fff; font-weight: 700; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 14px; line-height: 1.45;
+  }
+  #banner .head { font-size: 22px; letter-spacing: 2px; }
+  #err {
+    background: #3a2b00; border: 1px solid #b8860b; color: #ffd700;
+    border-radius: 6px; padding: 10px 12px; margin: 12px 0; white-space: pre-wrap;
+    font-size: 14px;
+  }
+  button {
+    font-size: 18px; padding: 12px 26px; border-radius: 8px; border: 1px solid #444;
+    background: #23272e; color: #eee; cursor: pointer;
+  }
+  button.primary { background: #1c5c2e; border-color: #2e8b47; font-weight: 700; }
+  button.danger  { background: #7a1420; border-color: #b00020; font-weight: 700; }
+  button:disabled { opacity: .45; cursor: default; }
+  #status { margin: 12px 0; font-size: 15px; color: #9aa3ad; }
+  #results { margin-top: 18px; }
+  #results table { border-collapse: collapse; margin: 10px 0; }
+  #results td { padding: 4px 14px 4px 0; font-size: 15px; }
+  #results td:first-child { color: #9aa3ad; }
+  .num { font-family: ui-monospace, Consolas, monospace; }
+  a.dl { display: inline-block; margin-right: 14px; font-size: 17px; color: #6fb7ff; }
+  #out { display: block; max-width: 300px; border: 1px solid #333; margin-top: 12px; background: #000; }
+  .controls-row {
+    margin: 12px 0; display: flex; gap: 18px; flex-wrap: wrap; font-size: 15px;
+    background: #1e222b; padding: 10px 14px; border-radius: 8px; border: 1px solid #333;
+  }
+  .controls-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .small-btn {
+    font-size: 13px; padding: 6px 12px; border-radius: 6px; background: rgba(30,34,43,0.85);
+    color: #fff; border: 1px solid #777; cursor: pointer;
+  }
+  #hudButtons { margin-top: 8px; display: flex; gap: 8px; }
+  /* dom-overlay HUD, shown inside the AR session */
+  #overlay { display: none; }
+  #overlay.live { display: block; }
+  #hud {
+    position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.7);
+    color: #fff; padding: 10px 12px; border-radius: 8px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 14px; line-height: 1.5;
+  }
+  #stopOverlay {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="banner">
+    <div class="head">EXPERIMENTAL</div>
+    Works ONLY on Android Chrome that supports WebXR <code>immersive-ar</code> with raw
+    camera access. iPhone / Safari is not supported. Video-to-pose sync is approximate
+    (see the notes in the page source). For best results prefer a native ARCore logger
+    app - see <code>docs/PHONE_CAPTURE.md</code>.
+  </div>
+
+  <div id="err" hidden></div>
+
+  <div class="controls-row">
+    <label><input type="checkbox" id="chkFlipH"> Flip Horizontal (Mirror)</label>
+    <label><input type="checkbox" id="chkFlipV"> Flip Vertical</label>
+  </div>
+
+  <div>
+    <button id="start" class="primary">START capture</button>
+    <button id="stopPage" class="danger" hidden>STOP</button>
+  </div>
+  <div id="status">Idle. Press START, grant the camera permission, walk the scene.</div>
+
+  <div id="results" hidden>
+    <h3>Recording finished</h3>
+    <table>
+      <tr><td>duration</td><td class="num" id="statDuration">-</td></tr>
+      <tr><td>poses</td><td class="num" id="statPoses">-</td></tr>
+      <tr><td>video</td><td class="num" id="statVideo">-</td></tr>
+    </table>
+    <a id="dlPoses" class="dl" download="poses.jsonl">Download poses.jsonl</a>
+    <a id="dlVideo" class="dl" download="capture.webm">Download capture.webm</a>
+    <canvas id="out" width="1280" height="720"></canvas>
+  </div>
+
+  <!-- dom-overlay root: visible inside the AR session when the feature is granted -->
+  <div id="overlay">
+    <div id="hud">
+      <div>t&nbsp;&nbsp;&nbsp;: <span id="hudTime">0.0 s</span></div>
+      <div>pos&nbsp;: <span id="hudCount">0</span> poses</div>
+      <div>xyz : <span id="hudPos">-</span></div>
+      <div id="hudButtons">
+        <button id="btnHudFlipH" class="small-btn">Flip H</button>
+        <button id="btnHudFlipV" class="small-btn">Flip V</button>
+      </div>
+    </div>
+    <button id="stopOverlay" class="danger">STOP</button>
+  </div>
+
+  <!-- hidden workhorse canvases: gl renders the composite, out is the recorded surface -->
+  <canvas id="gl" width="1280" height="720" style="display:none"></canvas>
+
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const $ = id => document.getElementById(id);
+const el = {
+  err: $('err'), start: $('start'), stopPage: $('stopPage'), status: $('status'),
+  chkFlipH: $('chkFlipH'), chkFlipV: $('chkFlipV'),
+  btnHudFlipH: $('btnHudFlipH'), btnHudFlipV: $('btnHudFlipV'),
+  overlay: $('overlay'), hudTime: $('hudTime'), hudCount: $('hudCount'), hudPos: $('hudPos'),
+  stopOverlay: $('stopOverlay'), results: $('results'),
+  statDuration: $('statDuration'), statPoses: $('statPoses'), statVideo: $('statVideo'),
+  dlPoses: $('dlPoses'), dlVideo: $('dlVideo'), glCanvas: $('gl'), outCanvas: $('out'),
+};
+el.outCtx = el.outCanvas.getContext('2d');
+
+// Persisted flip preferences
+let flipX = localStorage.getItem('webxr_flip_h') === '1' ? 1.0 : 0.0;
+let flipY = localStorage.getItem('webxr_flip_v') === '1' ? 1.0 : 0.0;
+
+el.chkFlipH.checked = (flipX === 1.0);
+el.chkFlipV.checked = (flipY === 1.0);
+
+function setFlipH(val) {
+  flipX = val ? 1.0 : 0.0;
+  el.chkFlipH.checked = !!val;
+  localStorage.setItem('webxr_flip_h', val ? '1' : '0');
+}
+function setFlipV(val) {
+  flipY = val ? 1.0 : 0.0;
+  el.chkFlipV.checked = !!val;
+  localStorage.setItem('webxr_flip_v', val ? '1' : '0');
+}
+
+el.chkFlipH.addEventListener('change', () => setFlipH(el.chkFlipH.checked));
+el.chkFlipV.addEventListener('change', () => setFlipV(el.chkFlipV.checked));
+el.btnHudFlipH.addEventListener('click', () => setFlipH(!el.chkFlipH.checked));
+el.btnHudFlipV.addEventListener('click', () => setFlipV(!el.chkFlipV.checked));
+
+// ---- state ----------------------------------------------------------------
+let session = null, refSpace = null, gl = null, xrBinding = null;
+let progBg = null, progRet = null;
+let poses = [];                 // {t, pxyz, qxyzw} scalar-last, seconds, metres
+let t0 = 0;                     // performance.now() at recording start
+let recording = false, finished = false;
+let recorder = null, chunks = [], videoBytes = 0, mimeChosen = '';
+let camW = 0, camH = 0, camReady = false, resized = false;
+let camTexture = null;          // our own texture for ImageBitmap uploads
+
+const CAP_W = 1280;             // modest capture resolution for perf
+
+function fail(msg) { el.err.hidden = false; el.err.textContent += msg + '\n'; }
+function fmtBytes(n) {
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' kB';
+  return n + ' B';
+}
+
+// ---- GL setup -------------------------------------------------------------
+const VS_BG = `
+attribute vec2 aPos;
+varying vec2 vUv;
+void main() {
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+const FS_BG = `
+precision mediump float;
+varying vec2 vUv;
+uniform sampler2D u_tex;
+uniform vec2 u_fit;
+uniform float u_flipX;
+uniform float u_flipY;
+void main() {
+  vec2 uv = vUv;
+  uv.x = mix(uv.x, 1.0 - uv.x, u_flipX);
+  uv.y = mix(uv.y, 1.0 - uv.y, u_flipY);
+  uv = vec2(0.5) + (uv - vec2(0.5)) * u_fit;
+  gl_FragColor = texture2D(u_tex, uv);
+}`;
+// Reticle: a small quad held 0.9 m ahead of the head, always facing the camera
+const VS_RET = `
+attribute vec2 aPos;
+uniform mat4 u_proj;
+varying vec2 vP;
+void main() {
+  vP = aPos;
+  gl_Position = u_proj * vec4(aPos * 0.06, -0.9, 1.0);
+}`;
+const FS_RET = `
+precision mediump float;
+varying vec2 vP;
+void main() {
+  float d = length(vP);
+  float centre = 1.0 - smoothstep(0.03, 0.09, d);
+  float ring = smoothstep(0.60, 0.70, d) * (1.0 - smoothstep(0.80, 0.90, d));
+  float a = max(centre, ring);
+  if (a < 0.02) discard;
+  gl_FragColor = vec4(0.25, 1.0, 0.45, a);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw new Error('shader: ' + gl.getShaderInfoLog(s));
+  return s;
+}
+function link(vsSrc, fsSrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSrc));
+  gl.bindAttribLocation(p, 0, 'aPos');
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+    throw new Error('link: ' + gl.getProgramInfoLog(p));
+  return p;
+}
+
+let bufQuad = null, uni = {};
+function initGL() {
+  gl = el.glCanvas.getContext('webgl2', { xrCompatible: true, alpha: false, antialias: false, preserveDrawingBuffer: true })
+    || el.glCanvas.getContext('webgl', { xrCompatible: true, alpha: false, antialias: false, preserveDrawingBuffer: true });
+  if (!gl) throw new Error('WebGL is not available.');
+  el.glCanvas.width = CAP_W; el.glCanvas.height = Math.round(CAP_W * 9 / 16);
+  el.outCanvas.width = el.glCanvas.width; el.outCanvas.height = el.glCanvas.height;
+
+  bufQuad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.disable(gl.DEPTH_TEST);
+
+  progBg = link(VS_BG, FS_BG);
+  progRet = link(VS_RET, FS_RET);
+  uni = {
+    bgTex: gl.getUniformLocation(progBg, 'u_tex'),
+    bgFit: gl.getUniformLocation(progBg, 'u_fit'),
+    bgFlipX: gl.getUniformLocation(progBg, 'u_flipX'),
+    bgFlipY: gl.getUniformLocation(progBg, 'u_flipY'),
+    retProj: gl.getUniformLocation(progRet, 'u_proj'),
+  };
+}
+
+function makeOwnTexture() {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+// ---- raw camera access (W3C WebXR Camera Access API) ----
+function acquireCameraSource(view) {
+  if (!xrBinding || !view || !view.camera) return null;
+  try {
+    if (typeof xrBinding.getCameraImage === 'function') {
+      return xrBinding.getCameraImage(view.camera) || null;
+    }
+  } catch (e) {
+    console.warn('getCameraImage error:', e);
+  }
+  return null;
+}
+
+// Binds the camera image to texture unit 0. Returns true when drawable this frame.
+function useCameraSource(src, view) {
+  if (!src) return false;
+  let w = 0, h = 0;
+  if (src instanceof WebGLTexture) {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, src);
+    try {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } catch (_) {}
+    if (view && view.camera) {
+      w = view.camera.width || 0;
+      h = view.camera.height || 0;
+    }
+    if (!w || !h) {
+      try {
+        w = gl.getTexLevelParameteriv(gl.TEXTURE_2D, 0, gl.TEXTURE_WIDTH);
+        h = gl.getTexLevelParameteriv(gl.TEXTURE_2D, 0, gl.TEXTURE_HEIGHT);
+      } catch (_) {}
+    }
+  } else {
+    w = src.width || src.videoWidth || 0;
+    h = src.height || src.videoHeight || 0;
+    if (w && h) {
+      if (!camTexture) camTexture = makeOwnTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, camTexture);
+      try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      } catch (_) { return false; }
+    }
+  }
+  if (w && h && (w !== camW || h !== camH)) { camW = w; camH = h; fitCanvasToCamera(); }
+  return true;
+}
+
+// Resize once to the camera's own aspect so we don't crop FOV; capped at CAP_W wide.
+function fitCanvasToCamera() {
+  if (resized || !camW || !camH) return;
+  resized = true;
+  const ar = camW / camH;
+  let w = CAP_W, h = Math.round(CAP_W / ar);
+  if (h > CAP_W) { h = CAP_W; w = Math.round(CAP_W * ar); }
+  el.glCanvas.width = w; el.glCanvas.height = h;
+  el.outCanvas.width = w; el.outCanvas.height = h;
+}
+
+// ---- per-frame drawing ----------------------------------------------------
+function drawPass(proj) {
+  if (camReady) {
+    const cw = gl.drawingBufferWidth, ch = gl.drawingBufferHeight;
+    const ia = camW / camH, ca = cw / ch;
+    const fx = Math.min(1, ca / ia), fy = Math.min(1, ia / ca);
+    gl.useProgram(progBg);
+    gl.uniform1i(uni.bgTex, 0);
+    gl.uniform2f(uni.bgFit, fx, fy);
+    gl.uniform1f(uni.bgFlipX, flipX);
+    gl.uniform1f(uni.bgFlipY, flipY);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  } else {
+    gl.clearColor(0.02, 0.02, 0.03, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(progRet);
+  gl.uniformMatrix4fv(uni.retProj, false, proj);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.disable(gl.BLEND);
+}
+
+let lastHudAt = 0;
+function updateHud() {
+  const now = performance.now();
+  if (now - lastHudAt < 200) return;
+  lastHudAt = now;
+  el.hudTime.textContent = ((now - t0) / 1000).toFixed(1) + ' s';
+  el.hudCount.textContent = String(poses.length);
+  const p = poses[poses.length - 1];
+  el.hudPos.textContent = p ? p.pxyz.map(v => v.toFixed(2)).join(', ') + ' m' : '-';
+}
+
+function onXRFrame(_time, frame) {
+  const s = session;
+  if (!s) return;
+  s.requestAnimationFrame(onXRFrame);
+
+  const pose = frame.getViewerPose(refSpace);
+  if (recording && pose) {
+    const t = (performance.now() - t0) / 1000;
+    const p = pose.transform.position, q = pose.transform.orientation;
+    poses.push({
+      t: +t.toFixed(4),
+      pxyz: [p.x, p.y, p.z],
+      qxyzw: [q.x, q.y, q.z, q.w],   // scalar-last, per the repo's poses_lib format
+    });
+  }
+  if (!pose) return;
+  const view = pose.views[0];
+  if (!view) return;
+
+  // Acquire/bind the camera image first so BOTH passes can draw it as background.
+  const camTex = acquireCameraSource(view);
+  camReady = useCameraSource(camTex, view);
+
+  // Pass 1: what the headset compositor shows (camera bg + reticle).
+  const layer = s.renderState.baseLayer;
+  if (layer) {
+    const vp = layer.getViewport(view);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+    gl.viewport(vp.x, vp.y, vp.width, vp.height);
+    drawPass(view.projectionMatrix);
+  }
+
+  // Pass 2: the capture surface (same content at canvas resolution).
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+  drawPass(view.projectionMatrix);
+
+  el.outCtx.drawImage(el.glCanvas, 0, 0, el.outCanvas.width, el.outCanvas.height);
+  updateHud();
+}
+
+// ---- MediaRecorder --------------------------------------------------------
+function setupRecorder() {
+  if (!('MediaRecorder' in window)) {
+    fail('MediaRecorder is unavailable: poses will still be saved, video will not.');
+    return;
+  }
+  const stream = el.outCanvas.captureStream(30);
+  const types = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4;codecs=avc1',
+    'video/mp4'
+  ];
+  mimeChosen = '';
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) { mimeChosen = t; break; }
+  }
+  const opts = mimeChosen
+    ? { mimeType: mimeChosen, videoBitsPerSecond: 8_000_000 }
+    : { videoBitsPerSecond: 8_000_000 };
+  try {
+    recorder = new MediaRecorder(stream, opts);
+  } catch (e) {
+    fail('MediaRecorder could not start: ' + e.message);
+    return;
+  }
+  recorder.ondataavailable = ev => {
+    if (ev.data && ev.data.size > 0) {
+      chunks.push(ev.data);
+      videoBytes += ev.data.size;
+    }
+  };
+}
+
+// ---- session lifecycle ----------------------------------------------------
+async function start() {
+  el.err.hidden = true; el.err.textContent = '';
+  el.results.hidden = true;
+
+  if (!window.isSecureContext)
+    fail('This page is not in a secure context - WebXR will refuse to start. Serve over localhost/https (see docs/PHONE_CAPTURE.md).');
+  if (!navigator.xr) { fail('navigator.xr is missing: this browser does not support WebXR.'); return; }
+  let supported = false;
+  try { supported = await navigator.xr.isSessionSupported('immersive-ar'); } catch (_) {}
+  if (!supported) {
+    fail('immersive-ar is not supported here. Needs Android Chrome with ARCore (Google Play Services for AR installed).');
+    return;
+  }
+
+  initGL();
+  try { await gl.makeXRCompatible(); } catch (_) {}
+
+  let gotCameraAccess = false;
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['camera-access'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: el.overlay },
+    });
+    gotCameraAccess = true;
+  } catch (e1) {
+    console.warn('requestSession with camera-access failed, trying optional:', e1);
+    el.status.textContent = 'camera-access request failed - retrying as optional feature...';
+    try {
+      session = await navigator.xr.requestSession('immersive-ar', {
+        optionalFeatures: ['camera-access', 'dom-overlay'],
+        domOverlay: { root: el.overlay },
+      });
+      gotCameraAccess = session.enabledFeatures ? session.enabledFeatures.includes('camera-access') : true;
+    } catch (e2) {
+      session = null;
+      fail('Could not start an immersive-ar session: ' + (e2 && e2.message));
+      return;
+    }
+  }
+
+  try { xrBinding = new XRWebGLBinding(session, gl); } catch (e) {
+    console.warn('XRWebGLBinding failed:', e);
+    xrBinding = null;
+  }
+
+  const layer = new XRWebGLLayer(session, gl, { antialias: false, depth: false, alpha: true });
+  await session.updateRenderState({ baseLayer: layer });
+
+  try { refSpace = await session.requestReferenceSpace('local-floor'); }
+  catch (_) { refSpace = await session.requestReferenceSpace('local'); }
+
+  if (!gotCameraAccess) {
+    fail('Warning: Raw camera access was not granted. The recorded video might not contain the camera feed.');
+  }
+
+  poses = []; chunks = []; videoBytes = 0;
+  finished = false; resized = false; camW = camH = 0; camReady = false;
+  setupRecorder();
+  t0 = performance.now();
+  recording = true;
+  if (recorder) recorder.start(500);
+
+  session.addEventListener('end', finalize);
+  session.requestAnimationFrame(onXRFrame);
+
+  el.start.disabled = true;
+  el.stopPage.hidden = false;
+  el.overlay.classList.add('live');
+  el.status.textContent = 'Recording... (tip: cover the camera for half a second now as a sync marker)';
+}
+
+function finalize() {
+  if (finished) return;
+  finished = true; recording = false;
+  const dur = poses.length ? poses[poses.length - 1].t : (performance.now() - t0) / 1000;
+
+  const done = () => {
+    el.statDuration.textContent = dur.toFixed(1) + ' s';
+    el.statPoses.textContent = String(poses.length);
+    el.statVideo.textContent = recorder && chunks.length
+      ? fmtBytes(videoBytes) + (mimeChosen ? ' (' + mimeChosen + ')' : '')
+      : (recorder ? '0 B recorded' : 'not supported');
+
+    if (poses.length) {
+      const text = poses.map(o => JSON.stringify(o)).join('\n') + '\n';
+      const b = new Blob([text], { type: 'application/x-ndjson' });
+      el.dlPoses.href = URL.createObjectURL(b);
+      el.dlPoses.hidden = false;
+    } else el.dlPoses.hidden = true;
+
+    if (chunks.length) {
+      const b = new Blob(chunks, { type: mimeChosen || 'video/webm' });
+      el.dlVideo.href = URL.createObjectURL(b);
+      el.dlVideo.hidden = false;
+      const isMp4 = mimeChosen && mimeChosen.includes('mp4');
+      el.dlVideo.download = isMp4 ? 'capture.mp4' : 'capture.webm';
+    } else el.dlVideo.hidden = true;
+
+    el.results.hidden = false;
+    el.status.textContent = 'Stopped. Download the two files above into videos/<scene>/.';
+    el.stopPage.hidden = true;
+    el.overlay.classList.remove('live');
+    el.start.disabled = false;
+    session = null;
+  };
+
+  if (recorder && recorder.state !== 'inactive') {
+    recorder.onstop = done;
+    try {
+      if (typeof recorder.requestData === 'function') {
+        recorder.requestData();
+      }
+      recorder.stop();
+    } catch (_) { done(); }
+  } else {
+    done();
+  }
+}
+
+function stopAll() {
+  if (session) { const s = session; try { s.end(); } catch (_) { finalize(); } }
+  else finalize();
+}
+
+el.start.addEventListener('click', () => { start().catch(e => fail('start failed: ' + (e && e.message))); });
+el.stopPage.addEventListener('click', stopAll);
+el.stopOverlay.addEventListener('click', stopAll);
+})();
+</script>
+</body>
+</html>
