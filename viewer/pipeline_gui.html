@@ -3,37 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Drone3D Pipeline Studio — Real-Time Control, Live ETA & Monitoring</title>
+<title>Drone3D Studio — run, view, capture</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg-main: #0a0e17;
-    --bg-card: rgba(17, 24, 39, 0.85);
-    --border-card: rgba(255, 255, 255, 0.1);
+    --bg-main: #080c14;
+    --bg-card: rgba(15, 23, 42, 0.82);
+    --border-card: rgba(255, 255, 255, 0.10);
     --primary: #3b82f6;
-    --primary-glow: rgba(59, 130, 246, 0.4);
+    --primary-glow: rgba(59, 130, 246, 0.45);
     --accent: #8b5cf6;
+    --accent-glow: rgba(139, 92, 246, 0.35);
     --success: #10b981;
+    --success-glow: rgba(16, 185, 129, 0.35);
     --warning: #f59e0b;
     --danger: #ef4444;
-    --text-main: #f3f4f6;
-    --text-muted: #9ca3af;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Outfit', sans-serif;
-    background: radial-gradient(circle at top center, #111e38 0%, var(--bg-main) 70%);
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: radial-gradient(circle at 50% 0%, #132347 0%, var(--bg-main) 75%);
     color: var(--text-main);
     min-height: 100vh;
     display: flex; flex-direction: column;
   }
   header {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 16px 32px;
-    background: rgba(10, 15, 26, 0.75);
-    backdrop-filter: blur(16px);
+    padding: 12px 28px;
+    background: rgba(8, 12, 20, 0.85);
+    backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border-card);
     position: sticky; top: 0; z-index: 50;
   }
@@ -42,10 +44,10 @@
     width: 38px; height: 38px; border-radius: 10px;
     background: linear-gradient(135deg, #3b82f6, #8b5cf6);
     display: flex; align-items: center; justify-content: center;
-    font-size: 20px; font-weight: 800; box-shadow: 0 0 15px var(--primary-glow);
+    font-size: 20px; font-weight: 800; box-shadow: 0 0 16px var(--primary-glow);
   }
-  .brand-title { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
-  .nav-btns { display: flex; gap: 10px; }
+  .brand-title { font-size: 17.5px; font-weight: 700; letter-spacing: -0.02em; }
+  .nav-btns { display: flex; gap: 10px; align-items: center; }
   .nav-link {
     text-decoration: none; font-size: 13px; font-weight: 600;
     padding: 8px 16px; border-radius: 8px; color: var(--text-muted);
@@ -53,164 +55,171 @@
     transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
   }
   .nav-link:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
-  .nav-link.primary {
-    background: linear-gradient(135deg, #2563eb, #3b82f6);
-    color: #fff; border: none; box-shadow: 0 4px 15px var(--primary-glow);
+  #hdr-status {
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px; font-weight: 700;
+    padding: 6px 12px; border-radius: 99px; border: 1px solid var(--border-card);
+    color: var(--text-muted); background: rgba(0,0,0,0.35);
   }
+  #hdr-status.run { color: #93c5fd; border-color: rgba(59,130,246,0.5); }
+  #hdr-status.bad { color: #f87171; border-color: rgba(239,68,68,0.5); }
 
   main {
-    flex: 1; max-width: 1320px; width: 100%; margin: 0 auto;
-    padding: 24px 20px 60px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px;
+    flex: 1; max-width: 1380px; width: 100%; margin: 0 auto;
+    padding: 18px 20px 40px; display: flex; flex-direction: column; gap: 18px;
   }
-  @media(max-width: 1020px) { main { grid-template-columns: 1fr; } }
+  .lanes { display: flex; gap: 8px; }
+  .lane-btn {
+    flex: 1; padding: 12px 10px; font-size: 13.5px; font-weight: 700; cursor: pointer;
+    background: rgba(0,0,0,0.35); color: var(--text-muted);
+    border: 1px solid var(--border-card); border-radius: 12px; transition: all 0.2s;
+    font-family: 'Outfit', sans-serif;
+  }
+  .lane-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+  .lane-btn.on {
+    color: #fff; border-color: var(--primary);
+    background: rgba(59, 130, 246, 0.18); box-shadow: 0 4px 14px var(--primary-glow);
+  }
+  .lane { display: none; }
+  .lane.on { display: grid; grid-template-columns: 1.05fr 1fr; gap: 18px; }
+  @media(max-width: 1060px) { .lane.on { grid-template-columns: 1fr; } }
+  .lane.wide.on { display: flex; flex-direction: column; }
 
   .panel {
     background: var(--bg-card);
-    backdrop-filter: blur(20px);
+    backdrop-filter: blur(24px);
     border: 1px solid var(--border-card);
     border-radius: 16px;
-    padding: 22px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-    display: flex; flex-direction: column; gap: 18px;
+    padding: 20px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; gap: 16px;
   }
   .panel-header {
     display: flex; justify-content: space-between; align-items: center;
-    padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
-  .panel-title { font-size: 16.5px; font-weight: 700; color: #f1f5f9; display: flex; align-items: center; gap: 8px; }
+  .panel-title { font-size: 16px; font-weight: 700; color: #f1f5f9; display: flex; align-items: center; gap: 8px; }
 
-  /* Form Elements */
   .field-group { display: flex; flex-direction: column; gap: 6px; }
-  label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  label { font-size: 11.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
   select, input[type="text"], input[type="number"] {
-    background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.15);
     color: var(--text-main); font-family: 'Outfit', sans-serif; font-size: 13.5px;
-    padding: 10px 12px; border-radius: 10px; outline: none; transition: border-color 0.2s;
+    padding: 10px 12px; border-radius: 10px; outline: none; transition: all 0.2s;
   }
-  select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+  select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 12px var(--primary-glow); }
 
-  /* Preset Selector Grid */
   .presets-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 8px;
+    max-height: 220px; overflow-y: auto; padding-right: 4px;
   }
   .preset-card {
-    background: rgba(0, 0, 0, 0.3); border: 1.5px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px; padding: 10px; cursor: pointer; transition: all 0.2s ease;
-    display: flex; flex-direction: column; gap: 4px; user-select: none;
+    background: rgba(0, 0, 0, 0.35); border: 1.5px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px; padding: 9px 10px; cursor: pointer; transition: all 0.2s ease;
+    display: flex; flex-direction: column; gap: 3px; user-select: none;
   }
   .preset-card:hover {
-    border-color: rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.05); transform: translateY(-2px);
+    border-color: rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.08); transform: translateY(-2px);
   }
   .preset-card.active {
-    border-color: #3b82f6; background: rgba(59, 130, 246, 0.18);
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    border-color: #3b82f6; background: rgba(59, 130, 246, 0.20);
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
   }
   .preset-card-top { display: flex; justify-content: space-between; align-items: center; }
-  .preset-icon { font-size: 18px; }
-  .preset-name { font-size: 13px; font-weight: 700; color: #fff; }
-  .preset-desc { font-size: 10.5px; color: var(--text-muted); line-height: 1.3; }
+  .preset-icon { font-size: 17px; }
+  .preset-name { font-size: 12.5px; font-weight: 700; color: #fff; line-height: 1.2; }
+  .preset-desc { font-size: 10px; color: var(--text-muted); line-height: 1.25; }
 
-  /* Advice Box */
   .advice-banner {
-    background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25);
+    background: rgba(59, 130, 246, 0.09); border: 1px solid rgba(59, 130, 246, 0.3);
     border-radius: 10px; padding: 10px 12px; font-size: 11.5px; color: #bfdbfe; line-height: 1.45;
   }
   .advice-banner b { color: #60a5fa; }
 
-  /* Quality Selector */
   .quality-pills { display: flex; gap: 10px; }
   .quality-pill {
-    flex: 1; padding: 10px; text-align: center; font-size: 12.5px; font-weight: 600;
-    background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px; cursor: pointer; transition: all 0.2s;
+    flex: 1; padding: 10px 8px; text-align: center; font-size: 12px; font-weight: 600;
+    background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 9px; cursor: pointer; transition: all 0.2s;
   }
   .quality-pill.active {
-    background: rgba(139, 92, 246, 0.25); border-color: #8b5cf6; color: #c4b5fd;
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+    background: rgba(139, 92, 246, 0.28); border-color: #8b5cf6; color: #e2e8f0;
+    box-shadow: 0 0 14px var(--accent-glow);
   }
 
-  /* Collapsible Advanced */
   details summary {
     font-size: 12.5px; font-weight: 600; color: var(--text-muted);
     cursor: pointer; padding: 4px 0; outline: none; user-select: none;
   }
-  details[open] summary { color: var(--primary); margin-bottom: 10px; }
+  details[open] summary { color: var(--primary); margin-bottom: 12px; }
   .adv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-  /* ETA & Live Stats Grid */
-  .stats-strip {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-  }
-  @media(max-width: 600px) { .stats-strip { grid-template-columns: 1fr 1fr; } }
+  .stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media(max-width: 700px) { .stats-strip { grid-template-columns: 1fr 1fr; } }
   .stat-box {
-    background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px;
   }
-  .stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
-  .stat-val { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #93c5fd; }
+  .stat-lbl { font-size: 9.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-val { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #93c5fd; }
 
-  /* Stepper */
-  .stepper {
-    display: flex; justify-content: space-between; position: relative; margin: 4px 0;
+  /* Step table: the truth of what ran, from the logs on disk */
+  table.steps { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.steps th {
+    text-align: left; font-size: 9.5px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.1);
   }
-  .step-node {
-    display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px;
-    color: var(--text-muted); font-weight: 600; z-index: 2;
+  table.steps td {
+    padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-family: 'JetBrains Mono', monospace; color: #cbd5e1;
   }
-  .step-circle {
-    width: 22px; height: 22px; border-radius: 50%; background: #1e293b;
-    border: 2px solid #475569; display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #fff;
-  }
-  .step-node.active .step-circle {
-    background: var(--primary); border-color: #93c5fd; box-shadow: 0 0 10px var(--primary-glow);
-  }
-  .step-node.done .step-circle {
-    background: var(--success); border-color: #6ee7b7;
-  }
+  table.steps tr.run td { color: #93c5fd; background: rgba(59,130,246,0.10); }
+  table.steps tr.fail td { color: #f87171; }
+  table.steps td.num { text-align: right; }
 
-  /* Progress Bar */
-  .prog-bar-box {
-    display: flex; flex-direction: column; gap: 4px;
-  }
-  .prog-track {
-    width: 100%; height: 8px; background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 99px; overflow: hidden;
-  }
-  .prog-fill {
-    height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981);
-    transition: width 0.3s ease;
-  }
-
-  /* Terminal */
   .terminal {
-    background: #050811; border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 12px; padding: 12px; height: 320px; overflow-y: auto;
+    background: #04060c; border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px; padding: 12px; height: 340px; overflow-y: auto;
     font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5;
-    color: #cbd5e1; display: flex; flex-direction: column-reverse;
+    color: #cbd5e1;
   }
   .term-line { white-space: pre-wrap; word-break: break-all; }
   .term-line.info { color: #60a5fa; }
   .term-line.success { color: #34d399; }
   .term-line.warn { color: #fbbf24; }
   .term-line.err { color: #f87171; }
+  .term-line.stage { color: #c4b5fd; font-weight: 700; }
 
-  /* Control buttons */
   .btn-bar { display: flex; gap: 10px; margin-top: auto; }
   .btn-primary {
     flex: 1; padding: 13px; font-size: 13.5px; font-weight: 700; border-radius: 10px;
     background: linear-gradient(135deg, #2563eb, #3b82f6); color: #fff; border: none;
     cursor: pointer; box-shadow: 0 4px 15px var(--primary-glow); transition: all 0.2s;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: 'Outfit', sans-serif;
   }
   .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6); }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-ghost {
+    padding: 13px 16px; font-size: 13px; font-weight: 700; border-radius: 10px;
+    background: rgba(255,255,255,0.06); color: var(--text-main);
+    border: 1px solid var(--border-card); cursor: pointer; font-family: 'Outfit', sans-serif;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.12); }
   .btn-kill {
     padding: 13px 18px; font-size: 13px; font-weight: 700; border-radius: 10px;
     background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);
-    cursor: pointer; transition: all 0.2s;
+    cursor: pointer; transition: all 0.2s; font-family: 'Outfit', sans-serif;
   }
   .btn-kill:hover { background: rgba(239, 68, 68, 0.35); }
+
+  .view-frame { width: 100%; height: 62vh; border: 1px solid var(--border-card);
+                border-radius: 14px; background: #04060c; }
+  .cap-url {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6ee7b7;
+    background: rgba(0,0,0,0.45); border: 1px dashed rgba(110,231,183,0.4);
+    border-radius: 10px; padding: 12px 14px; word-break: break-all;
+  }
+  .muted { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -219,363 +228,586 @@
   <div class="brand">
     <div class="brand-icon">⚡</div>
     <div>
-      <div class="brand-title">Drone3D Pipeline Studio</div>
-      <div style="font-size: 11px; color: var(--text-muted);">Real-Time GPU Progress, Live ETA & Calibration</div>
+      <div class="brand-title">Drone3D Studio</div>
+      <div style="font-size: 11px; color: var(--text-muted);">run the pipeline · view the model · capture on the phone</div>
     </div>
   </div>
   <div class="nav-btns">
-    <a href="/viewer/capture.html" class="nav-link">📱 Capture Studio</a>
-    <a href="/viewer/pc.html?asset=/work/room_w_jsonl/viewer_assets" class="nav-link primary">🌐 Open 3D Viewer</a>
+    <span id="hdr-status">IDLE</span>
+    <a href="/viewer/capture.html" class="nav-link">📱 Phone page</a>
   </div>
 </header>
 
 <main>
-  <!-- Left Column: Config Panel -->
-  <div class="panel">
+  <nav class="lanes">
+    <button class="lane-btn on" id="lane-btn-run" onclick="setLane('run')">🚀 Run pipeline</button>
+    <button class="lane-btn" id="lane-btn-view" onclick="setLane('view')">🌐 View model</button>
+    <button class="lane-btn" id="lane-btn-capture" onclick="setLane('capture')">📱 Capture</button>
+  </nav>
+
+  <!-- ================= RUN ================= -->
+  <section class="lane on" id="lane-run">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">⚙️ Reconstruction settings</div>
+      </div>
+
+      <div id="uploaded-banner" style="display:none; background:rgba(52,211,153,0.12);
+           border:1px solid rgba(52,211,153,0.45); border-radius:10px; padding:11px 13px;
+           font-size:12px; line-height:1.5;">
+        <b style="color:#6ee7b7;">📥 Phone transfer complete — <span id="uploaded-scene"></span></b><br>
+        <span style="color:var(--text-muted);">Footage is in videos/. Pick a preset and quality, then Start.</span>
+      </div>
+
+      <div class="field-group">
+        <label>Scene (a folder under work/)</label>
+        <select id="scene-select" onchange="onSceneChange()"></select>
+      </div>
+
+      <div class="field-group">
+        <label>Capture preset</label>
+        <div class="presets-grid" id="presets-container"></div>
+      </div>
+
+      <div class="advice-banner" id="preset-advice">
+        <b>💡 Strategy:</b> Move in smooth arcs/orbits. Three passes: waist-height, tilted up, tilted down.
+      </div>
+
+      <div class="field-group">
+        <label>Quality</label>
+        <div class="quality-pills" id="quality-container"></div>
+      </div>
+
+      <details>
+        <summary>🔧 Advanced (mapper, cull, overrides)</summary>
+        <div class="adv-grid">
+          <div class="field-group">
+            <label>Mapper mode</label>
+            <select id="adv-mapper">
+              <option value="auto">auto (priors if available)</option>
+              <option value="pose_prior">pose_prior (soft AR priors)</option>
+              <option value="incremental">incremental (standard SfM)</option>
+              <option value="global">global (rotation averaging)</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Canopy cull (--cull)</label>
+            <select id="adv-cull">
+              <option value="auto">auto (indoor keeps its ceiling)</option>
+              <option value="canopy">canopy (strip sky + clouds)</option>
+              <option value="none">none (keep everything)</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Keyframes (--target)</label>
+            <input type="number" id="adv-target" placeholder="auto" step="50">
+          </div>
+          <div class="field-group">
+            <label>Steps (--steps)</label>
+            <input type="number" id="adv-steps" placeholder="auto" step="1000">
+          </div>
+          <div class="field-group">
+            <label>Gaussian cap (--cap)</label>
+            <input type="number" id="adv-cap" placeholder="auto" step="50000">
+          </div>
+          <div class="field-group">
+            <label>Overlap (--overlap)</label>
+            <input type="number" id="adv-overlap" placeholder="auto" step="5">
+          </div>
+          <div class="field-group">
+            <label>Tri angle (--init-min-tri-angle)</label>
+            <input type="number" id="adv-tri-angle" placeholder="auto" step="1">
+          </div>
+        </div>
+        <div style="margin-top: 10px; display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--text-muted);">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none;">
+            <input type="checkbox" id="adv-fresh"> Force fresh run (--fresh)
+          </label>
+        </div>
+      </details>
+
+      <div class="btn-bar">
+        <button class="btn-primary" id="btn-start" onclick="launchPipeline()">🚀 Start reconstruction</button>
+        <button class="btn-kill" id="btn-kill" onclick="killPipeline()" style="display:none;">⏹ Abort</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">📈 Training telemetry</div>
+        <span class="muted" id="run-owner">no run attached</span>
+      </div>
+      <div class="stats-strip">
+        <div class="stat-box"><div class="stat-lbl">Train step</div><div class="stat-val" id="s-step">0 / --</div></div>
+        <div class="stat-box"><div class="stat-lbl">ETA</div><div class="stat-val" id="s-eta" style="color:#f59e0b;">--:--</div></div>
+        <div class="stat-box"><div class="stat-lbl">Speed · PSNR</div><div class="stat-val" id="s-speed" style="color:#10b981;">-- it/s</div></div>
+        <div class="stat-box"><div class="stat-lbl">GPU VRAM</div><div class="stat-val" id="s-vram" style="color:#8b5cf6;">-- GiB</div></div>
+      </div>
+      <div class="muted">These four read the live <b>train</b> lines in the terminal below.
+        Everything else about the run — every step, its seconds, its exit code — is in the
+        monitor under the lanes, straight off the logs on disk.</div>
+    </div>
+  </section>
+
+  <!-- ================= VIEW ================= -->
+  <section class="lane wide" id="lane-view">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">🌐 Walkable model</div>
+        <div style="display:flex; gap:14px; align-items:center;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; text-transform:none; font-size:12px;">
+            <input type="checkbox" id="view-auto" onchange="updateViewFrame()"> autopilot
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; text-transform:none; font-size:12px;">
+            <input type="checkbox" id="view-cams" checked onchange="updateViewFrame()"> cameras
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; text-transform:none; font-size:12px;">
+            <input type="checkbox" id="view-under" onchange="updateViewFrame()"> ground sheet
+          </label>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Model (scenes with an exported scene.ply)</label>
+        <select id="view-select" onchange="updateViewFrame()"></select>
+      </div>
+      <iframe class="view-frame" id="view-frame" title="walkable 3D model" src="about:blank"></iframe>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="muted">The viewer is the same page <b>pipeline.py view</b> opens, embedded here.</span>
+        <a id="view-open" href="#" target="_blank" class="btn-ghost" style="text-decoration:none;">Open in its own tab</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CAPTURE ================= -->
+  <section class="lane wide" id="lane-capture">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">📱 Capture on the phone</div>
+      </div>
+      <div class="field-group">
+        <label>Open this on the phone (same Wi-Fi, HTTPS for camera + sensors)</label>
+        <div class="cap-url" id="cap-url">https://…:8138/viewer/capture.html</div>
+      </div>
+      <div class="btn-bar" style="margin-top:0;">
+        <button class="btn-ghost" id="cap-copy" onclick="copyCapUrl()">⧉ Copy link</button>
+        <a class="btn-ghost" href="/viewer/capture.html" target="_blank" style="text-decoration:none;">Open on this machine</a>
+      </div>
+      <div class="muted">Hold and lens are chosen on the phone's own start screen
+        (<b>Auto / Vertical / Horizontal</b>, <b>Auto (widest)</b> or a named lens). When the
+        take is sent it lands in videos/ and this page picks it up below.</div>
+      <div class="field-group">
+        <label>Takes on this laptop (folders under videos/)</label>
+        <select id="cap-take"></select>
+      </div>
+      <div class="btn-bar" style="margin-top:0;">
+        <button class="btn-primary" id="cap-run" onclick="runOnTake()">🚀 Run the pipeline on this take</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MONITOR ================= -->
+  <section class="panel">
     <div class="panel-header">
-      <div class="panel-title">⚙️ Reconstruction Parameters</div>
-      <span style="font-size: 11.5px; color: var(--text-muted);">RTX 3050 Optimized</span>
+      <div class="panel-title">🖥️ Run monitor — <span id="mon-scene" style="color:#93c5fd;">no scene selected</span></div>
+      <span class="muted">reads work/&lt;scene&gt;/logs, so runs started in a terminal show up here too</span>
     </div>
-
-    <!-- Shown when we arrive straight from a phone transfer -->
-    <div id="uploaded-banner" style="display:none; background:rgba(52,211,153,0.10);
-         border:1px solid rgba(52,211,153,0.4); border-radius:10px; padding:11px 13px;
-         margin-bottom:14px; font-size:12px; line-height:1.5;">
-      <b style="color:#6ee7b7;">📥 Transfer complete — <span id="uploaded-scene"></span></b><br>
-      <span style="color:var(--text-muted);">Nothing is running yet. Pick a capture preset and
-      quality below, then press Start.</span>
-    </div>
-
-    <!-- Scene Selector -->
-    <div class="field-group">
-      <label>Target Scene / Mobile Dataset</label>
-      <select id="scene-select">
-        <option value="room_w_jsonl">room_w_jsonl (Spectacular Rec Dataset)</option>
-        <option value="rocks">rocks (Outdoor Rock Outcrop)</option>
-        <option value="temple">temple (Temple Monument)</option>
-        <option value="room_multi_video">room_multi_video (Multi-Clip Room)</option>
-      </select>
-    </div>
-
-    <!-- Presets Selector Grid -->
-    <div class="field-group">
-      <label>Capture Preset Profile</label>
-      <div class="presets-grid" id="presets-container">
-        <!-- Injected dynamically via JS -->
-      </div>
-    </div>
-
-    <!-- Advice Banner -->
-    <div class="advice-banner" id="preset-advice">
-      <b>💡 Strategy:</b> Move in smooth arcs/orbits. Make three passes: waist-height, tilted up (ceiling), tilted down (floor).
-    </div>
-
-    <!-- Quality Selection -->
-    <div class="field-group">
-      <label>Quality & Resolution Preset</label>
-      <div class="quality-pills">
-        <div class="quality-pill active" id="q-high" onclick="setQuality('high')">
-          <div>✨ High (1280p)</div>
-          <div style="font-size:10.5px; color:var(--text-muted);">30k steps • 3.0M cap • antialiased</div>
-        </div>
-        <div class="quality-pill" id="q-ultra" onclick="setQuality('ultra')">
-          <div>💎 Ultra (1440p)</div>
-          <div style="font-size:10.5px; color:var(--text-muted);">45k steps • 4.0M cap • 8GB+ GPU</div>
-        </div>
-        <div class="quality-pill" id="q-std" onclick="setQuality('standard')">
-          <div>⚡ Standard (640p)</div>
-          <div style="font-size:10.5px; color:var(--text-muted);">12k steps • 350k cap</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Advanced Accordion -->
-    <details>
-      <summary>🔧 Advanced Hyperparameters (SIFT, BA & GPU)</summary>
-      <div class="adv-grid">
-        <div class="field-group">
-          <label>SIFT Peak Threshold</label>
-          <input type="number" id="adv-peak" step="0.001" value="0.002">
-        </div>
-        <div class="field-group">
-          <label>SIFT Max Features</label>
-          <input type="number" id="adv-max-feat" step="512" value="8192">
-        </div>
-        <div class="field-group">
-          <label>CPU Threads Allocated</label>
-          <input type="number" id="adv-threads" min="1" max="16" value="13">
-        </div>
-        <div class="field-group">
-          <label>3DGS Hard Cap</label>
-          <input type="number" id="adv-cap" step="50000" value="2000000">
-        </div>
-      </div>
-    </details>
-
-    <div class="btn-bar">
-      <button class="btn-primary" id="btn-start" onclick="launchPipeline()">
-        🚀 Start 3D Reconstruction
-      </button>
-      <button class="btn-kill" id="btn-kill" onclick="killPipeline()" style="display:none;">
-        ⏹ Abort
-      </button>
-    </div>
-  </div>
-
-  <!-- Right Column: Live Terminal, ETA & GPU Stats -->
-  <div class="panel">
-    <div class="panel-header">
-      <div class="panel-title">📊 Live Reconstruction Status</div>
-      <div class="stat-val" id="job-status-badge" style="font-size:12px; color:#9ca3af;">IDLE</div>
-    </div>
-
-    <!-- Stats Strip -->
     <div class="stats-strip">
-      <div class="stat-box">
-        <div class="stat-lbl">CURRENT STEP</div>
-        <div class="stat-val" id="s-step">0 / 15k</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-lbl">ESTIMATED ETA</div>
-        <div class="stat-val" id="s-eta" style="color:#f59e0b;">--:--</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-lbl">SPEED & PSNR</div>
-        <div class="stat-val" id="s-speed" style="color:#10b981;">-- it/s</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-lbl">GPU VRAM</div>
-        <div class="stat-val" id="s-vram" style="color:#8b5cf6;">-- GiB</div>
-      </div>
+      <div class="stat-box"><div class="stat-lbl">Run time</div><div class="stat-val" id="m-total">--</div></div>
+      <div class="stat-box"><div class="stat-lbl">Slowest step</div><div class="stat-val" id="m-slow">--</div></div>
+      <div class="stat-box"><div class="stat-lbl">Frames solved</div><div class="stat-val" id="m-reg">--</div></div>
+      <div class="stat-box"><div class="stat-lbl">Verdict</div><div class="stat-val" id="m-verdict">idle</div></div>
     </div>
-
-    <!-- Stepper -->
-    <div class="stepper">
-      <div class="step-node" id="step-colmap"><div class="step-circle">1</div><span>COLMAP</span></div>
-      <div class="step-node" id="step-poses"><div class="step-circle">2</div><span>POSES</span></div>
-      <div class="step-node" id="step-train"><div class="step-circle">3</div><span>3DGS</span></div>
-      <div class="step-node" id="step-mesh"><div class="step-circle">4</div><span>COLLIDER</span></div>
-      <div class="step-node" id="step-walktest"><div class="step-circle">5</div><span>VIEWER</span></div>
-    </div>
-
-    <!-- Overall Progress Bar -->
-    <div class="prog-bar-box">
-      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted);">
-        <span id="prog-label">Pipeline Progress</span>
-        <b id="prog-pct" style="color:#60a5fa;">0%</b>
-      </div>
-      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
-    </div>
-
-    <!-- Terminal Box -->
-    <div class="terminal" id="term-box">
-      <div class="term-line info">Ready. Select dataset and click 'Start 3D Reconstruction' to launch.</div>
-    </div>
-
-    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:var(--text-muted);">
-      <span>Server: <b id="srv-ip" style="color:#60a5fa;">127.0.0.1:8137</b></span>
-      <a id="btn-view-result" href="/viewer/pc.html?asset=/work/room_w_jsonl/viewer_assets" target="_blank" style="color:#34d399; font-weight:700; text-decoration:none; display:none;">
-        ✨ Open in 3D Viewer ➔
-      </a>
-    </div>
-  </div>
+    <table class="steps">
+      <thead><tr><th>#</th><th>step</th><th>status</th><th style="text-align:right;">secs</th><th style="text-align:right;">exit</th></tr></thead>
+      <tbody id="step-rows"></tbody>
+    </table>
+    <div class="terminal" id="term-box"></div>
+  </section>
 </main>
 
 <script>
   let selectedPreset = "room";
   let selectedQuality = "high";
   let presetsData = {};
+  let qualitiesData = {};
+  let currentScene = "";
+  let runStartSteps = null;   // set by the run's own "start steps=" line, never guessed
+  let scenes = [];
+  let cursor = "0";
+  let termStick = true;
+  let lastRunning = false;
 
   const PRESET_ICONS = {
-    room: "🏠",
-    indoor_large: "🏢",
-    outdoor_building: "🏛️",
-    drone: "🚁",
-    drone_mapping: "🗺️",
-    object: "🏺",
-    sky_heavy: "⛅",
-    corridor: "🚶",
-    auto: "✨"
+    auto: "✨", room: "🏠", indoor_large: "🏢", outdoor_building: "🏛️",
+    drone: "🚁", drone_mapping: "🗺️", object: "🏺", sky_heavy: "⛅", corridor: "🚶"
   };
+  // Expected order, so the table can show what a run has not reached yet.
+  const STAGE_ORDER = ["keyframes", "priors", "colmap", "poses", "train", "frame", "export",
+                       "sky", "clouds", "reexport", "colors", "collider", "route", "gate",
+                       "evals", "pairs", "walktest"];
 
+  // ------------------------------------------------------------ lanes
+  function setLane(name) {
+    for (const l of ["run", "view", "capture"]) {
+      document.getElementById("lane-" + l).classList.toggle("on", l === name);
+      document.getElementById("lane-btn-" + l).classList.toggle("on", l === name);
+    }
+    if (name === "view") updateViewFrame();
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // ------------------------------------------------------------ boot
   async function loadInitialData() {
-    // ?scene=<name> arrives from a phone transfer; &uploaded=1 means the files
-    // just landed and the user still has to choose preset + quality.
     const qs = new URLSearchParams(location.search);
     const wantScene = qs.get("scene");
     if (wantScene && qs.get("uploaded") === "1") {
       document.getElementById("uploaded-scene").textContent = wantScene;
       document.getElementById("uploaded-banner").style.display = "block";
     }
+    try {
+      const pData = await (await fetch("/api/presets")).json();
+      presetsData = pData.presets || {};
+      qualitiesData = pData.qualities || {};
+      renderPresets();
+      renderQualities();
+    } catch (e) { console.warn("presets:", e); }
+
+    await refreshScenes();
 
     try {
-      const res = await fetch("/api/info");
-      const data = await res.json();
-      document.getElementById("srv-ip").textContent = `${data.local_ip}:${data.port}`;
+      const info = await (await fetch("/api/info")).json();
+      document.getElementById("cap-url").textContent =
+        `https://${info.local_ip}:${info.https_port}/viewer/capture.html`;
+      // Takes are the videos/ folders: everything the server knows that is not a
+      // work/ dir, i.e. footage that has not been through the pipeline yet.
+      const workNames = new Set(scenes.map(s => s.name));
+      const takes = (info.scenes || []).filter(s => !workNames.has(s));
+      document.getElementById("cap-take").innerHTML = takes.length
+        ? takes.map(t => `<option value="${t}">${t}</option>`).join("")
+        : `<option value="">no takes yet - send one from the phone</option>`;
+    } catch (e) { console.warn("info:", e); }
 
-      if (data.scenes?.length) {
-        const sel = document.getElementById("scene-select");
-        const scenes = data.scenes.slice();
-        // A just-uploaded scene can be missing if /api/info was cached mid-write.
-        if (wantScene && !scenes.includes(wantScene)) scenes.unshift(wantScene);
-        const pick = (wantScene && scenes.includes(wantScene)) ? wantScene : "room_w_jsonl";
-        sel.innerHTML = scenes.map(s =>
-          `<option value="${s}" ${s === pick ? "selected" : ""}>${s}</option>`).join("");
-      }
+    if (wantScene) selectScene(wantScene);
+    else if (scenes.length) selectScene(scenes[0].name);
+  }
 
-      const pRes = await fetch("/api/presets");
-      const pData = await pRes.json();
-      presetsData = pData.presets || {};
-      renderPresets();
-    } catch (e) {
-      console.warn("Failed to load backend info:", e);
+  async function refreshScenes() {
+    try {
+      const data = await (await fetch("/api/scenes")).json();
+      scenes = data.scenes || [];
+    } catch (e) { return; }
+    const sel = document.getElementById("scene-select");
+    const list = scenes.slice();
+    if (currentScene && !list.some(s => s.name === currentScene))
+      list.unshift({ name: currentScene, running: false });
+    sel.innerHTML = list.length
+      ? list.map(s => `<option value="${s.name}">${s.name}${s.running ? " (running)" : ""}</option>`).join("")
+      : `<option value="">no scenes under work/ yet</option>`;
+    if (currentScene && list.some(s => s.name === currentScene)) sel.value = currentScene;
+    const viewSel = document.getElementById("view-select");
+    const viewable = scenes.filter(s => s.viewable);
+    const keepView = viewSel.value;
+    viewSel.innerHTML = viewable.length
+      ? viewable.map(s => `<option value="${s.name}">${s.name}</option>`).join("")
+      : `<option value="">nothing exported yet - run a scene first</option>`;
+    if (keepView && viewable.some(s => s.name === keepView)) viewSel.value = keepView;
+    updateViewFrame();
+    renderStepTable();
+  }
+
+  function onSceneChange() {
+    selectScene(document.getElementById("scene-select").value);
+  }
+
+  function selectScene(name) {
+    if (!name || name === currentScene) { renderStepTable(); return; }
+    currentScene = name;
+    cursor = "0";
+    runStartSteps = null;
+    document.getElementById("term-box").innerHTML = "";
+    document.getElementById("s-step").textContent = "0 / --";
+    document.getElementById("s-eta").textContent = "--:--";
+    document.getElementById("s-speed").textContent = "-- it/s";
+    document.getElementById("s-vram").textContent = "-- GiB";
+    document.getElementById("mon-scene").textContent = name;
+    const sel = document.getElementById("scene-select");
+    if (sel.value !== name) sel.value = name;
+    renderStepTable();
+    pollTail();
+  }
+
+  // ------------------------------------------------------------ monitor
+  function sceneByName() { return scenes.find(s => s.name === currentScene); }
+
+  function renderStepTable(current) {
+    const sc = sceneByName();
+    const body = document.getElementById("step-rows");
+    if (!sc) { body.innerHTML = ""; return; }
+    const rows = sc.steps.map(s => Object.assign({}, s));
+    // The tail knows the in-flight log a couple of seconds before the scan does.
+    if (current && !rows.some(r => r.name === current)) {
+      rows.push({ i: rows.length + 1, name: current, status: "running", secs: null, exit: null });
     }
+    rows.sort((a, b) => a.i - b.i);
+    body.innerHTML = rows.map(r =>
+      `<tr class="${r.status === "running" ? "run" : r.status === "failed" ? "fail" : ""}">` +
+      `<td class="num">${r.i}</td><td>${escapeHtml(r.name)}</td>` +
+      `<td>${r.status}${r.attempts > 1 ? " ×" + r.attempts : ""}` +
+      `${r.kind && r.status === "failed" ? " " + escapeHtml(r.kind) : ""}</td>` +
+      `<td class="num">${r.secs != null ? r.secs.toFixed(1) : ""}</td>` +
+      `<td class="num">${r.exit != null ? r.exit : ""}</td></tr>`).join("");
+
+    const done = rows.filter(r => r.secs != null);
+    const total = done.reduce((a, r) => a + r.secs, 0);
+    document.getElementById("m-total").textContent =
+      total ? (total > 90 ? (total / 60).toFixed(1) + " min" : total.toFixed(0) + " s") : "--";
+    const slow = done.slice().sort((a, b) => b.secs - a.secs)[0];
+    document.getElementById("m-slow").textContent = slow ? `${slow.name} ${slow.secs.toFixed(0)}s` : "--";
+    document.getElementById("m-reg").textContent =
+      sc.registered ? `${sc.registered[0]} / ${sc.registered[1] ?? "?"}` : "--";
+    const failed = rows.find(r => r.status === "failed");
+    const running = rows.find(r => r.status === "running");
+    const verdict = failed ? `FAILED at ${failed.name}`
+      : running ? `running ${running.name}`
+      : rows.length ? "completed" : "idle";
+    const vEl = document.getElementById("m-verdict");
+    vEl.textContent = verdict;
+    vEl.style.color = failed ? "#f87171" : running ? "#93c5fd" : rows.length ? "#34d399" : "#94a3b8";
+
+    const badge = document.getElementById("hdr-status");
+    badge.textContent = running ? `RUN ${currentScene}: ${running.name}`
+      : failed ? `FAIL ${currentScene}: ${failed.name}`
+      : rows.length ? `DONE ${currentScene}` : "IDLE";
+    badge.className = running ? "run" : failed ? "bad" : "";
+    document.getElementById("run-owner").textContent = running
+      ? `live: ${running.name}` : "no run attached";
+    document.getElementById("btn-start").disabled = !!running;
+    document.getElementById("btn-kill").style.display = running ? "inline-block" : "none";
+  }
+
+  async function pollTail() {
+    if (!currentScene) return;
+    try {
+      const res = await fetch(`/api/tail?scene=${encodeURIComponent(currentScene)}&cursor=${encodeURIComponent(cursor)}`);
+      const t = await res.json();
+      // A new run truncates the step logs, so the old run's text must not stay on
+      // screen: on the idle-to-running transition, clear and replay from the top.
+      if (t.running && !lastRunning) {
+        lastRunning = true;
+        cursor = "0";
+        document.getElementById("term-box").innerHTML = "";
+        // Logs append, so the replay starts with the previous run's train lines;
+        // the boxes must not keep showing that run's numbers as if they were live.
+        document.getElementById("s-step").textContent = "0 / --";
+        document.getElementById("s-eta").textContent = "--:--";
+        document.getElementById("s-speed").textContent = "-- it/s";
+        document.getElementById("s-vram").textContent = "-- GiB";
+        runStartSteps = null;
+        refreshScenes();
+        return pollTail();
+      }
+      lastRunning = t.running;
+      cursor = t.cursor || "0";
+      if (t.lines && t.lines.length) appendLines(t.lines);
+      const cur = t.current ? t.current.replace(/^\d+-/, "").replace(/\.log$/, "") : null;
+      renderStepTable(t.running ? cur : null);
+      parseTrainStats(t.lines || []);
+    } catch (e) { /* server restarting */ }
+  }
+
+  function appendLines(lines) {
+    const term = document.getElementById("term-box");
+    const frag = document.createDocumentFragment();
+    for (const l of lines) {
+      const div = document.createElement("div");
+      let cls = "term-line";
+      if (/^\[\d+\/\d+\]/.test(l)) cls += " stage";
+      else if (l.includes("[colmap]") || l.includes("[train]")) cls += " info";
+      if (l.includes("PASS") || l.includes("exit 0]") || l.includes("wrote")) cls += " success";
+      if (l.includes("WARNING") || l.includes("warn")) cls += " warn";
+      if (l.includes("ERROR") || l.includes("FAILED") || l.includes("exit 3") || /\[exit [1-9]/.test(l)) cls += " err";
+      div.className = cls;
+      div.textContent = l;
+      frag.appendChild(div);
+    }
+    term.appendChild(frag);
+    while (term.childElementCount > 2000) term.removeChild(term.firstChild);
+    if (termStick) term.scrollTop = term.scrollHeight;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const term = document.getElementById("term-box");
+    term.addEventListener("scroll", () => {
+      termStick = term.scrollHeight - term.scrollTop - term.clientHeight < 40;
+    });
+  });
+
+  // The four training boxes read the newest train line the tail delivered. The
+  // total comes from the "start steps=" line governing that step line, which sits
+  // earlier in the same batch - scanning only backwards from the step line would
+  // miss it and keep the total a previous scene's replay left behind.
+  function parseTrainStats(lines) {
+    const STEP_RE = /step\s+(\d+)\s+loss\s+[\d.]+\s+psnr\s+([\d.]+)\s+N\s+\d+\s+\d+s\s+(?:\(([\d.]+)\s+it\/s\)\s+)?mem\s+([\d.]+)GiB/;
+    let stepIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (STEP_RE.test(lines[i])) { stepIdx = i; break; }
+    }
+    if (stepIdx < 0) return;
+    for (let i = stepIdx; i >= 0; i--) {
+      const mStart = lines[i].match(/start steps=(\d+)/);
+      if (mStart) { runStartSteps = parseInt(mStart[1], 10); break; }
+    }
+    const m = lines[stepIdx].match(STEP_RE);
+    const cur = parseInt(m[1], 10), psnr = parseFloat(m[2]),
+          it = m[3] == null ? null : parseFloat(m[3]), vram = parseFloat(m[4]);
+    const total = runStartSteps == null ? "--" : Math.round(runStartSteps / 1000) + "k";
+    document.getElementById("s-step").textContent = `${cur} / ${total}`;
+    document.getElementById("s-speed").textContent =
+      it == null ? `${psnr.toFixed(1)} dB` : `${it.toFixed(1)} it/s • ${psnr.toFixed(1)} dB`;
+    document.getElementById("s-vram").textContent = `${vram.toFixed(2)} GiB`;
+    if (it != null && runStartSteps != null && it > 0 && cur < runStartSteps) {
+      const rem = Math.max(0, Math.round((runStartSteps - cur) / it));
+      document.getElementById("s-eta").textContent = `${Math.floor(rem / 60)}m ${rem % 60}s`;
+    } else if (runStartSteps != null && cur >= runStartSteps) {
+      document.getElementById("s-eta").textContent = "00:00";
+    }
+  }
+
+  // ------------------------------------------------------------ view lane
+  function viewSrc() {
+    const name = document.getElementById("view-select").value;
+    if (!name) return null;
+    const q = [];
+    if (document.getElementById("view-auto").checked) q.push("auto=1");
+    if (!document.getElementById("view-cams").checked) q.push("cams=0");
+    if (document.getElementById("view-under").checked) q.push("underlay=1");
+    return `/viewer/pc.html?asset=/work/${name}/viewer_assets` + (q.length ? "&" + q.join("&") : "");
+  }
+
+  function updateViewFrame() {
+    const src = viewSrc();
+    const frame = document.getElementById("view-frame");
+    const open = document.getElementById("view-open");
+    if (!src) { frame.src = "about:blank"; open.style.display = "none"; return; }
+    open.style.display = "";
+    open.href = src;
+    // Loaded while its lane is hidden, the viewer sizes its canvas 0x0 and has no
+    // resize handler to recover - so the frame only gets its src once it is on screen.
+    if (!document.getElementById("lane-view").classList.contains("on")) return;
+    if (frame.getAttribute("src") !== src) frame.src = src;
+  }
+
+  // ------------------------------------------------------------ capture lane
+  function copyCapUrl() {
+    const txt = document.getElementById("cap-url").textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt);
+    const btn = document.getElementById("cap-copy");
+    btn.textContent = "✓ copied";
+    setTimeout(() => { btn.textContent = "⧉ Copy link"; }, 1500);
+  }
+
+  function runOnTake() {
+    const take = document.getElementById("cap-take").value;
+    if (!take) return;
+    const sel = document.getElementById("scene-select");
+    if (![...sel.options].some(o => o.value === take)) {
+      const o = document.createElement("option");
+      o.value = take; o.textContent = take + " (not run yet)";
+      sel.appendChild(o);
+    }
+    sel.value = take;
+    setLane("run");
+    selectScene(take);
+  }
+
+  // ------------------------------------------------------------ run lane
+  function renderQualities() {
+    const cont = document.getElementById("quality-container");
+    if (!qualitiesData || !Object.keys(qualitiesData).length) return;
+    const labels = {
+      standard: { title: "⚡ Standard (640p)", vram: "~1.0 GB VRAM" },
+      high: { title: "✨ High (1280p)", vram: "~3.8 GB VRAM" },
+      ultra: { title: "💎 Ultra (1440p)", vram: "~5.5 GB VRAM" }
+    };
+    cont.innerHTML = Object.entries(qualitiesData).map(([k, v]) => {
+      const info = labels[k] || { title: k.toUpperCase(), vram: "" };
+      const stepsK = v.steps ? Math.round(v.steps / 1000) + "k steps" : "";
+      const capM = v.cap ? (v.cap / 1000000).toFixed(1) + "M cap" : "";
+      return `<div class="quality-pill ${k === selectedQuality ? "active" : ""}" onclick="setQuality('${k}')">
+        <div style="font-weight:700;">${info.title}</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">${stepsK} • ${capM}</div>
+        <div style="font-size:9.5px; color:#a78bfa; margin-top:1px;">${info.vram}</div></div>`;
+    }).join("");
   }
 
   function renderPresets() {
     const cont = document.getElementById("presets-container");
+    if (!presetsData || !Object.keys(presetsData).length) return;
     cont.innerHTML = Object.entries(presetsData).map(([k, v]) => `
-      <div class="preset-card ${k === selectedPreset ? 'active' : ''}" onclick="selectPreset('${k}')">
+      <div class="preset-card ${k === selectedPreset ? "active" : ""}" onclick="selectPreset('${k}')">
         <div class="preset-card-top">
           <span class="preset-icon">${PRESET_ICONS[k] || "📦"}</span>
-          <span style="font-size:9.5px; background:rgba(255,255,255,0.1); padding:2px 5px; border-radius:99px;">${k}</span>
+          <span style="font-size:9px; background:rgba(255,255,255,0.1); padding:2px 5px; border-radius:99px;">${k}</span>
         </div>
         <div class="preset-name">${v.label || k}</div>
-        <div class="preset-desc">${v.advice ? v.advice.slice(0, 48) + '...' : ''}</div>
-      </div>
-    `).join("");
+        <div class="preset-desc">${v.advice ? v.advice.slice(0, 42) + "..." : ""}</div>
+      </div>`).join("");
     updateAdvice();
   }
 
-  function selectPreset(k) {
-    selectedPreset = k;
-    renderPresets();
-  }
+  function selectPreset(k) { selectedPreset = k; renderPresets(); }
 
   function updateAdvice() {
     const p = presetsData[selectedPreset];
     if (p && p.advice) {
-      document.getElementById("preset-advice").innerHTML = `<b>💡 Strategy for ${p.label || selectedPreset}:</b> ${p.advice}`;
-      if (p.sift_peak_threshold) document.getElementById("adv-peak").value = p.sift_peak_threshold;
+      document.getElementById("preset-advice").innerHTML =
+        `<b>💡 Strategy for ${p.label || selectedPreset}:</b> ${p.advice}`;
     }
   }
 
   function setQuality(q) {
     selectedQuality = q;
-    document.getElementById("q-high").classList.toggle("active", q === "high");
-    document.getElementById("q-ultra").classList.toggle("active", q === "ultra");
-    document.getElementById("q-std").classList.toggle("active", q === "standard");
+    renderQualities();
   }
 
   async function launchPipeline() {
     const scene = document.getElementById("scene-select").value;
-    const btn = document.getElementById("btn-start");
-    btn.disabled = true;
-
+    if (!scene) return;
+    document.getElementById("btn-start").disabled = true;
+    const extra = [];
+    const mapper = document.getElementById("adv-mapper").value;
+    if (mapper && mapper !== "auto") extra.push("--mapper", mapper);
+    const cull = document.getElementById("adv-cull").value;
+    if (cull && cull !== "auto") extra.push("--cull", cull);
+    for (const [id, flag] of [["adv-target", "--target"], ["adv-steps", "--steps"],
+                              ["adv-cap", "--cap"], ["adv-overlap", "--overlap"],
+                              ["adv-tri-angle", "--init-min-tri-angle"]]) {
+      const v = document.getElementById(id).value;
+      if (v) extra.push(flag, v);
+    }
+    if (document.getElementById("adv-fresh").checked) extra.push("--fresh");
     try {
       await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scene: scene,
-          preset: selectedPreset,
-          quality: selectedQuality,
-          extra_args: [
-            "--sift-peak-threshold", document.getElementById("adv-peak").value,
-            "--cap", document.getElementById("adv-cap").value
-          ]
-        })
+        body: JSON.stringify({ scene, preset: selectedPreset, quality: selectedQuality, extra_args: extra })
       });
+      selectScene(scene);
     } catch (e) {
       console.error(e);
+      document.getElementById("btn-start").disabled = false;
     }
   }
 
-  async function killPipeline() {
-    await fetch("/api/kill", { method: "POST" });
-  }
+  async function killPipeline() { await fetch("/api/kill", { method: "POST" }); }
 
-  // Poll status loop
-  setInterval(async () => {
-    try {
-      const res = await fetch("/api/status");
-      const status = await res.json();
-
-      const badge = document.getElementById("job-status-badge");
-      const btnStart = document.getElementById("btn-start");
-      const btnKill = document.getElementById("btn-kill");
-      const btnView = document.getElementById("btn-view-result");
-
-      const isRunning = status.status === "running";
-      badge.textContent = isRunning ? "RUNNING" : (status.status ? status.status.toUpperCase() : "IDLE");
-      badge.style.color = isRunning ? "#60a5fa" : (status.status.startsWith("completed") ? "#34d399" : "#9ca3af");
-
-      btnStart.disabled = isRunning;
-      btnKill.style.display = isRunning ? "inline-block" : "none";
-      btnView.style.display = status.status.startsWith("completed") ? "inline-block" : "none";
-
-      // Stepper highlight
-      const st = (status.step || "").toLowerCase();
-      document.getElementById("step-colmap").className = `step-node ${st.includes("colmap") ? "active" : ""}`;
-      document.getElementById("step-poses").className = `step-node ${st.includes("poses") ? "active" : ""}`;
-      document.getElementById("step-train").className = `step-node ${st.includes("train") ? "active" : ""}`;
-      document.getElementById("step-mesh").className = `step-node ${st.includes("collider") ? "active" : ""}`;
-      document.getElementById("step-walktest").className = `step-node ${st.includes("walktest") || st.includes("export") ? "active" : ""}`;
-
-      // Parse latest log lines for ETA, Step, and GPU metrics
-      if (status.logs?.length) {
-        let maxStep = 15000;
-        let curStep = 0;
-        let itPerSec = 0;
-        let psnr = 0;
-        let vram = 0;
-
-        for (let i = status.logs.length - 1; i >= 0; i--) {
-          const l = status.logs[i];
-          const m = l.match(/step\s+(\d+)\s+loss\s+[\d\.]+\s+psnr\s+([\d\.]+)\s+N\s+\d+\s+\d+s\s+\(([\d\.]+)\s+it\/s\)\s+mem\s+([\d\.]+)GiB/);
-          if (m) {
-            curStep = parseInt(m[1], 10);
-            psnr = parseFloat(m[2]);
-            itPerSec = parseFloat(m[3]);
-            vram = parseFloat(m[4]);
-            break;
-          }
-        }
-
-        if (curStep > 0) {
-          document.getElementById("s-step").textContent = `${curStep} / ${maxStep}`;
-          document.getElementById("s-speed").textContent = `${itPerSec.toFixed(1)} it/s • ${psnr.toFixed(1)} dB`;
-          document.getElementById("s-vram").textContent = `${vram.toFixed(2)} GiB`;
-
-          if (itPerSec > 0) {
-            const remSec = Math.max(0, Math.round((maxStep - curStep) / itPerSec));
-            const mm = Math.floor(remSec / 60);
-            const ss = remSec % 60;
-            document.getElementById("s-eta").textContent = `${mm}m ${ss}s`;
-          }
-
-          const pct = Math.round((curStep / maxStep) * 100);
-          document.getElementById("prog-fill").style.width = pct + "%";
-          document.getElementById("prog-pct").textContent = pct + "%";
-        }
-
-        // Update terminal
-        const term = document.getElementById("term-box");
-        term.innerHTML = status.logs.slice(-150).reverse().map(l => {
-          let cls = "term-line";
-          if (l.includes("[colmap]") || l.includes("[train]")) cls += " info";
-          if (l.includes("DONE") || l.includes("PASS") || l.includes("exit 0")) cls += " success";
-          if (l.includes("WARNING") || l.includes("warn")) cls += " warn";
-          if (l.includes("ERROR") || l.includes("failed")) cls += " err";
-          return `<div class="${cls}">${escapeHtml(l)}</div>`;
-        }).join("");
-      }
-    } catch (e) {}
-  }, 1000);
-
-  function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  // One heartbeat: the scene list refreshes slowly, the log tail quickly while
+  // anything is moving and slows down once the run is over.
+  setInterval(() => { pollTail(); }, 800);
+  setInterval(() => { refreshScenes(); }, 4000);
 
   loadInitialData();
 </script>

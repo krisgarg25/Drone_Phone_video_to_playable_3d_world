@@ -1,5 +1,6 @@
-"""Unblind results/blinded/*.jpg using pair_key.json -> labeled side-by-sides in
-results/side_by_side/. TOP/BOTTOM panels get their true identity stamped on them."""
+"""Unblind results/blinded/*.jpg using every results/pair_key_<tag>.json ->
+labeled side-by-sides in results/side_by_side/. TOP/BOTTOM panels get their true
+identity stamped on them."""
 import json
 from pathlib import Path
 
@@ -7,7 +8,13 @@ import numpy as np
 import cv2
 
 ROOT = Path(__file__).resolve().parent.parent
-key = json.loads((ROOT / "results" / "pair_key.json").read_text())
+key = []
+for kf in sorted((ROOT / "results").glob("pair_key_*.json")):
+    entries = json.loads(kf.read_text())
+    key.extend(entries)
+    print(f"[label] {kf.name}: {len(entries)} pairs")
+if not key:
+    raise SystemExit("no results/pair_key_<tag>.json found - nothing to unblind")
 out = ROOT / "results" / "side_by_side"
 out.mkdir(parents=True, exist_ok=True)
 
@@ -15,6 +22,11 @@ for k in sorted(key, key=lambda d: d["pair"]):
     pk = Path(k["pair"]).stem
     src = ROOT / "results" / "blinded" / k["pair"]
     img = cv2.imread(str(src))
+    if img is None:
+        # One deleted stack must not cost the rest of the unblinding, the way one
+        # locked name used to cost the rest of the pairs that made it.
+        print(f"[label] {k['pair']}: not on disk - skipped")
+        continue
     H = img.shape[0] // 2
     top_lab = "REAL DRONE FRAME" if k["A"] == "REAL" else "SPLAT RENDER (gsplat)"
     bot_lab = "REAL DRONE FRAME" if k["B"] == "REAL" else "SPLAT RENDER (gsplat)"

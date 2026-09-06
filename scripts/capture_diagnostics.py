@@ -55,51 +55,56 @@ def probe_video(video: Path) -> dict:
         ok, frame = cap.read()
         if not ok:
             break
-        if idx % stride == 0:
-            h, w = frame.shape[:2]
-            scale = PROBE_MAX_SIDE / max(h, w)
-            small = cv2.resize(frame, (round(w * scale), round(h * scale)),
-                               interpolation=cv2.INTER_AREA)
-            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            sharp.append(float(cv2.Laplacian(gray, cv2.CV_64F).var()))
-            kp, des = orb.detectAndCompute(gray, None)
-            nfeat.append(len(kp))
+        h, w = frame.shape[:2]
+        scale = PROBE_MAX_SIDE / max(h, w)
+        small = cv2.resize(frame, (round(w * scale), round(h * scale)),
+                           interpolation=cv2.INTER_AREA)
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        sharp.append(float(cv2.Laplacian(gray, cv2.CV_64F).var()))
+        kp, des = orb.detectAndCompute(gray, None)
+        nfeat.append(len(kp))
 
-            if prev_des is not None and des is not None and len(prev_kp) >= 8 and len(kp) >= 8:
-                matches = bf.knnMatch(prev_des, des, k=2)
-                good = [m for m, n in (pair for pair in matches if len(pair) == 2)
-                        if m.distance < 0.75 * n.distance]
-                row = {"t": round(idx / fps, 2)}
-                if len(good) >= 8:
-                    pts1 = np.float32([prev_kp[m.queryIdx].pt for m in good])
-                    pts2 = np.float32([kp[m.trainIdx].pt for m in good])
-                    H, mask_h = cv2.findHomography(pts1, pts2, cv2.RANSAC, 3.0)
-                    inl_ratio = float(mask_h.sum()) / len(good) if mask_h is not None else 0.0
-                    flow_px = float(np.median(np.linalg.norm(pts2 - pts1, axis=1))) \
-                        if len(good) else 0.0
-                    # rotation vs translation: decompose E with an assumed
-                    # focal (= width). |t| is up to scale but comparable.
-                    fx_assumed = float(gray.shape[1])
-                    K = np.array([[fx_assumed, 0, gray.shape[1] / 2],
-                                  [0, fx_assumed, gray.shape[0] / 2], [0, 0, 1]])
-                    rot_deg = trans_norm = np.nan
-                    try:
-                        E, mask_e = cv2.findEssentialMat(pts1, pts2, K, cv2.RANSAC,
-                                                         0.999, 3.0)
-                        if E is not None and mask_e is not None and int(mask_e.sum()) >= 8:
-                            _, R, t, _ = cv2.recoverPose(E, pts1, pts2, K, mask=mask_e.copy())
-                            rot_deg = float(np.degrees(np.arccos(
-                                np.clip((np.trace(R) - 1) / 2, -1, 1))))
-                            trans_norm = float(np.linalg.norm(t))
-                    except cv2.error:
-                        pass
-                    row.update(inlier_ratio=round(inl_ratio, 3), flow_px=round(flow_px, 2),
-                               rot_deg=None if np.isnan(rot_deg) else round(rot_deg, 2),
-                               trans_norm=None if np.isnan(trans_norm) else round(trans_norm, 4))
-                if len(row) > 1:
-                    pair_rows.append(row)
-            prev_kp, prev_des = kp, des
+        if prev_des is not None and des is not None and len(prev_kp) >= 8 and len(kp) >= 8:
+            matches = bf.knnMatch(prev_des, des, k=2)
+            good = [m for m, n in (pair for pair in matches if len(pair) == 2)
+                    if m.distance < 0.75 * n.distance]
+            row = {"t": round(idx / fps, 2)}
+            if len(good) >= 8:
+                pts1 = np.float32([prev_kp[m.queryIdx].pt for m in good])
+                pts2 = np.float32([kp[m.trainIdx].pt for m in good])
+                H, mask_h = cv2.findHomography(pts1, pts2, cv2.RANSAC, 3.0)
+                inl_ratio = float(mask_h.sum()) / len(good) if mask_h is not None else 0.0
+                flow_px = float(np.median(np.linalg.norm(pts2 - pts1, axis=1))) \
+                    if len(good) else 0.0
+                # rotation vs translation: decompose E with an assumed
+                # focal (= width). |t| is up to scale but comparable.
+                fx_assumed = float(gray.shape[1])
+                K = np.array([[fx_assumed, 0, gray.shape[1] / 2],
+                              [0, fx_assumed, gray.shape[0] / 2], [0, 0, 1]])
+                rot_deg = trans_norm = np.nan
+                try:
+                    E, mask_e = cv2.findEssentialMat(pts1, pts2, K, cv2.RANSAC,
+                                                     0.999, 3.0)
+                    if E is not None and mask_e is not None and int(mask_e.sum()) >= 8:
+                        _, R, t, _ = cv2.recoverPose(E, pts1, pts2, K, mask=mask_e.copy())
+                        rot_deg = float(np.degrees(np.arccos(
+                            np.clip((np.trace(R) - 1) / 2, -1, 1))))
+                        trans_norm = float(np.linalg.norm(t))
+                except cv2.error:
+                    pass
+                row.update(inlier_ratio=round(inl_ratio, 3), flow_px=round(flow_px, 2),
+                           rot_deg=None if np.isnan(rot_deg) else round(rot_deg, 2),
+                           trans_norm=None if np.isnan(trans_norm) else round(trans_norm, 4))
+            if len(row) > 1:
+                pair_rows.append(row)
+        prev_kp, prev_des = kp, des
         idx += 1
+
+        # Fast demuxer grab for skipped interval frames
+        for _ in range(stride - 1):
+            if not cap.grab():
+                break
+            idx += 1
     cap.release()
 
     rot = [r["rot_deg"] for r in pair_rows if r.get("rot_deg") is not None]

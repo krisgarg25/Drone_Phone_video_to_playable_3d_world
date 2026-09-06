@@ -19,16 +19,62 @@ supported column's ground is a fiction — the distant backdrop reads as airborn
 against it — and the backdrop is most of the painted frame and none of the
 problem.
 
+This step is optional, so every outcome that is "the scene is simply not a
+canopy" is a visible no-op that exits 0: no supported ground column, no void,
+a void with nothing above it, a cut judged too greedy. Only an input this file
+cannot read at all (no splat, no heightfield, a vertex table without the 3DGS
+properties) is a StepError, because that names an upstream step that broke.
+
   python strip_sky.py --asset work/rocks/viewer_assets
 """
 import argparse
-import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 import numpy as np
 from plyfile import PlyData, PlyElement
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import robust as rb  # noqa: E402
+
+VERTEX_PROPS = ("x", "y", "z", "opacity", "scale_0", "scale_1", "scale_2")
+
+
+def require_props(arr, names, src: Path) -> None:
+    """A vertex table without these columns is not a gaussian splat."""
+    missing = [n for n in names if n not in (arr.dtype.names or ())]
+    if missing:
+        raise rb.StepError(
+            rb.EMPTY_INPUT,
+            f"{src.name} has no {', '.join(missing)} property, so airborne height "
+            f"and paint weight cannot be measured.\n"
+            f"  export_viewer_assets.py owns the vertex table; re-run train + "
+            f"export rather than this step.",
+            returncode=3)
+
+
+def grid_header(asset: Path, what: str = "strip_sky"):
+    """(nx, nz, cell, ox, oz) from collision.json, or a named upstream failure."""
+    col = rb.read_json(asset / "collision.json")
+    if not isinstance(col, dict) or not {"nx", "nz", "cell", "origin_xz"} <= set(col):
+        raise rb.StepError(
+            rb.EMPTY_INPUT,
+            f"{(asset / 'collision.json').name} is missing or has no grid header "
+            f"(nx/nz/cell/origin_xz), so {what} has no footprint to judge against.\n"
+            f"  export_viewer_assets.py writes it; re-run export.",
+            returncode=3)
+    nx, nz, cell = int(col["nx"]), int(col["nz"]), float(col["cell"])
+    ox, oz = (float(v) for v in col["origin_xz"])
+    if nx <= 0 or nz <= 0 or not rb.finite(cell, ox, oz) or cell <= 0:
+        raise rb.StepError(
+            rb.EMPTY_INPUT,
+            f"collision.json declares an unusable grid "
+            f"(nx={nx}, nz={nz}, cell={cell!r}, origin=({ox!r}, {oz!r})).\n"
+            f"  export_viewer_assets.py wrote it; re-run export.",
+            returncode=3)
+    return nx, nz, cell, ox, oz
 
 
 def local_ground(asset: Path, x: np.ndarray, z: np.ndarray) -> np.ndarray:
@@ -37,14 +83,26 @@ def local_ground(asset: Path, x: np.ndarray, z: np.ndarray) -> np.ndarray:
     Columns with no gaussian support carry a diffused height, which is fine as a
     reference but not as a source of truth — so unsupported and out-of-footprint
     positions both borrow the nearest SUPPORTED column instead.
-    """
-    col = json.loads((asset / "collision.json").read_text(encoding="utf-8"))
-    nx, nz, cell = col["nx"], col["nz"], col["cell"]
-    ox, oz = col["origin_xz"]
-    H = np.fromfile(asset / "heights.f32", np.float32).reshape(nz, nx).astype(np.float64)
-    cov = np.fromfile(asset / "coverage.u8", np.uint8).reshape(nz, nx) > 0
 
-    si, sj = np.nonzero(cov)
+    Returns (ground, judgeable). With no supported column anywhere there is no
+    ground to be above, so judgeable comes back all-False and the caller cuts
+    nothing — the honest answer, rather than a cut measured against a fiction.
+    """
+    nx, nz, cell, ox, oz = grid_header(asset)
+    shape = (nz, nx)
+    H = rb.load_array(asset / "heights.f32", np.float32, shape,
+                      label="heights.f32 (export_viewer_assets)").astype(np.float64)
+    cov = rb.load_array(asset / "coverage.u8", np.uint8, shape,
+                        label="coverage.u8 (export_viewer_assets)") > 0
+    # a NaN height would poison `d` and then np.histogram's autodetected range,
+    # which raises on [nan, nan]; such a column is simply not a usable reference.
+    sup = cov & np.isfinite(H)
+
+    si, sj = np.nonzero(sup)
+    if si.size == 0:
+        rb.warn("coverage.u8 marks no supported column at all, so nothing can be "
+                "judged airborne — the scene keeps every gaussian")
+        return np.zeros(len(x)), np.zeros(len(x), bool)
     sx, sz = ox + (sj + 0.5) * cell, oz + (si + 0.5) * cell
     sh = H[si, sj]
 
@@ -52,7 +110,7 @@ def local_ground(asset: Path, x: np.ndarray, z: np.ndarray) -> np.ndarray:
     i = np.floor((z - oz) / cell).astype(int)
     inside = (i >= 0) & (i < nz) & (j >= 0) & (j < nx)
     good = inside.copy()
-    good[inside] &= cov[i[inside], j[inside]]
+    good[inside] &= sup[i[inside], j[inside]]
 
     g = np.empty(len(x))
     g[good] = H[i[good], j[good]]
@@ -81,8 +139,22 @@ def find_void(d: np.ndarray, lo: float, hi: float, step: float = 1.0) -> float |
     higher up. That is what "two layers with a gap between them" means, and it is
     the only shape where a height cut removes a canopy rather than a gradient.
     """
-    base = float(((d >= -1) & (d < 2)).sum()) / 3.0
+    d = np.asarray(d, dtype=np.float64)
+    d = d[np.isfinite(d)]
+    if d.size == 0:
+        rb.warn("no in-footprint gaussian with a finite height above ground — "
+                "there is nothing to measure a canopy against")
+        return None
+    if step <= 0:
+        rb.warn(f"band step {step:g} m is not positive; cannot histogram")
+        return None
+    if hi <= lo:
+        rb.warn(f"search range {lo:.1f}..{hi:.1f} m is empty; pass --search LO HI")
+        return None
+    base = float(((d >= -1) & (d < 2)).sum()) / 3.0   # per metre over the ground band
     if base <= 0:
+        rb.warn("the ground band (-1..2 m) holds no gaussian, so there is no "
+                "ground layer to compare a canopy with")
         return None
     edges = np.arange(lo, hi + step, step)
     cnt = np.histogram(d, edges)[0] / step
@@ -91,7 +163,12 @@ def find_void(d: np.ndarray, lo: float, hi: float, step: float = 1.0) -> float |
     print(f"[sky] band density per metre (ground layer = {base:.0f}/m):")
     print("      " + "  ".join(f"{edges[m]:+.0f}:{cnt[m]:.0f}" for m in range(len(cnt))))
     k = int(cnt[:-1].argmin())          # never the last band: nothing above it
-    above = float(cnt[k + 1:].max())
+    above = rb.safe_max(cnt[k + 1:], 0.0, label="densest band above the void")
+    if above <= 0:
+        print(f"[sky] emptiest band {edges[k]:+.0f} m has nothing above it inside "
+              f"{lo:.0f}..{hi:.0f} m — no second layer to separate")
+        print("[sky] no separable canopy — keeping everything")
+        return None
     if cnt[k] > 0.10 * base or cnt[k] > 0.10 * above:
         why = ("below the ground layer but not below what sits above it "
                f"({cnt[k]:.0f}/m vs {above:.0f}/m up top) — a gradient, not a gap"
@@ -115,8 +192,22 @@ def main() -> None:
     scene = a.asset / "scene.ply"
     full = a.asset / "scene.full.ply"
     src = full if full.exists() else scene   # idempotent: always cut from the original
+    if not src.exists():
+        raise rb.StepError(
+            rb.EMPTY_INPUT,
+            f"neither {full.name} nor {scene.name} exists in {a.asset}.\n"
+            f"  export_viewer_assets.py writes scene.ply; run export before this step.",
+            returncode=3)
     ply = PlyData.read(str(src))
     arr = ply["vertex"].data
+    if len(arr) == 0:
+        raise rb.StepError(
+            rb.EMPTY_INPUT,
+            f"{src.name} holds 0 gaussians — the training or the export produced an "
+            f"empty splat, so there is no canopy to look for and nothing to write.\n"
+            f"  Fix the train/export step for this scene.",
+            returncode=3)
+    require_props(arr, VERTEX_PROPS, src)
     x, y, z = (np.asarray(arr[k], np.float64) for k in "xyz")
     op = 1.0 / (1.0 + np.exp(-np.asarray(arr["opacity"], np.float64)))
     smax = np.exp(np.stack([np.asarray(arr[f"scale_{k}"], np.float64)
@@ -126,8 +217,12 @@ def main() -> None:
     g, inside = local_ground(a.asset, x, z)
     d = y - g
     print(f"[sky] height above local ground: "
-          + " ".join(f"p{p}={np.percentile(d, p):+.1f}" for p in (50, 90, 95, 99))
+          + " ".join(f"p{p}={rb.safe_pct(d, p, 0.0, label=f'd p{p}'):+.1f}"
+                     for p in (50, 90, 95, 99))
           + f"  ({int(inside.sum())} of {len(d)} inside the footprint)")
+    if not inside.any():
+        print("[sky] nothing sits over the footprint — a canopy outside it is the "
+              "painted backdrop, which this step never cuts")
 
     # Only gaussians over the walkable footprint are judged, and only they are
     # ever cut. Outside it, `local_ground` borrows the nearest supported column,
@@ -138,20 +233,32 @@ def main() -> None:
     # already removes it from the physics.
     cut = a.cut if a.cut > 0 else find_void(d[inside], a.search[0], a.search[1])
     if cut is None:
-        if not full.exists():
-            print("[sky] nothing to strip")
+        print("[sky] nothing to strip; scene.ply left as exported")
         return
     keep = ~inside | (d < cut)
+    n_drop = int((~keep).sum())
+    if n_drop == 0:
+        print(f"[sky] cut at ground +{cut:.1f} m drops 0 gaussians — every gaussian "
+              f"over the footprint is already below it")
+        print("[sky] nothing to strip; scene.ply left as exported")
+        return
+    if keep.sum() < 0.5 * len(keep):
+        rb.warn(f"the cut at ground +{cut:.1f} m would remove {100 * n_drop / len(keep):.0f}% "
+                f"of the splat, over half of it — refusing to strip, keeping every "
+                f"gaussian. That is a canopy verdict this scene does not support; "
+                f"check --search and --cut before forcing it.")
+        return
     # paint weight ~ opacity x projected area: the honest measure of how much of
     # the frame this removes, since a canopy is few gaussians but large ones
     w = op * smax ** 2
-    print(f"[sky] cut at ground +{cut:.1f} m -> dropping {int((~keep).sum())} "
-          f"gaussians ({100 * (~keep).mean():.1f}%), "
-          f"{100 * w[~keep].sum() / w.sum():.1f}% of painted area")
-    print(f"[sky]   dropped y {y[~keep].min():.1f}..{y[~keep].max():.1f}, "
-          f"opacity p50={np.median(op[~keep]):.2f}")
-    if keep.sum() < 0.5 * len(keep):
-        raise SystemExit("[sky] the cut would remove over half the scene — refusing")
+    wsum = float(w.sum())
+    paint = 100 * float(w[~keep].sum()) / wsum if wsum > 0 else 0.0
+    print(f"[sky] cut at ground +{cut:.1f} m -> dropping {n_drop} "
+          f"gaussians ({100 * n_drop / len(keep):.1f}%), "
+          f"{paint:.1f}% of painted area")
+    print(f"[sky]   dropped y {rb.safe_min(y[~keep], 0.0, label='dropped y min'):.1f}"
+          f"..{rb.safe_max(y[~keep], 0.0, label='dropped y max'):.1f}, "
+          f"opacity p50={rb.safe_median(op[~keep], 0.0, label='dropped opacity'):.2f}")
 
     if not full.exists():
         shutil.copyfile(scene, full)
@@ -167,4 +274,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    rb.configure_streams()
+    try:
+        main()
+    except rb.StepError as e:
+        print(f"\n[sky] {e}", file=sys.stderr, flush=True)
+        sys.exit(e.returncode)

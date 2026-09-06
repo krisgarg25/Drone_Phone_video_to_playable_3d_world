@@ -21,9 +21,12 @@ was planned on a smoothed surface while ammo collided with the raw one, so the
 autopilot was walking a map of a different world. Here the collider IS the
 planning surface, so plan and physics cannot disagree.
 
-Kept from the voxel path: the shell is still what defines the surface (via its
-clipped top face), so the geometry still comes from the splat through
-splat-transform. Lost: overhangs and caves, which a heightfield cannot express.
+By default the surface IS the exported heightfield, not the shell's top face. The shell is
+a per-cell maximum of a 0.25 m voxelisation of a cloud that scatters half a metre about the
+true surface, which is what turned the shipped collider into a field of vertical spikes; the
+heightfield is the smooth measured surface the router already plans on, so physics, plan and
+the visible underlay are literally the same array. `--surface shell` keeps the old path for
+measuring against. Lost either way: overhangs and caves, which no heightfield can express.
 This capture has none worth the trade.
 
   python ground_mesh.py --asset work/rocks/viewer_assets \
@@ -38,6 +41,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import robust as rb  # noqa: E402
 from clip_collider import write_mesh
 from walk_path_from_glb import read_glb_tris, smooth_surface, top_surface
 
@@ -115,6 +119,11 @@ def main() -> None:
     ap.add_argument("--asset", required=True, type=Path)
     ap.add_argument("--glb", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--surface", choices=("hf", "shell"), default="hf",
+                    help="hf = the exported heightfield, which is the surface the "
+                         "route is planned on and the underlay is drawn from, so "
+                         "physics and plan are the same array. shell = the old "
+                         "voxel-shell top face, kept only to measure against.")
     ap.add_argument("--band", type=float, default=2.5,
                     help="max distance from the exported ground to count as surface (m)")
     ap.add_argument("--smooth", type=int, default=3,
@@ -131,23 +140,43 @@ def main() -> None:
     ref = np.fromfile(a.asset / "heights.f32", np.float32).reshape(nz, nx).astype(np.float64)
 
     raw = top_surface(read_glb_tris(a.glb), ref, ox, oz, cell, a.band)
+    y_lo, y_hi = rb.safe_min(raw, float("nan")), rb.safe_max(raw, float("nan"))
     print(f"[ground] shell top surface: {np.isfinite(raw).mean() * 100:.0f}% of "
-          f"{nz}x{nx} cells, y {np.nanmin(raw):.2f}..{np.nanmax(raw):.2f}")
-    H = smooth_surface(fill_holes(raw, ref), a.smooth) if a.smooth > 1 \
-        else fill_holes(raw, ref)
+          f"{nz}x{nx} cells, y {y_lo:.2f}..{y_hi:.2f}")
+    if a.surface == "hf":
+        # The heightfield is already complete: rasterize_ground diffused it into its
+        # holes and camera_ground filled more from the height the camera was held at,
+        # so there is nothing to grow and no seam to hide.
+        H = smooth_surface(ref, a.smooth) if a.smooth > 1 else ref.copy()
+    else:
+        H0 = fill_holes(raw, ref)
+        H = smooth_surface(H0, a.smooth) if a.smooth > 1 else H0
 
     # how far the collider now sits from the voxel shell it came from
     m = np.isfinite(raw)
     off = H[m] - raw[m]
-    print(f"[ground] offset from the shell over measured cells: "
-          f"median {np.median(off):+.2f} m, p95 {np.percentile(np.abs(off), 95):.2f} m")
+    if off.size:
+        print(f"[ground] offset from the shell over measured cells: "
+              f"median {np.median(off):+.2f} m, "
+              f"p95 {np.percentile(np.abs(off), 95):.2f} m")
+    else:
+        # A shell that contributes no cell inside `--band` of the heightfield is
+        # not a surface to agree with - test2horizontal's splat collapsed to 377
+        # gaussians, so its voxel shell was one 0.8 m cube in a room-sized grid.
+        # The mesh built below comes from `ref`, so the world still ships a floor.
+        rb.warn("[ground] no shell cell falls inside the band around the "
+                f"heightfield ({a.band:g} m) - there is nothing to measure the "
+                "offset against. Building the ground from the heightfield alone.")
     dz = np.abs(np.diff(H, axis=0)); dx = np.abs(np.diff(H, axis=1))
     step = np.concatenate([dz.ravel(), dx.ravel()])
-    print(f"[ground] inter-cell step: "
-          + " ".join(f"p{p}={np.percentile(step, p):.2f}" for p in (50, 90, 99))
-          + f" max={step.max():.2f} m  (raw shell was 1.05 m every other cell)")
-    print(f"[ground] equivalent grade: p50={np.degrees(np.arctan(np.percentile(step, 50) / cell)):.0f}deg "
-          f"p90={np.degrees(np.arctan(np.percentile(step, 90) / cell)):.0f}deg")
+    if step.size:
+        print(f"[ground] inter-cell step: "
+              + " ".join(f"p{p}={np.percentile(step, p):.2f}" for p in (50, 90, 99))
+              + f" max={step.max():.2f} m  (raw shell was 1.05 m every other cell)")
+        print(f"[ground] equivalent grade: p50={np.degrees(np.arctan(np.percentile(step, 50) / cell)):.0f}deg "
+              f"p90={np.degrees(np.arctan(np.percentile(step, 90) / cell)):.0f}deg")
+    else:
+        print("[ground] grid is a single cell wide - no inter-cell step to measure")
 
     tris = build(H, ox, oz, cell, a.wall, a.skirt)
     write_mesh(tris, a.out)

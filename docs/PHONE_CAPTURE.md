@@ -17,8 +17,11 @@ video—framing lines, a centre reticle, visible texture features, and a
 `MOVE SIDEWAYS` nudge when motion is mostly rotation. It is intentionally a
 capture-quality guide, not a false claim of per-surface AR coverage.
 
-The coverage dots are deliberately omitted from the recorded video, so they
-cannot become false COLMAP features. At the end of the take, the page reports
+Coverage colour lives on the inset map, never over the camera image, and no
+overlay is drawn into the recorded video, so nothing can become a false COLMAP
+feature. The live AR view carries only thin world lines: the scanned-volume cage,
+a blue cross on the spot that needs another look, and outlines round the planes
+the phone reports. At the end of the take, the page reports
 the largest mapped patches that still need another angle. A surface never seen
 by the depth camera cannot be reported as missing, so still follow the capture
 checklist below.
@@ -68,10 +71,26 @@ What this buys, concretely:
   corner region.
 - **Never stand still and pan** without stepping sideways. This is the one
   move that actively poisons the solve.
+- **Pick one hold per room and say so on the start screen** (`Auto / Vertical /
+  Horizontal`). Scan a whole room the same way round; do not start vertical, then
+  turn the phone sideways for a wide wall.
+- **Leave the lens on `Auto (widest)`** unless the room is tiny. A wide lens puts
+  more of the room in every frame, and frames that share more of the same wall are
+  what the solver matches on. In an AR scan the phone picks the lens and the page
+  cannot ask for another, so read the **Field of view** row on the Phone tab: under
+  about 55° across means a telephoto is recording the room.
 
 Typical good length: **1.5-4 minutes per room**. The pipeline wants roughly
 **100-400 keyframes total** after thinning; `extract_keyframes.py` selects by
 sharpness and temporal bins, so err on the longer side rather than rushing.
+
+**Why one hold matters more than it looks.** A vertical clip and a horizontal one
+in the same scene used to reconstruct as though half the footage had gone missing:
+COLMAP is handed one shared camera and quietly refuses every frame whose dimensions
+disagree with it, as a warning, with a zero exit code. It now notices the mix and
+gives each clip its own camera, and it stops the run outright if frames still go
+missing — but a room shot the same way round is still the cleaner solve, and the
+coverage map on the phone reads more consistently for it.
 
 ## 3. Option A - Android with any ARCore logger app
 
@@ -187,5 +206,7 @@ phone drifted.
 |---|---|---|
 | "pose count mismatch" warnings | clock offsets between recorder and logger, different fps | benign if counts are close; the importer resamples onto the video timebase |
 | "no priors matched" | wrong log paired with wrong clip (e.g. `walk2_poses.jsonl` given for `clip1.mp4`) | check pairing; explicit `--video ... --poses ...` order must correspond |
+| run stops at colmap: "only N of M keyframes solved" | the take gave SfM no baseline (spun in place, or one subject from one spot), or footage mixes a vertical hold with a horizontal one | re-walk it in arcs; keep one hold per room. `python scripts/analyze_take.py <take>` says which it was |
+| Phone tab shows a narrow field of view (under ~55° across) or "the phone refused the wide setting" | the AR scan is recording through a telephoto, or the zoom dial is advertised and then not honoured | walk slower and closer so the narrow frames still overlap. Plain capture on `Auto (widest)` records more of the room but gives up world-locked coverage; `xr_probe.html` says whether the wide lens is reachable from a page at all |
 | registered cameras sit far from the priors / scene warped | AR tracking drifted during the take | re-record, or loosen trust with a higher `--prior-std` (default 0.15 m) |
 | device has no AR / browser refuses WebXR | no ARCore, old phone | fall back to plain capture - the section 2 movement rules still apply, arcs and overlap carry the solve without priors |

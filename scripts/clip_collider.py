@@ -30,9 +30,13 @@ threshold follows the terrain instead of cutting a plane through it.
 import argparse
 import json
 import struct
+import sys
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import robust as rb  # noqa: E402
 
 
 def read_mesh(path: Path) -> np.ndarray:
@@ -55,6 +59,10 @@ def read_mesh(path: Path) -> np.ndarray:
             dt = np.uint32 if iacc["componentType"] == 5125 else np.uint16
             idx = np.frombuffer(data, dt, count=iacc["count"], offset=ioff)
             out.append(pts[idx.reshape(-1, 3).astype(np.int64)])
+    if not out:
+        # A GLB with no primitives is not a crash - it is a collider with no
+        # geometry, which every caller below already has a named answer for.
+        return np.zeros((0, 3, 3), np.float32)
     return np.concatenate(out, axis=0)
 
 
@@ -122,6 +130,17 @@ def ground_ceiling(tris: np.ndarray, ref: np.ndarray, cov: np.ndarray,
     i = np.floor((V[:, 2] - oz) / cell).astype(int)
     ok = (i >= 0) & (i < nz) & (j >= 0) & (j < nx)
     i, j, y = i[ok], j[ok], V[ok, 1].astype(np.float64)
+    if y.size == 0:
+        # Not one vertex of this mesh lands inside the heightfield's grid, so
+        # there is no column to seed and no ground layer to measure against.
+        # Returning "no ceiling anywhere" lets clip() fall through to its
+        # under-5% branch and ship the shell unclipped; the alternative - a
+        # bare min() over an empty array - took the whole collider step down.
+        rb.warn(f"[clip] none of the mesh's {len(V)} verts fall inside the "
+                f"heightfield grid ({nx}x{nz}, cell {cell:g}) - the two are not "
+                "in the same space, so no ground layer can be found. Shipping unclipped.")
+        nan = np.full((nz, nx), np.nan)
+        return nan, nan.copy()
 
     y0 = float(y.min()) - pitch
     nb = int(np.ceil((y.max() - y0) / pitch)) + 2
@@ -172,8 +191,15 @@ def clip(glb: Path, asset: Path, out: Path, pitch: float = 0.35,
     cov = np.fromfile(asset / "coverage.u8", np.uint8).reshape(nz, nx)
 
     tris = read_mesh(glb)
-    print(f"[clip] {glb.name}: {len(tris)} tris, "
-          f"y {tris[:, :, 1].min():.2f}..{tris[:, :, 1].max():.2f}")
+    yr = (rb.safe_min(tris[:, :, 1], float("nan")),
+          rb.safe_max(tris[:, :, 1], float("nan")))
+    print(f"[clip] {glb.name}: {len(tris)} tris, y {yr[0]:.2f}..{yr[1]:.2f}")
+    if len(tris) == 0:
+        raise rb.StepError(
+            rb.EMPTY_INPUT,
+            f"[clip] {glb.name} has no triangles - the voxeliser returned an empty "
+            "shell, so there is no ground layer to clip to. Check the export step's "
+            "splat and the collider's -B box for this scene.", returncode=3)
     ceiling, seed_y = ground_ceiling(tris, ref, cov, ox, oz, cell, pitch, gap, seek)
 
     c = tris.mean(axis=1)
@@ -183,8 +209,22 @@ def clip(glb: Path, asset: Path, out: Path, pitch: float = 0.35,
     keep = np.isfinite(top) & (c[:, 1] <= top) & (c[:, 1] >= bot)
     print(f"[clip] keeping {keep.sum()} / {len(tris)} tris "
           f"({100 * keep.mean():.0f}%) — dropped {int((~keep).sum())} airborne/buried")
-    if keep.sum() < 1000:
-        raise SystemExit("[clip] almost nothing survived — check --seek/--gap")
+    if keep.sum() < max(20, 0.05 * len(tris)):
+        # The cut kept under 5% of the mesh. Two scenes look like that: a
+        # genuinely sky-crusted aerial shell, where the cut is doing its job, and
+        # a 4 m room whose entire mesh is 954 triangles, where the 1.4 m gap tuned
+        # for an outdoor horizon ate the walls - and this used to abort the
+        # collider step over it. Ship the whole shell instead, which is safe
+        # because tune_collider does not take this on faith: it routes on both
+        # this mesh and the exported heightfield and ships whichever the
+        # autopilot walks further on, so a crust that survived the cut loses on
+        # measurement rather than being guessed away here.
+        rb.warn(f"[clip] the crust cut kept {int(keep.sum())} of {len(tris)} tris "
+                "(under 5%) - that reads as the cut eating the scene, not as a "
+                "scene with no crust. Shipping the mesh UNCLIPPED; re-run with a "
+                f"wider --gap (currently {gap:g}) or a longer --seek ({seek:g}) "
+                "to cut for real.")
+        keep = np.ones(len(tris), bool)
 
     kept = tris[keep]
     write_mesh(kept, out)
@@ -198,6 +238,10 @@ def clip(glb: Path, asset: Path, out: Path, pitch: float = 0.35,
     np.maximum.at(TOP, (ii[m], jj[m]), V[m, 1])
     has = np.isfinite(TOP)
     d = TOP[has] - ref[has]
+    if d.size == 0:
+        print("[clip] no kept vert lands in a heightfield column - the crust "
+              "check is not measurable for this mesh")
+        return out
     print(f"[clip] topmost surface minus ground, over {int(has.sum())} columns: "
           + " ".join(f"p{p}={np.percentile(d, p):+.2f}" for p in (5, 50, 95)))
     print(f"[clip] columns still >3 m above ground: {100 * (d > 3).mean():.1f}% "

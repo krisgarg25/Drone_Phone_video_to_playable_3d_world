@@ -39,9 +39,9 @@ function faceZPoints() {
 }
 const FACE_PTS = faceZPoints();
 
-function observeFace(map, cam) {
+function observeFace(map, cam, normal) {
   let accepted = 0;
-  for (const p of FACE_PTS) if (CM.observe(map, cam, p, FACE_Z_NORMAL) >= 0) accepted++;
+  for (const p of FACE_PTS) if (CM.observe(map, cam, p, normal || FACE_Z_NORMAL) >= 0) accepted++;
   return accepted;
 }
 
@@ -107,13 +107,44 @@ console.log("\n--- THE ASK: revisiting a covered face is recognised ---");
   ok(CM.stateOf(map, map.surfels[0]) === CM.STATE_COVERED,
      "querying a revisited surfel returns COVERED — the phone can now say 'done this'");
 
-  // And the intermediate state must exist, otherwise the HUD has nothing to show.
-  const m2 = CM.createMap();
-  observeFace(m2, ORBIT[0]);
-  observeFace(m2, ORBIT[1]);
-  const st2 = CM.stats(m2);
-  ok(st2.partial > 0 && st2.covered === 0,
-     `two stations reads PARTIAL, not covered (${st2.partial} partial, ${st2.covered} covered)`);
+  // Baseline is what predicts a reconstruction, not how many compass sectors were
+  // visited. Two stops 1.8 m apart at ~2.4 m subtend ~39 deg at the face.
+  const wide = CM.createMap();
+  observeFace(wide, ORBIT[0]);
+  observeFace(wide, ORBIT[1]);
+  const stWide = CM.stats(wide);
+  ok(stWide.covered / stWide.total > 0.85,
+     `two stops with a wide baseline cover the face (${stWide.covered}/${stWide.total})`);
+  const bases = wide.surfels.map(s => s.baseDeg);
+  const minB = Math.min(...bases), maxB = Math.max(...bases);
+  ok(minB > wide.opts.minBaselineDeg && maxB < 80,
+     `every surfel cleared the threshold on real geometry (baseline ${minB.toFixed(0)}-${maxB.toFixed(0)} deg)`);
+
+  // A near-stationary shuffle must NOT finish it, so the HUD still has a middle
+  // state to show. 0.25 m of lateral move subtends only ~13-18 deg at the face.
+  const close = CM.createMap();
+  observeFace(close, { x: 0.0, y: 1.1, z: 2.6 });
+  observeFace(close, { x: 0.25, y: 1.1, z: 2.6 });
+  const stClose = CM.stats(close);
+  ok(stClose.partial > 0 && stClose.covered === 0,
+     `two stops ~15 deg apart read PARTIAL, not covered (${stClose.partial} partial, ${stClose.covered} covered)`);
+
+  // THE WARDROBE CASE. A surface with one accessible side can be swept across its
+  // whole front and still only ever touch two azimuth bins -- under a fixed
+  // 3-bin rule it stays red forever and the app naggingly asks for a viewpoint
+  // that does not exist. 59 deg of real baseline from three stops along its
+  // front is enough, and now says so.
+  const single = CM.createMap();
+  const p1 = { x: 0, y: 1.1, z: 0 };
+  for (const c of [{ x: -0.9, y: 1.1, z: 1.6 }, { x: 0, y: 1.1, z: 1.4 }, { x: 0.9, y: 1.1, z: 1.6 }]) {
+    const L = Math.hypot(c.x - p1.x, c.y - p1.y, c.z - p1.z);
+    CM.observe(single, c, p1, { x: (c.x - p1.x) / L, y: (c.y - p1.y) / L, z: (c.z - p1.z) / L });
+  }
+  const s1 = single.surfels[0];
+  ok(CM.popcount32(s1.goodDirs) < CM.DEFAULTS.minDirsCovered,
+     `the single-sided front only ever touched ${CM.popcount32(s1.goodDirs)} azimuth bins`);
+  ok(CM.stateOf(single, s1) === CM.STATE_COVERED,
+     `...yet ${s1.baseDeg.toFixed(0)} deg of baseline marks it COVERED — no walk-behind required`);
 }
 
 console.log("\n--- a face never looked at stays empty ---");
@@ -196,6 +227,38 @@ console.log("\n--- projection: dots stay pinned to the surface ---");
   CM.project(map, { pos: { x: 1, y: 2, z: 4 }, quat: identity }, W, H, fx, fy);
   ok(snapshot === map.surfels.map(s => `${s.x},${s.y},${s.z}`).join("|"),
      "projection left every world point untouched");
+}
+
+console.log("\n--- a normal supplied pointing away still draws ---");
+{
+  // The capture page estimates one normal per depth-grid cell as
+  // cross(p[right] - p, p[down] - p), and on a wall that points AWAY from the
+  // camera. project() back-face-culls on the normal, so every surfel measured
+  // from depth was invisible -- the reason a real phone's ceiling and floor
+  // never mapped. observe() has to settle the sign on the way in.
+  const AWAY = { x: 0, y: 0, z: -1 };
+  const flipped = CM.createMap();
+  const facing = CM.createMap();
+  ok(observeFace(flipped, STARE, AWAY) === FACE_PTS.length,
+     "the incidence gate does not reject an away-pointing normal");
+
+  for (const c of ORBIT) { observeFace(flipped, c, AWAY); observeFace(facing, c, FACE_Z_NORMAL); }
+
+  const cam = { pos: { x: 0, y: 1.1, z: 3.0 }, quat: { x: 0, y: 0, z: 0, w: 1 } };
+  const dots = CM.project(flipped, cam, 320, 240, 1.2, 1.6);
+  const want = CM.project(facing, cam, 320, 240, 1.2, 1.6);
+  ok(dots.length === want.length && dots.length > FACE_PTS.length * 0.9,
+     `depth-style normals survive the cull (${dots.length} dots, same as ${want.length} well-signed)`);
+  ok(flipped.surfels.every((s) => {
+       const ux = cam.pos.x - s.x, uy = cam.pos.y - s.y, uz = cam.pos.z - s.z;
+       return s.nx * ux + s.ny * uy + s.nz * uz > 0;
+     }), "every stored normal ends up facing the camera that measured it");
+  ok(dots.every((d, i) => Math.abs(d.px - want[i].px) < 1e-9 && Math.abs(d.py - want[i].py) < 1e-9),
+     "and the dots land on exactly the same pixels as the well-signed map");
+
+  const yaw180 = { x: 0, y: 1, z: 0, w: 0 };
+  const behind = CM.project(flipped, { pos: { x: 0, y: 1.1, z: -3.0 }, quat: yaw180 }, 320, 240, 1.2, 1.6);
+  ok(behind.length === 0, `seen from behind the face is still culled (${behind.length} leaked)`);
 }
 
 console.log("\n--- gap report: WHERE do I go back to? ---");
@@ -362,6 +425,151 @@ console.log("\n--- clear() resets everything ---");
      "clear() empties surfels, voxel index, flags and stats");
   observeFace(map, STARE);
   ok(map.surfels.length === FACE_PTS.length, "and the map is reusable straight after");
+}
+
+console.log("\n--- projectPacked() agrees with project() ---");
+{
+  // The packed buffer exists only to stop allocating an object per surfel per
+  // frame. Any drift between the two is invisible on screen and fatal to the
+  // occlusion test, which indexes the depth grid with exactly these coordinates.
+  const map = CM.createMap();
+  scanFace(map);
+  const cam = { pos: { x: 0, y: 1.1, z: 3.0 }, quat: { x: 0, y: 0, z: 0, w: 1 } };
+  const list = CM.project(map, cam, 2, 2, 1.2, 1.6, 0, 0);
+  const buf = new Float32Array(map.surfels.length * CM.PACK_STRIDE);
+  const n = CM.projectPacked(map, cam, 1.2, 1.6, 0, 0, buf);
+  ok(list.length > 0 && n === list.length,
+     `both project the same number of surfels (${n} of ${map.surfels.length})`);
+  let worst = 0, mism = 0;
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i], at = i * CM.PACK_STRIDE;
+    worst = Math.max(worst, Math.abs(buf[at] - d.nx), Math.abs(buf[at + 1] - d.ny));
+    if (Math.abs(buf[at + 2] - d.dist) > 1e-9 || buf[at + 3] !== d.state ||
+        buf[at + 4] !== d.idx) mism++;
+  }
+  // The buffer is float32 by design -- that is what makes it uploadable to the
+  // GPU untouched -- so the agreement is at float32 precision. On a 1080 px frame
+  // that is a few thousandths of a pixel.
+  ok(worst < 1e-7, "the normalized view coordinates agree to float32 precision",
+     `worst ${worst.toExponential(1)} = ${(worst * 1080).toExponential(1)} px`);
+  ok(mism === 0, "range, coverage state and surfel index all match", `${mism} surfels disagreed`);
+  ok(CM.projectPacked(map, cam, 1.2, 1.6, 0, 0, new Float32Array(4)) === -1,
+     "a buffer too small for the map is refused, not overflowed");
+}
+
+console.log("\n--- the room: floor, ceiling, walls ---");
+{
+  const CAM = { x: 0.3, y: 1.5, z: -0.2 };
+  const map = CM.createMap();
+  const room = CM.createRoom();
+  const put = (x, y, z, nx, ny, nz) =>
+    CM.observe(map, CAM, { x, y, z }, { x: nx, y: ny, z: nz });
+
+  // A 5 x 4 m room. Floor faces up, ceiling faces down, two walls face inward.
+  for (let i = 0; i < 60; i++)
+    for (let j = 0; j < 24; j++) put(-2.3 + 4.6 * i / 59, 0.0, -1.9 + 3.8 * j / 23, 0, 1, 0);
+  for (let i = 0; i < 30; i++)
+    for (let j = 0; j < 6; j++) put(-2 + 4 * i / 29, 2.4, -1.5 + 3 * j / 5, 0, -1, 0);
+  for (let i = 0; i < 60; i++)
+    for (let j = 0; j < 10; j++) put(-2.5, 0.15 + 2.1 * j / 9, -2 + 4 * i / 59, 1, 0, 0);
+  for (let i = 0; i < 60; i++)
+    for (let j = 0; j < 10; j++) put(2.5, 0.15 + 2.1 * j / 9, -2 + 4 * i / 59, -1, 0, 0);
+  // A cupboard top at 0.9 m, faced up and stared at harder than the floor was.
+  for (let i = 0; i < 60; i++)
+    for (let j = 0; j < 12; j++) put(-0.6 + 1.2 * i / 59, 0.9, 1.2 + 0.6 * j / 11, 0, 1, 0);
+
+  CM.fitRoom(room, map, CAM, null);
+  const s = CM.roomSummary(room, map);
+  near(s.floorY, 0.0, 0.06, "the floor is the floor, not the cupboard top above it");
+  near(s.ceilingY, 2.4, 0.06, "the ceiling is the surface facing downward at the phone");
+  near(s.height, 2.4, 0.07, "and the room's height is the gap between them");
+  ok(s.walls.length === 2, "two walls, not four halves", "got " + s.walls.length);
+  near(Math.abs(s.walls[0].d), 2.5, 0.15, "a wall sits at its measured distance");
+  near(s.spanA, 5.0, 0.25, "opposite walls give a room width a tape measure can check",
+     "got " + s.spanA);
+  ok(s.source === "measured", "the answer says it was measured here, not handed down by the phone");
+  ok(s.ceilingSeen < 0.35 && s.floorSeen > 0.6,
+     "the barely-seen ceiling and the worked-over floor read differently",
+     "ceiling " + s.ceilingSeen.toFixed(2) + ", floor " + s.floorSeen.toFixed(2));
+
+  // An absent reference height is not a height of zero. `isFinite(null)` is true
+  // in JS — Number(null) is 0 — so the naive check judged every surface against
+  // the floor plane itself until the take's 30th frame.
+  const roomNull = CM.createRoom();
+  CM.fitRoom(roomNull, map, CAM, null, null);
+  const sn = CM.roomSummary(roomNull, map);
+  near(sn.floorY, 0.0, 0.06, "no reference height falls back to the camera, not to zero");
+  near(sn.ceilingY, 2.4, 0.06, "and the ceiling is still the ceiling without one");
+
+  // An unscanned ceiling must be reported missing, not invented from wall tops.
+  const map2 = CM.createMap(), room2 = CM.createRoom();
+  for (let i = 0; i < 60; i++)
+    for (let j = 0; j < 20; j++)
+      CM.observe(map2, CAM, { x: -2.3 + 4.6 * i / 59, y: 0, z: -1.9 + 3.8 * j / 19 },
+                 { x: 0, y: 1, z: 0 });
+  for (let i = 0; i < 40; i++)
+    for (let j = 0; j < 10; j++)
+      CM.observe(map2, CAM, { x: -2.5, y: 0.2 + 2 * j / 9, z: -2 + 4 * i / 39 },
+                 { x: 1, y: 0, z: 0 });
+  CM.fitRoom(room2, map2, CAM, null);
+  const t = CM.roomSummary(room2, map2);
+  ok(t.floorY !== null, "the floor is still found with no ceiling in the take");
+  ok(t.ceilingY === null, "and no ceiling is claimed when nothing above was scanned");
+  ok(t.height === null, "so there is no room height to hand on to the rebuild");
+
+  // What the phone says takes charge, and both sources are named in the answer.
+  // The floor polygon spans the room; the ceiling polygon only covers the strip
+  // the phone happened to see, which is what makes the seen percentage mean
+  // something — a phone that measured the whole ceiling has genuinely seen it.
+  CM.setPhonePlanes(room, [
+    { kind: "floor", y: 0.02, area: 20, nx: 0, nz: 1, d: 0, deg: 0, span: 5 },
+    { kind: "ceiling", y: 2.52, area: 6, nx: 0, nz: 1, d: 0, deg: 0, span: 5 }
+  ], true);
+  const u = CM.roomSummary(room, map);
+  near(u.floorY, 0.02, 1e-9, "a phone-measured floor replaces this page's estimate");
+  near(u.height, 2.5, 1e-9, "and so does its ceiling, giving the gap between them");
+  ok(u.source === "both", "the summary reports that both sources contributed");
+  near(u.ceilingSeen, 0.3, 0.02, "a ceiling the phone only partly measured still reads as unfinished",
+       "got " + u.ceilingSeen.toFixed(2));
+}
+
+console.log("\n--- the pairing taken from a real take (videos/test1) ---");
+{
+  // Straight out of his handset's data_room.json: two level surfaces under the
+  // feet (a step down at -0.54 and a raised area at 0.20) and four ceiling
+  // patches. Pairing the biggest floor with the biggest ceiling reported a
+  // 1.60 m room, which is what made the ceiling look un-mappable.
+  const lv = (y, area) => ({ kind: "level", y, area, nx: 0, nz: 1, d: 0, deg: 0, span: 3 });
+  const room = CM.createRoom();
+  CM.setPhonePlanes(room, [lv(-0.539, 3.49), lv(0.198, 4.17),
+                           lv(1.790, 1.96), lv(1.795, 4.65),
+                           lv(2.054, 1.47), lv(2.125, 0.72)], true, 1.10);
+  const u = CM.roomSummary(room, CM.createMap());
+  near(u.floorY, -0.539, 0.02, "the lowest level under the phone is the floor");
+  near(u.ceilingY, 1.79, 0.03, "the ceiling is the level with the most evidence over it");
+  near(u.height, 2.33, 0.06, "and the room is 2.33 m tall, not 1.60 m (" + u.height.toFixed(2) + ")");
+  ok(u.height >= room.opts.minRoomH, "a published room always has real headroom in it");
+
+  // The phone's plane set has no guaranteed iteration order, so an answer that
+  // depends on it would flicker between two readings on screen.
+  const again = CM.createRoom();
+  CM.setPhonePlanes(again, [lv(2.125, 0.72), lv(1.790, 1.96), lv(0.198, 4.17),
+                            lv(2.054, 1.47), lv(-0.539, 3.49), lv(1.795, 4.65)],
+                    true, 1.10);
+  const u2 = CM.roomSummary(again, CM.createMap());
+  ok(Math.abs(u2.height - u.height) < 1e-9 && Math.abs(u2.floorY - u.floorY) < 1e-9,
+     "the same levels in any order give the same room");
+
+  const one = CM.createRoom();
+  CM.setPhonePlanes(one, [lv(0.74, 5)], false, 1.10);   // a table, no ceiling anywhere
+  const t = CM.roomSummary(one, CM.createMap());
+  near(t.floorY, 0.74, 1e-9, "a lone level below the phone is taken for a floor");
+  ok(t.ceilingY === null && t.height === null, "and no ceiling is invented beside it");
+
+  const low = CM.createRoom();
+  CM.setPhonePlanes(low, [lv(0, 9), lv(0.6, 8)], false, 1.10);
+  const l = CM.roomSummary(low, CM.createMap());
+  ok(l.ceilingY === null, "two levels 0.6 m apart are a step, not a room");
 }
 
 console.log(`\n${fail === 0 ? "ALL " : ""}${pass} COVERAGE-MAP CHECKS PASSED${fail ? `, ${fail} FAILED` : ""}\n`);

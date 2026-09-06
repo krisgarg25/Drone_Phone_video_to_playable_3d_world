@@ -7,13 +7,16 @@ save walk_log.json + walk.webm. Eval renders are NOT browser-based anymore;
 produce them offline with scripts/render_evals_offline.py instead.
 """
 import argparse
-import json
+import math
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import robust as rb  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -88,41 +91,76 @@ def run_walk(asset: Path, out: Path, page_file: str = "pc.html"):
     frames = out / "frames"
     if frames.exists():
         for f in frames.glob("*.jpg"):
-            f.unlink()
+            try:
+                f.unlink()
+            except OSError as e:
+                # A browser that died with the file handle open is not a reason
+                # to lose the whole walk test; the numbered shots are overwritten.
+                rb.warn(f"[drive] keeping old {f.name}: {type(e).__name__}: {e}")
     frames.mkdir(exist_ok=True)
-    with sync_playwright() as pw:
-        server = start_server()
-        try:
-            rel_asset = asset.resolve().relative_to(ROOT.resolve()).as_posix()
-        except ValueError:
-            rel_asset = asset.as_posix()
-        url = (f"http://127.0.0.1:{PORT}/viewer/{page_file}?asset=/{rel_asset.lstrip('/')}"
-               f"&auto=1")
-        browser, ctx, page = open_page(pw, headless=True, record_dir=out)
-        page.goto(url)
-        wait_ready(page)
-        t0 = time.time()
-        shot_n = 0
-        last_phase = None
-        while time.time() - t0 < 240:
-            phase = page.evaluate("window.__walk.phase")
-            if phase != last_phase:
-                print(f"[drive] phase -> {phase} (t={time.time()-t0:.0f}s)")
-                last_phase = phase
-            page.screenshot(path=str(frames / f"{shot_n:04d}.jpg"),
-                            type="jpeg", quality=80)
-            shot_n += 1
-            if phase == "done":
-                break
-            page.wait_for_timeout(600)
-        log = page.evaluate("window.__walk")
-        (out / "walk_log.json").write_text(json.dumps(log, indent=1), encoding="utf-8")
-        dist = log["walked"]
-        print(f"[drive] walk finished: phase={log['phase']} dist={dist:.1f}m "
-              f"falls={log['violations']} samples={len(log['samples'])}")
-        video = page.video
-        video_path = video.path() if video else None
-        browser.close()  # flushes/closes the recorded webm
+    server = None
+    try:
+        with sync_playwright() as pw:
+            server = start_server()
+            try:
+                rel_asset = asset.resolve().relative_to(ROOT.resolve()).as_posix()
+            except ValueError:
+                rel_asset = asset.as_posix()
+            url = (f"http://127.0.0.1:{PORT}/viewer/{page_file}"
+                   f"?asset=/{rel_asset.lstrip('/')}&auto=1")
+            browser, ctx, page = open_page(pw, headless=True, record_dir=out)
+            page.goto(url)
+            wait_ready(page)
+            t0 = time.time()
+            shot_n = 0
+            last_phase = None
+            while time.time() - t0 < 240:
+                phase = page.evaluate("window.__walk.phase")
+                if phase != last_phase:
+                    print(f"[drive] phase -> {phase} (t={time.time()-t0:.0f}s)")
+                    last_phase = phase
+                shot = frames / f"{shot_n:04d}.jpg"
+                try:
+                    page.screenshot(path=str(shot), type="jpeg", quality=80)
+                except OSError as e:
+                    # A few hundred shots a run into the folder the README tells
+                    # people to open: one the OS will not hand over is one frame.
+                    rb.warn(f"[drive] {shot.name}: {type(e).__name__} "
+                            f"({e.strerror}) - frame skipped")
+                shot_n += 1
+                if phase == "done":
+                    break
+                page.wait_for_timeout(600)
+            log = page.evaluate("window.__walk")
+            if not isinstance(log, dict) or "walked" not in log:
+                rb.die(rb.FAILED,
+                       f"[drive] window.__walk reported no walk "
+                       f"({str(log)[:120]!r}) - the autopilot never started; "
+                       f"{shot_n} screenshots in {frames} show what the page did")
+            rb.write_json(out / "walk_log.json", log, indent=1)
+            dist = log["walked"] if rb.finite(log.get("walked")) else 0.0
+            print(f"[drive] walk finished: phase={log.get('phase')} "
+                  f"dist={dist:.1f}m falls={log.get('violations', 0)} "
+                  f"samples={len(log.get('samples') or [])}")
+            route = [s for s in (log.get("samples") or [])
+                     if isinstance(s, list) and len(s) >= 7]
+            if route:
+                path_m = sum(math.hypot(b[2] - a[2], b[4] - a[4])
+                             for a, b in zip(route, route[1:]))
+                air = sum(1 for s in route if not s[5])
+                print(f"[drive] route: {path_m:.1f} m over "
+                      f"{route[-1][0]:.0f} s, {air} of {len(route)} airborne")
+                if len(route) > 1 and dist > 2.0 and path_m < 0.5 * dist:
+                    rb.warn(f"[drive] the walk reports {dist:.1f} m but the "
+                            f"sampled route only covers {path_m:.1f} m - the "
+                            "distance accumulated without travelling it "
+                            "(pinned against a collider, or jittering in place)")
+            video = page.video
+            video_path = video.path() if video else None
+            browser.close()  # flushes/closes the recorded webm
+    finally:
+        # A leaked server is worse than a slow one: the next run finds port 8137
+        # occupied, reuses it, and drives whatever that process is serving.
         if server:
             server.terminate()
 

@@ -70,6 +70,40 @@ const V = (v) => (v === undefined ? "undefined" : v === null ? "null" : String(v
 const yn = (b) => (b ? "YES" : "no");
 const pct = (x) => (isFinite(x) ? (x * 100).toFixed(0) + "%" : "—");
 
+/* The phone's distance-image-to-view mapping, reported every way it can be read.
+   It arrives as a DOMMatrix whose `matrix` member Chromium does not implement at
+   all, and whose 2D translation lives in m41/m42 rather than the m13/m23 the WebXR
+   samples read -- so a report that asks one shape questions prints "absent" for a
+   phone that answered. Each spelling on its own line, then the verdict. */
+function reportAffine(t) {
+  if (!t) return "ABSENT (the phone gave no mapping object)";
+  const f = (n) => (Number.isFinite(n) ? n.toFixed(3) : V(n));
+  const L = [];
+  if (Number.isFinite(t.a)) L.push("a,b,c,d,e,f = [" + [t.a, t.b, t.c, t.d, t.e, t.f].map(f).join(", ") + "]");
+  if (Number.isFinite(t.m11)) L.push("m11,m12,m21,m22,m41,m42 = [" + [t.m11, t.m12, t.m21, t.m22, t.m41, t.m42].map(f).join(", ") + "]");
+  if (Number.isFinite(t.m13)) L.push("m13,m23 = [" + f(t.m13) + ", " + f(t.m23) + "]");
+  if (t.matrix) L.push("matrix = [" + Array.prototype.slice.call(t.matrix, 0, 8).map(f).join(", ") + " ...]");
+  const six = affineSix(t);
+  const ident = six && Math.abs(six[0] - 1) < 1e-4 && Math.abs(six[4] - 1) < 1e-4 &&
+                Math.abs(six[1]) < 1e-4 && Math.abs(six[2]) < 1e-4 && Math.abs(six[3]) < 1e-4 &&
+                Math.abs(six[5]) < 1e-4;
+  return "\n      " + (L.length ? L.join("\n      ") : "no readable members: " + V(t)) +
+    "\n      as used: [" + (six ? six.map(f).join(", ") : "UNREADABLE") + "]  " +
+    (six ? (ident ? "IDENTITY -- the distance image already lines up with the view"
+                  : "NOT identity -- the two images are related by a real transform") : "");
+}
+
+/* The same six numbers in the one order the projection maths wants them:
+   x' = a0*x + a1*y + a2, y' = a3*x + a4*y + a5. */
+function affineSix(t) {
+  if (!t) return null;
+  if (Number.isFinite(t.a) && Number.isFinite(t.b)) return [t.a, t.c, t.e, t.b, t.d, t.f];
+  if (Number.isFinite(t.m11) && Number.isFinite(t.m41)) return [t.m11, t.m21, t.m41, t.m12, t.m22, t.m42];
+  if (t.matrix && t.matrix.length >= 10) return [t.matrix[0], t.matrix[1], t.matrix[3], t.matrix[4], t.matrix[5], t.matrix[7]];
+  if (Number.isFinite(t.m00)) return [t.m00, t.m01, t.m02, t.m10, t.m11, t.m12];
+  return null;
+}
+
 /* ---------------- step 1: automatic ---------------- */
 async function runAuto() {
   document.getElementById("b-auto").disabled = true;
@@ -78,6 +112,15 @@ async function runAuto() {
   log("UA        : " + navigator.userAgent);
   log("secureCtx : " + yn(isSecureContext) + "  (" + location.protocol + "//" + location.host + ")");
   log("cores/ram : " + navigator.hardwareConcurrency + " cores, " + V(navigator.deviceMemory) + " GB");
+  // Which way up the phone is held decides the shape of the take and of every
+  // distance projected into it, so a report without it cannot be compared with
+  // one from the same phone held differently.
+  log("screen    : " + innerWidth + "x" + innerHeight + " @ " + (devicePixelRatio || 1) +
+      "x -> " + (innerWidth > innerHeight ? "HORIZONTAL" : "vertical"));
+  const so = (typeof screen !== "undefined") && screen.orientation;
+  log("orient    : " + (so ? V(so.type) + " angle=" + V(so.angle) +
+                         " canLock=" + yn(typeof so.lock === "function")
+                       : "no screen.orientation API"));
   try {
     const c = document.createElement("canvas");
     const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
@@ -155,6 +198,40 @@ async function runAuto() {
     log("cap.range: width=" + V(cap.width) + " height=" + V(cap.height) + " frameRate=" + V(cap.frameRate));
     const fancy = ["torch", "zoom", "focalLength", "exposureMode", "exposureCompensation", "focusMode", "whiteBalanceMode", "colorTemperature"];
     log("advanced : " + fancy.filter(k => k in cap).map(k => k + "=" + JSON.stringify(cap[k])).join(", ") || "advanced : (none exposed)");
+    // Every lens the phone names. Chrome's labels are opaque ("camera2 0, facing
+    // back") and a deviceId only means something once permission is granted, so
+    // this list is the evidence for whether a wide lens is reachable at all here.
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const vids = devs.filter(d => d.kind === "videoinput");
+    log("lenses   : " + vids.length + " videoinput listed");
+    vids.forEach((d, i) => log("  [" + i + "] " + (d.label || "(no label)") +
+      "  deviceId=" + String(d.deviceId || "-").slice(0, 12) + " group=" + String(d.groupId || "-").slice(0, 8)));
+    // The zoom dial is the only lens control Android Chrome has, and on a
+    // multi-camera phone its MINIMUM is the ultrawide. Asking for it and reading
+    // back what happened is the whole test: an advertised range and an honoured
+    // setting are different facts, and a wide lens nobody can reach from a page
+    // is the answer that matters.
+    const sup = navigator.mediaDevices.getSupportedConstraints ? navigator.mediaDevices.getSupportedConstraints() : {};
+    log("zoom dial: supported=" + (sup.zoom ? "yes" : "no") +
+        (cap.zoom && Number.isFinite(cap.zoom.min)
+          ? " range=" + cap.zoom.min + "-" + cap.zoom.max + " step=" + V(cap.zoom.step)
+          : " range=(not exposed)"));
+    if (cap.zoom && Number.isFinite(cap.zoom.min) && cap.zoom.min < 1) {
+      const before = tr[0].getSettings();
+      try {
+        await tr[0].applyConstraints({ advanced: [{ zoom: cap.zoom.min }] });
+        const after = tr[0].getSettings();
+        log("  asked zoom=" + cap.zoom.min + " -> settings say " + V(after.zoom) +
+            ", image " + V(before.width) + "x" + V(before.height) + " -> " +
+            V(after.width) + "x" + V(after.height) +
+            (after.zoom === cap.zoom.min ? "   WIDEST HONORED" : "   IGNORED"));
+      } catch (e) {
+        log("  asked zoom=" + cap.zoom.min + " -> THREW " + e.name +
+            "   (dial advertised, setting refused)");
+      }
+    } else {
+      log("  no zoom below 1.0 offered - the widest lens is not reachable from a page here");
+    }
     // measured fps
     const v = document.createElement("video"); v.srcObject = st; v.playsInline = true; v.muted = true;
     await v.play();
@@ -179,7 +256,8 @@ async function runAr() {
   if (!navigator.xr) { log("\n--- AR TEST ---\nnavigator.xr absent: cannot run. See WebXR section above."); btn.disabled = false; return; }
 
   const need = ["local"];
-  const opt = ["local-floor", "dom-overlay", "depth-sensing", "camera-access", "hit-test", "anchors"];
+  const opt = ["local-floor", "dom-overlay", "depth-sensing", "camera-access", "hit-test",
+               "anchors", "plane-detection"];
   const init = { optionalFeatures: opt, domOverlay: { root: document.getElementById("hud") },
                  depthSensing: { usagePreference: ["cpu-optimized"], dataFormatPreference: ["luminance-alpha", "float32"] } };
   let session = null;
@@ -211,6 +289,18 @@ async function runAr() {
   log("reference space: " + refName);
   log("dom-overlay granted: " + yn((session.enabledFeatures || []).includes("dom-overlay")) +
       "  (if no, the screen may look black while the test runs — that is normal, keep walking)");
+  // Step 1 asks whether a session WOULD start with plane detection; this is
+  // whether it actually came with it, and whether it then hands anything back.
+  const planesOn = (session.enabledFeatures || []).includes("plane-detection");
+  log("plane-detection granted: " + yn(planesOn));
+  if (planesOn && typeof session.initiateRoomCapture === "function") {
+    // ARCore's room update is the call that goes looking for the whole box.
+    Promise.resolve(session.initiateRoomCapture()).then(
+      () => log("initiateRoomCapture: accepted"),
+      (e) => log("initiateRoomCapture: refused — " + (e && e.name)));
+  } else if (planesOn) {
+    log("initiateRoomCapture: NOT PRESENT on this build");
+  }
 
   let binding = null, camImgOK = false;
   try { binding = new XRWebGLBinding(session, gl); } catch (e) { log("XRWebGLBinding: " + e.message); }
@@ -219,6 +309,10 @@ async function runAr() {
   let rawValid = 0, metaSeen = false, dists = [], camSize = "", camErr = "";
   let xs = [], ys = [], zs = [], fpsMax = 0, camTry = 0;
   let poseTimes = [];
+  // Whether the API exists, and whether it ever says anything, are separate
+  // answers: a build can expose an empty set forever.
+  let planeAPI = false, planeFrames = 0;
+  const planeSeen = new Set(), planeDesc = [];
 
   const done = (why) => {
     hud.style.display = "none";
@@ -240,8 +334,12 @@ async function runAr() {
           dists[dists.length - 1].toFixed(2) + " m" : ""));
     log("camera image: " + (camImgOK ? "YES " + camSize + " (after " + camTry + " tries)"
                                       : "no — " + (camErr || "frame.getCamera() returned nothing")));
+    log("planes: API " + (planeAPI ? "present" : "ABSENT") + ", frames with a plane " +
+        planeFrames + "/" + frames + ", distinct planes " + planeSeen.size +
+        (planeDesc.length ? "  [" + planeDesc.join(", ") + "]" : ""));
     const real6dof = path > 1.2 && emul / Math.max(1, frames) < 0.5;
-    window.__probe = { real6dof, hasDepth: depthUsable, camImgOK, refName, fps: frames / secs };
+    window.__probe = { real6dof, hasDepth: depthUsable, camImgOK, refName, fps: frames / secs,
+                       planes: planeSeen.size, planeAPI: planeAPI };
     log("VERDICT INPUTS: real 6-DoF=" + yn(real6dof) + "  usable depth=" + yn(depthUsable) +
         "  cameraImage=" + yn(camImgOK));
     try { session.end(); } catch (e) {}
@@ -254,6 +352,17 @@ async function runAr() {
     document.getElementById("hud-n").textContent = Math.max(0, Math.ceil((12000 - el) / 1000));
     document.getElementById("hud-msg").textContent = el < 3000 ? "STAND STILL" : "walk 3 steps left / right, crouch";
     frames++;
+    if (frame.detectedPlanes) {
+      planeAPI = true;
+      const dp = frame.detectedPlanes;
+      if (dp.size) planeFrames++;
+      if (typeof dp.forEach === "function") dp.forEach((pl) => {
+        if (planeSeen.has(pl)) return;
+        planeSeen.add(pl);
+        planeDesc.push((pl.semanticLabel || pl.orientation || "unnamed") +
+                       (pl.polygon ? "×" + pl.polygon.length + "pts" : ""));
+      });
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -275,10 +384,45 @@ async function runAr() {
         depthFrames++; dw = info.width; dh = info.height;
         if (!metaSeen) {
           metaSeen = true;
-          log("depth obj: type=" + info.type + " " + info.width + "x" + info.height +
-              " rawValueToMeters=" + info.rawValueToMeters +
-              " depthSpace=" + (info.depthSpace === ref ? "refSpace" : (info.depthSpace ? "other" : "none")) +
-              " data=" + (info.data ? info.data.constructor.name : "none"));
+          // Settle the coordinate space on THIS device instead of arguing about
+          // the spec: getDepthInMeters takes normalized view coords and must
+          // throw RangeError outside 0..1, so a pixel-index call proves it by
+          // failing. Either result is informative; a silent 0 is not.
+          const fmtM = (v) => (typeof v === "number"
+            ? (v > 0 ? v.toFixed(2) + " m" : "0 (invalid)") : String(v));
+          const vpr = (layer.getViewport && layer.getViewport(view)) || { width: 0, height: 0 };
+          const vpNow = { w: vpr.width, h: vpr.height };
+          let vNorm, vPix;
+          try { vNorm = info.getDepthInMeters(0.5, 0.5); } catch (e) { vNorm = "THREW " + e.name; }
+          try { vPix = info.getDepthInMeters(Math.floor(dw / 2), Math.floor(dh / 2)); }
+          catch (e) { vPix = "THREW " + e.name; }
+          const nv = info.normDepthBufferFromNormView;
+          const P = view.projectionMatrix;
+          log("depth object: " + dw + "x" + dh + "  rawValueToMeters=" + info.rawValueToMeters +
+              "  data=" + (info.data ? info.data.constructor.name : "none"));
+          log("  getDepthInMeters(0.5,0.5)      -> " + fmtM(vNorm));
+          log("  getDepthInMeters(" + Math.floor(dw / 2) + "," + Math.floor(dh / 2) + ") -> " + fmtM(vPix) +
+              "     <- a RangeError here proves normalized VIEW coords");
+          log("  normDepthBufferFromNormView   : " + reportAffine(nv));
+          log("  projection P[0]=" + P[0].toFixed(3) + " P[5]=" + P[5].toFixed(3) +
+              " (P5/P0=" + (P[5] / P[0]).toFixed(3) + ")  viewport " + vpNow.w + "x" + vpNow.h +
+              " (" + (vpNow.w / vpNow.h).toFixed(3) + ")");
+          // The matrix is normalized, so P[0] and P[5] are 1/tan(half-FOV) per
+          // axis and the angle needs no pixel size. This is the only readout of
+          // which lens an AR scan records through, because WebXR offers no way to
+          // ask for one: XRCamera is width and height and nothing else.
+          const fovH = 2 * Math.atan(1 / Math.abs(P[0])) * 180 / Math.PI;
+          const fovV = 2 * Math.atan(1 / Math.abs(P[5])) * 180 / Math.PI;
+          log("  the AR lens sees " + fovH.toFixed(0) + " deg across x " + fovV.toFixed(0) +
+              " deg up - the phone's pick, not ours" +
+              (fovH < 55 ? "   NARROW: each frame carries little of the room" : ""));
+          // The three shapes have to be reconciled for a coverage dot to land on
+          // the wall it was measured from, and this is the only place the phone is
+          // asked for all three at once.
+          log("  hold " + (window.screen && screen.orientation ? V(screen.orientation.type) : "?") +
+              "  viewport " + (vpNow.w / vpNow.h).toFixed(3) +
+              "  distance image " + (dw / dh).toFixed(3) +
+              (camSize ? "  camera image " + camSize : ""));
         }
         // getDepthInMeters takes NORMALIZED coords (0..1), not pixel indices.
         const step = 8;

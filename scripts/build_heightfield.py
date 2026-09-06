@@ -18,10 +18,15 @@ Library use: see export_viewer_assets.py.
 """
 import argparse
 import json
+import math
+import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import robust as rb  # noqa: E402
 
 try:  # optional, nicer PLY handling incl. binary
     from plyfile import PlyData
@@ -167,16 +172,79 @@ def cull_floaters(P: np.ndarray, cell_frac: float = 0.006, min_nbr: int = 12,
     return keep
 
 
+def camera_ground(H: np.ndarray, cover: np.ndarray, cell: float, lo: np.ndarray,
+                  centres: np.ndarray, agl: float, radius: float = 0.75,
+                  below: float = 0.30, above: float = 0.90):
+    """Ground the take itself measured, not inferred from what the cloud shows.
+
+    The camera was held `agl` metres above the floor it filmed, so every camera
+    centre is a direct sample of that floor at its own XZ. Within `radius` of the
+    path, decided once per cell from the average of every claim on it:
+
+      cover == 0   the surface there is diffused guesswork -> takes the measurement
+      H > g+below  a seat back or table between camera and floor -> lowered to g
+      |H - g| <= below   agreement -> confirmed where it stands
+      H < g-below  genuinely lower than the measurement -> left alone
+
+    Averaging the claims and deciding in one pass matters: applying camera by
+    camera to a running array lets a later pose undo an earlier one and drifts the
+    floor upward past the tolerance. A cell the cloud measured is never raised; a
+    cell with no support is diffused guesswork and takes the pose measurement
+    outright, up or down. Coverage 2 marks pose-measured ground.
+    """
+    nz, nx = H.shape
+    claim = np.zeros((nz, nx))
+    cnt = np.zeros((nz, nx), np.int32)
+    r = max(1, int(np.ceil(radius / cell)))
+    for cx, cy, cz in centres:
+        g = float(cy) - agl
+        ci = int(np.floor((cz - lo[2]) / cell))
+        cj = int(np.floor((cx - lo[0]) / cell))
+        a0, a1 = max(0, ci - r), min(nz, ci + r + 1)
+        b0, b1 = max(0, cj - r), min(nx, cj + r + 1)
+        if a0 >= a1 or b0 >= b1:
+            continue
+        ii, jj = np.mgrid[a0:a1, b0:b1]
+        inside = ((ii - ci) ** 2 + (jj - cj) ** 2) <= r * r
+        claim[a0:a1, b0:b1] += np.where(inside, g, 0.0)
+        cnt[a0:a1, b0:b1] += inside.astype(np.int32)
+    g = np.where(cnt > 0, claim / np.maximum(cnt, 1), np.nan)
+    have = np.isfinite(g)
+    fin = np.isfinite(H)
+    invented = have & (cover == 0)
+    furn = have & (cover > 0) & fin & (H > g + below) & (H <= g + above)
+    agree = have & (cover > 0) & fin & (H >= g - below) & (H <= g + below)
+    H2 = np.where(invented | furn, g, H)
+    # Only cells whose height THIS step wrote are relabelled. `cover` said 1 for a
+    # cell the gaussians measured, and the camera agreeing with a measurement does
+    # not turn it into a guess — marking those 2 too made the mask understate how
+    # much of the floor is real and starved anything that trusts it.
+    cov2 = cover.copy()
+    cov2[invented] = 2
+    cov2[furn] = 2
+    print(f"[heightfield] pose-measured ground: {int(have.sum())} cells, "
+          f"{int(cnt[have].mean()) if have.any() else 0} claims/cell, "
+          f"level {np.nanmean(g[have]):+.2f} m")
+    return (H2, cov2, int(invented.sum()), int(agree.sum()), int(furn.sum()))
+
+
 def rasterize_ground(pts: np.ndarray, res: int = 320, percentile: float = 20.0,
                      min_support: int = 4, cell: float | None = None,
-                     per_cell: float = 10.0):
+                     per_cell: float = 10.0, min_samples: int = 40):
     """Rasterize to XZ grid; returns (H, lo, cell, cover). pts must be up=+Y.
 
+    `min_samples` is how many gaussians a column needs before its own percentile
+    is trusted. A p20 of ten samples is the second-lowest one, which is noise on
+    the surface a capsule walks on, so sparser columns are pooled with their
+    neighbours up to a one metre window.
+
     `cover` is a uint8 mask: 1 where the cell had >= min_support real gaussians,
-    0 where its height is diffused guesswork. Downstream consumers MUST honour
+    0 where its height is diffused guesswork, and 2 where camera_ground wrote the
+    floor from the height the camera was held at. Downstream consumers MUST honour
     it — the viewer's ground underlay used to be drawn over the whole grid, and
     since only ~4% of cells had real support the result was a big white sheet
-    covering the actual reconstruction.
+    covering the actual reconstruction. A 2 is a floor somebody stood on, but it
+    is a floor the render does not show, so anything a player will walk on wants 1.
 
     Cell size defaults to whatever the gaussian density can actually support
     (~`per_cell` gaussians per cell) rather than a fixed `res`. A constant res is
@@ -206,11 +274,41 @@ def rasterize_ground(pts: np.ndarray, res: int = 320, percentile: float = 20.0,
     ends = np.searchsorted(flat_s, np.arange(nx * nz), side="right")
     H = np.full(nx * nz, np.nan)
     counts = (ends - starts).astype(float)
-    # vectorized percentile per cell via sorting within cells is overkill;
-    # loop is fine at these sizes
+    # A per-cell percentile of a handful of samples is the second-lowest one, so
+    # the field jitters by decimetres from cell to cell and the collider stamped
+    # from it reads as sawteeth: measured on the auditorium the shipped estimate
+    # steps 0.186 m between neighbouring 0.25 m cells (37 degrees) on a floor.
+    # Pool the column with its neighbours until the sample count is usable, but
+    # never widen the window past a metre of ground — beyond that it is blending
+    # separate surfaces, not averaging noise.
+    med = float(np.median(counts[counts > 0])) if (counts > 0).any() else 0.0
+    rad = 0
+    if med < min_samples:
+        rad = int(math.ceil(math.sqrt(min_samples / max(med, 0.5)) - 1) / 2)
+        rad = max(1, min(rad, int((1.0 / cell - 1) / 2)))
+    if rad:
+        print(f"[heightfield] {med:.0f} samples/cell median is too few for a stable "
+              f"p{percentile:.0f}: pooling each column with its "
+              f"{2 * rad + 1}x{2 * rad + 1} cell neighbourhood "
+              f"({(2 * rad + 1) * cell:.2f} m window)")
+    else:
+        print(f"[heightfield] {med:.0f} samples/cell median: no pooling needed")
     for k in np.nonzero(counts > 0)[0]:
-        a, b = starts[k], ends[k]
-        H[k] = np.percentile(ys_s[a:b], percentile)
+        ci, cj = divmod(k, nx)
+        pieces = []
+        for di in range(-rad, rad + 1):
+            a = ci + di
+            if not 0 <= a < nz:
+                continue
+            for dj in range(-rad, rad + 1):
+                b = cj + dj
+                if not 0 <= b < nx:
+                    continue
+                q = a * nx + b
+                if ends[q] > starts[q]:
+                    pieces.append(ys_s[starts[q]:ends[q]])
+        h = pieces[0] if len(pieces) == 1 else np.concatenate(pieces)
+        H[k] = np.percentile(h, percentile)
     H = H.reshape(nz, nx)
     cover = (counts.reshape(nz, nx) >= min_support).astype(np.uint8)
     # a supported cell needs supported company — lone cells are splat specks
@@ -265,7 +363,11 @@ def save_heightfield(H: np.ndarray, lo: np.ndarray, cell: float, R: np.ndarray,
 
     hmin, hmax = np.percentile(H, 2), np.percentile(H, 98)
     img = np.clip((H - hmin) / max(hmax - hmin, 1e-9), 0, 1)
-    Image.fromarray((img * 255).astype(np.uint8)).save(out_dir / "heightfield_preview.png")
+    # Decorative. heights.f32 above it is what every later step reads, so a
+    # viewer holding this png open must not cost the whole heightfield.
+    if not rb.save_image(Image.fromarray((img * 255).astype(np.uint8)),
+                         out_dir / "heightfield_preview.png"):
+        rb.warn("heightfield_preview.png could not be written - skipped")
 
     cfg = {
         "origin_xz": [float(lo[0]), float(lo[2])],

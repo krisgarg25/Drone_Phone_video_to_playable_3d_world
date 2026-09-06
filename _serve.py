@@ -9,6 +9,8 @@ import ssl
 import subprocess
 import sys
 import threading
+import time
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -22,6 +24,8 @@ for s in (sys.stdout, sys.stderr):
 active_process = None
 active_job_info = {"status": "idle", "scene": "", "step": "", "logs": []}
 process_lock = threading.Lock()
+port = 8137
+https_port = 8138
 
 
 def get_local_ip():
@@ -49,6 +53,147 @@ def safe_scene_name(name: str, fallback: str = "mobile_capture") -> str:
     cleaned = re.sub(r"\.{2,}", ".", cleaned)
     cleaned = re.sub(r"_{2,}", "_", cleaned).strip("._-")[:64]
     return cleaned or fallback
+
+
+# ---------------------------------------------------------------------------
+# What is on disk. The dashboard's scene list and its terminal both read the
+# runner's own artifacts instead of this server's memory, so a run started from
+# a plain terminal shows up exactly like one the dashboard started.
+# ---------------------------------------------------------------------------
+# The runner's own verdict, written as the last line of each attempt. `[exit N]`
+# is the legacy form and still has to parse, because logs from older runs are on
+# disk and the dashboard reads whatever is there, not what it remembers.
+FOOTER_OK = re.compile(r"^\[ok(?: (\d+))?\]\s+([0-9.]+)s\s*$")
+FOOTER_EXIT = re.compile(r"^\[exit (-?\d+)(?: (\S+))?\]\s+([0-9.]+)s\s*$")
+RUNNING_WINDOW_S = 120.0
+
+
+def _log_files(logs_dir: Path) -> list:
+    if not logs_dir.is_dir():
+        return []
+    return sorted((p for p in logs_dir.iterdir()
+                   if p.is_file() and p.suffix == ".log" and p.name[:2].isdigit()),
+                  key=lambda p: p.name)
+
+
+def _step_row(log: Path, now: float) -> dict:
+    stem = log.stem
+    row = {"i": int(stem[:2]), "name": stem.split("-", 1)[1] if "-" in stem else stem,
+           "status": "pending", "secs": None, "exit": None,
+           "attempts": None, "kind": None}
+    try:
+        with log.open("rb") as fh:
+            fh.seek(0, io.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 256))
+            tail = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return row
+    last = [ln for ln in tail.splitlines() if ln.strip()]
+    line = last[-1] if last else ""
+    m = FOOTER_OK.match(line)
+    if m:
+        row["exit"] = 0
+        row["attempts"] = int(m.group(1) or 1)
+        row["secs"] = float(m.group(2))
+        # A step that only passed on its second or third rung is done, but the
+        # rung is the interesting part - hiding it would report a clean pass on a
+        # scene that took a fallback to survive.
+        row["status"] = "recovered" if row["attempts"] > 1 else "done"
+    else:
+        m = FOOTER_EXIT.match(line)
+        if m:
+            row["exit"] = int(m.group(1))
+            row["kind"] = m.group(2)
+            row["secs"] = float(m.group(3))
+            row["status"] = "done" if row["exit"] == 0 else "failed"
+        elif size and now - log.stat().st_mtime < RUNNING_WINDOW_S:
+            row["status"] = "running"
+        elif size:
+            row["status"] = "interrupted"
+    return row
+
+
+def scan_scenes(root: Path, now: float = None) -> list:
+    now = time.time() if now is None else now
+    work = Path(root) / "work"
+    if not work.is_dir():
+        return []
+    out = []
+    for d in sorted(p for p in work.iterdir() if p.is_dir()):
+        logs = _log_files(d / "logs")
+        steps = [_step_row(p, now) for p in logs]
+        reg = None
+        poses = d / "keyframes_poses.jsonl"
+        if poses.is_file():
+            def _lines(p):
+                with p.open(encoding="utf-8", errors="replace") as fh:
+                    return sum(1 for ln in fh if ln.strip())
+            kf = d / "keyframes.jsonl"
+            reg = [_lines(poses), _lines(kf) if kf.is_file() else None]
+        mtimes = [p.stat().st_mtime for p in logs] or [d.stat().st_mtime]
+        out.append({
+            "name": d.name,
+            "viewable": (d / "viewer_assets" / "scene.ply").is_file(),
+            "trained": (d / "splat.ply").is_file(),
+            "registered": reg,
+            "running": any(s["status"] == "running" for s in steps),
+            "updated": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(max(mtimes))),
+            "steps": steps,
+        })
+    return out
+
+
+def tail_run(root: Path, scene: str, cursor: str = "0", limit: int = 1 << 20) -> dict:
+    """One merged stream over a run's logs, in step order, resumable by cursor.
+
+    The cursor is "<logfile>:<bytes>". A poll finishes the file the cursor names
+    and, only once that file is drained, continues into the next one from byte 0,
+    so the client sees keyframes -> colmap -> train as a single terminal. A half
+    written last line is held back rather than shown broken, and an offset past
+    the end of a file (a --fresh run replaced it) restarts that file. The budget
+    is a MiB per poll: enough for a reload mid-run to catch the live edge at once.
+    """
+    logs = _log_files(Path(root) / "work" / safe_scene_name(scene) / "logs")
+    names = {p.name for p in logs}
+    cur_file, cur_off = None, 0
+    if cursor and cursor != "0":
+        fname, _, off = cursor.partition(":")
+        if fname in names:
+            cur_file = fname
+            cur_off = int(off) if off.isdigit() else 0
+    lines, budget = [], limit
+    pos_file, pos_off = None, 0
+    started = cur_file is None
+    for p in logs:
+        if not started:
+            if p.name != cur_file:
+                continue
+            started, off = True, cur_off
+        else:
+            off = 0
+        size = p.stat().st_size
+        if off > size:
+            off = 0
+        take = min(budget, size - off)
+        if take <= 0:
+            pos_file, pos_off = p.name, size
+            continue
+        with p.open("rb") as fh:
+            fh.seek(off)
+            chunk = fh.read(take)
+        text = chunk.decode("utf-8", errors="replace")
+        held = 0 if text.endswith("\n") else len(text.rsplit("\n", 1)[-1].encode("utf-8", "replace"))
+        body = text if not held else text[:-len(text.rsplit("\n", 1)[-1])]
+        # Windows children write CRLF, so the \r has to go or it lands in the terminal.
+        lines.extend(ln.rstrip("\r") for ln in body.split("\n")[:-1])
+        pos_file, pos_off = p.name, off + take - held
+        budget -= take
+        if pos_off < size:
+            break                      # still growing: do not jump to the next step
+    running = bool(logs) and _step_row(logs[-1], time.time())["status"] == "running"
+    return {"cursor": f"{pos_file}:{pos_off}" if pos_file else "0",
+            "current": pos_file, "lines": lines, "running": running}
 
 
 def run_pipeline_thread(scene: str, preset: str, quality: str, extra_args: list):
@@ -90,11 +235,12 @@ def run_pipeline_thread(scene: str, preset: str, quality: str, extra_args: list)
                 if len(active_job_info["logs"]) > 300:
                     active_job_info["logs"].pop(0)
 
-                # Track current stage
-                if line_str.startswith("[") and "]" in line_str:
-                    stage_match = re.search(r"\[([0-9a-zA-Z_\-/]+)\]", line_str)
-                    if stage_match:
-                        active_job_info["step"] = stage_match.group(1)
+                # Track current stage. The banner is "[01/13] keyframes: RUN": the
+                # first bracket is the counter, so the step is the word after it.
+                # Capturing the counter instead left the stepper dark mid-run.
+                stage_match = re.search(r"\[\d+/\d+\]\s+([a-z_]+):", line_str)
+                if stage_match:
+                    active_job_info["step"] = stage_match.group(1)
 
         proc.wait()
         with process_lock:
@@ -119,6 +265,35 @@ class H(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def end_headers(self):
+        # Chrome on Android keeps an HTML file in disk cache unless the response
+        # says otherwise, so a phone that once opened /viewer/capture.html keeps
+        # replaying that byte-for-byte copy after a redeploy. no-store forces
+        # every reload to hit this server. Only added if the response has not
+        # already declared its own cache policy, so an API that wants to opt out
+        # can still call self.send_header("Cache-Control", ...) itself.
+        buf = getattr(self, "_headers_buffer", None) or []
+        if not any(b"Cache-Control" in line for line in buf):
+            self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+    _scenes_cache = (0.0, None)
+
+    def _json(self, data):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode("utf-8"))
+
+    def _scenes(self):
+        now = time.time()
+        ts, data = H._scenes_cache
+        if data is None or now - ts > 2.0:
+            data = scan_scenes(Path(self.directory), now)
+            H._scenes_cache = (now, data)
+        return {"scenes": data}
+
     def do_GET(self):
         if self.path.startswith("/api/info"):
             self.send_response(200)
@@ -142,6 +317,8 @@ class H(http.server.SimpleHTTPRequestHandler):
             data = {
                 "local_ip": get_local_ip(),
                 "port": port,
+                "https_port": https_port,
+                "dashboard": "/viewer/pipeline_gui.html",
                 "scenes": sorted(list(set(scenes))),
                 "active_job": active_job_info
             }
@@ -169,6 +346,16 @@ class H(http.server.SimpleHTTPRequestHandler):
             except Exception:
                 data = {}
             self.wfile.write(json.dumps(data, indent=2).encode("utf-8"))
+            return
+
+        elif self.path.startswith("/api/scenes"):
+            self._json(self._scenes())
+            return
+
+        elif self.path.startswith("/api/tail"):
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            self._json(tail_run(Path(self.directory), qs.get("scene", [""])[0],
+                                qs.get("cursor", ["0"])[0]))
             return
 
         return super().do_GET()
@@ -350,44 +537,50 @@ def ensure_certs(cert_file, key_file):
     cert_file.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
 
 
-port = int(sys.argv[1]) if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else 8137
-root = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else str(ROOT)
-https_port = port + 1
+def main() -> None:
+    global port, https_port
+    port = int(sys.argv[1]) if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else 8137
+    root = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else str(ROOT)
+    https_port = port + 1
 
-# Generate SSL certs for HTTPS
-cert_file = ROOT / '_cert.pem'
-key_file = ROOT / '_key.pem'
-try:
-    ensure_certs(cert_file, key_file)
-except Exception as e:
-    print(f"[warn] Failed to generate SSL certs: {e}")
+    # Generate SSL certs for HTTPS
+    cert_file = ROOT / '_cert.pem'
+    key_file = ROOT / '_key.pem'
+    try:
+        ensure_certs(cert_file, key_file)
+    except Exception as e:
+        print(f"[warn] Failed to generate SSL certs: {e}")
 
-local_ip = get_local_ip()
+    local_ip = get_local_ip()
 
-print(f"===============================================================")
-print(f" 🚀 Drone3D Studio Server running at:")
-print(f"    - Local URL:      http://localhost:{port}/viewer/pc.html")
-print(f"    - Phone HTTP:     http://{local_ip}:{port}/viewer/capture.html")
-print(f"    - Phone HTTPS:    https://{local_ip}:{https_port}/viewer/capture.html  (CAMERA & SENSORS)")
-print(f"    - Pipeline UI:    http://localhost:{port}/viewer/pipeline_gui.html")
-print(f"===============================================================")
+    print(f"===============================================================")
+    print(f" 🚀 Drone3D Studio Server running at:")
+    print(f"    - Local URL:      http://localhost:{port}/viewer/pc.html")
+    print(f"    - Phone HTTP:     http://{local_ip}:{port}/viewer/capture.html")
+    print(f"    - Phone HTTPS:    https://{local_ip}:{https_port}/viewer/capture.html  (CAMERA & SENSORS)")
+    print(f"    - Dashboard:      http://localhost:{port}/viewer/pipeline_gui.html")
+    print(f"===============================================================")
 
-httpd = http.server.ThreadingHTTPServer(('0.0.0.0', port),
-    functools.partial(H, directory=root))
+    httpd = http.server.ThreadingHTTPServer(('0.0.0.0', port),
+        functools.partial(H, directory=root))
 
-def run_https():
-    if cert_file.exists() and key_file.exists():
-        try:
-            httpd_ssl = http.server.ThreadingHTTPServer(('0.0.0.0', https_port),
-                functools.partial(H, directory=root))
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ctx.load_cert_chain(certfile=str(cert_file), keyfile=str(key_file))
-            httpd_ssl.socket = ctx.wrap_socket(httpd_ssl.socket, server_side=True)
-            httpd_ssl.serve_forever()
-        except Exception as e:
-            print(f"[ssl server error] {e}")
+    def run_https():
+        if cert_file.exists() and key_file.exists():
+            try:
+                httpd_ssl = http.server.ThreadingHTTPServer(('0.0.0.0', https_port),
+                    functools.partial(H, directory=root))
+                ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                ctx.load_cert_chain(certfile=str(cert_file), keyfile=str(key_file))
+                httpd_ssl.socket = ctx.wrap_socket(httpd_ssl.socket, server_side=True)
+                httpd_ssl.serve_forever()
+            except Exception as e:
+                print(f"[ssl server error] {e}")
 
-t_https = threading.Thread(target=run_https, daemon=True)
-t_https.start()
+    t_https = threading.Thread(target=run_https, daemon=True)
+    t_https.start()
 
-httpd.serve_forever()
+    httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

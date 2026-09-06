@@ -8,17 +8,22 @@
  *   &auto=1                                   run autopilot
  *   &cams=1                                   show camera frustums by default
  *   &drone=1                                  start in drone fly mode
+ *   &combat=1                                 combat mode: bots, shooting, HUD
+ *                                             (needs work/<scene>/pc/nav.json,
+ *                                              baked by tools/navbake/bake.mjs)
  */
 import {
   AppBase, AppOptions, Asset, AssetListLoader, BODYMASK_STATIC, BoundingBox,
+  AnimComponentSystem,
   CameraComponentSystem, CollisionComponentSystem, Color, ContainerHandler,
   Entity, FILLMODE_FILL_WINDOW,
   FOG_LINEAR, GSplatComponentSystem, GSplatHandler, KEY_A, KEY_C, KEY_D, KEY_R,
-  KEY_S, KEY_SHIFT, KEY_SPACE, KEY_T, KEY_W, Keyboard, Mesh, MeshInstance, Mouse,
+  KEY_S, KEY_SHIFT, KEY_SPACE, KEY_T, KEY_W, Keyboard, Mesh, MeshInstance, ModelComponentSystem, Mouse,
   PRIMITIVE_LINES, PRIMITIVE_POINTS, PRIMITIVE_TRIANGLES, RenderComponentSystem, RESOLUTION_AUTO,
   RigidBodyComponentSystem, StandardMaterial, TONEMAP_LINEAR, TextureHandler,
   Vec3, WasmModule, createGraphicsDevice,
 } from "playcanvas";
+import { TARGET_HEIGHT, makeCharacter } from "./pc/scripts/character.js";
 
 // Unlit material helper
 function unlitMat(r = 1, g = 1, b = 1, transparent = false, opacity = 1.0) {
@@ -50,8 +55,24 @@ const WORK_DIR = ASSET.replace(/\/viewer_assets\/?$/, "");
 
 const AUTO = q.get("auto") === "1";
 const SHOOT = q.get("shoot") === "1";
+const COMBAT = q.get("combat") === "1";
+/** Viewer shortcuts combat replaces: R reloads, F/C would break the aiming camera. */
+const COMBAT_KEYS = ["KeyR", "KeyF", "KeyC"];
 const UNDERLAY = q.get("underlay") === "1";
 const SINK = Number(q.get("sink") ?? 0.7);
+let combat = null;
+
+// Character height: 1.75 m by default (a real person). A room preset ships
+// `character_height: 0.15` (hamster) because a 2 m-tall ceiling and a 3 m
+// walkable footprint cannot host a human without the capsule clipping through
+// the walls. Every human-scaled offset below (eye line, camera rise, spawn
+// hover) is derived from CHAR_H so one knob moves the whole rig consistently.
+let CHAR_H = 1.75;
+let CHAR_SCALE = 1.0;     // CHAR_H / 1.75, filled in after collision.json loads
+const charCfg = q.get("char");
+if (charCfg) { CHAR_H = Math.max(0.05, Number(charCfg)); }
+function applyCharScale() { CHAR_SCALE = CHAR_H / 1.75; }
+applyCharScale();
 
 const loadEl = document.getElementById("load");
 const hudEl = document.getElementById("hud");
@@ -72,15 +93,24 @@ let isDrone = q.get("drone") === "1";
 let splatVisible = true;
 let currentPly = q.get("full") === "1" ? "scene.full.ply" : (q.get("ply") || "scene.ply");
 const dronePos = new Vec3(0, 0, 0);
-let droneSpeed = 7.0;
+// Fly-mode speed scales with character size so a hamster does not cross a room
+// at human flight speed and blur past every wall.
+let droneSpeed = 7.0 * CHAR_SCALE;
 let splatEnt = null;
 let applicationRef = null;
 const activeKeys = {};
 
 // Visualizer layer states
-let showCameras = q.get("cams") !== "0"; // default ON
+// Cameras default OFF — the debug frustums are a diagnostic, not the scene.
+// Turn on with ?cams=1 (or from the toolbar).
+let showCameras = q.get("cams") === "1";
 let showPoints = false;
 let showCoverage = false;
+let showCollider = q.get("showcol") === "1";
+let colliderEnt = null;
+let colliderTris = 0;
+let objectBoxes = [];
+let objectsEnt = null;
 let allCameras = [];
 let allSparsePoints = null;
 let allCoverageGrid = null;
@@ -103,7 +133,11 @@ window.addEventListener("keyup", (e) => {
 
 // ---------------- scene data ----------------
 const SKY = new Color(0.043, 0.055, 0.078); // sleek dark void
-const WALK_SPEED = 2.6, RUN_SPEED = 5.2;
+// Human gait is ~2.6 m/s walk / ~5.2 m/s run. When the character is hamster-
+// sized those numbers would move it 17x faster than its own body length per
+// second and the room would look like a bullet-time effect. Scale by CHAR_H so
+// the stride-to-height ratio stays realistic.
+let WALK_SPEED = 2.6, RUN_SPEED = 5.2;
 let HF = null;
 
 async function loadSceneData() {
@@ -112,6 +146,16 @@ async function loadSceneData() {
     fail(`Could not load ${ASSET}/collision.json (HTTP ${resp.status}). Please verify scene assets exist.`);
   }
   const col = await resp.json();
+  // Prefer a scene-authored character height over the 1.75 m default; the URL
+  // ?char=X still wins so an operator can override on the fly.
+  if (col.character_height && !q.get("char")) {
+    CHAR_H = Number(col.character_height);
+    applyCharScale();
+    WALK_SPEED = 2.6 * CHAR_SCALE;
+    RUN_SPEED = 5.2 * CHAR_SCALE;
+    console.log(`[char] scene asks for ${CHAR_H.toFixed(2)} m character ` +
+                `(scale ${CHAR_SCALE.toFixed(2)}x), walk ${WALK_SPEED.toFixed(2)} m/s`);
+  }
   const { nx, nz, cell, origin_xz } = col;
   let data = null, src = "ground.f32";
   for (const name of ["ground.f32", "heights.f32"]) {
@@ -143,6 +187,21 @@ async function loadSceneData() {
       if (vbuf.byteLength === nx * nz) cov = new Uint8Array(vbuf);
     }
   } catch { /* optional */ }
+
+  // Furniture, and only the furniture the router agreed to route around. It
+  // wrote object_colliders itself after checking a walkable floor survives the
+  // block; boxes it rejected came off a mis-measured floor, and giving those
+  // colliders would wall the player into geometry no path accounts for. So this
+  // request is skipped entirely on every scene that has not earned it.
+  objectBoxes = [];
+  if (col.object_colliders > 0) {
+    try {
+      const or_ = await fetch(`${ASSET}/objects.json`);
+      if (or_.ok) objectBoxes = (await or_.json()).boxes || [];
+    } catch { /* optional */ }
+  }
+  console.log(`[objects] router accepted ${col.object_colliders || 0}, ` +
+              `loaded ${objectBoxes.length}`);
 
   HF = {
     nx, nz, cell, data, colors, cov,
@@ -189,7 +248,7 @@ function groundHF(x, z) {
 }
 
 const app = {};
-let cameraEnt, playerEnt, playerRb;
+let cameraEnt, playerEnt, playerRb, playerChar;
 
 const PROBE_UP = 6, PROBE_DOWN = 10;
 function groundProbe(x, z) {
@@ -205,21 +264,34 @@ const P = {
   firstPerson: false, lastGood: null, prev: null, extControl: false,
 };
 const autopilot = { phase: "idle", t: 0 };
+// The walk test's evidence: `walked: 16` is only meaningful next to the route
+// that produced it, so the log carries where the body was and whether the floor
+// was under it.
+const WALK_SAMPLE_DT = 0.5;      // s between samples
+const WALK_SAMPLE_MAX = 600;     // 300 s of walk; drive_viewer stops at 240 s
+let walkSampleClock = 0;
+// autopilot.t restarts on every phase change, so it cannot say how long a walk
+// took; the sample stamp has to be monotonic or the logged route lies about its
+// own duration.
+let walkElapsed = 0;
 window.__walk = { phase: "idle", walked: 0, pos: [0, 0, 0], yaw: 0, grounded: false, violations: 0, samples: [] };
 
 function spawnFrom(col) {
   const s = window.__chosenSpawn || col.spawn || { x: 0, z: 0, face_xz: [0, 1] };
   const hit = groundProbe(s.x, s.z);
-  const y = hit ? hit.point.y + 1.5 : groundHF(s.x, s.z) + 2;
+  const y = hit ? hit.point.y + CHAR_H * 0.86 : groundHF(s.x, s.z) + CHAR_H;
   if (playerEnt && playerRb) {
     playerEnt.rigidbody.teleport(s.x, y, s.z);
     playerRb.linearVelocity = new Vec3(0, 0, 0);
   }
   P.yaw = Math.atan2(-(s.face_xz[0] - s.x), -(s.face_xz[1] - s.z));
   P.walked = 0; P.violations = 0; P.lastGood = null; P.prev = null;
+  window.__walk.samples.length = 0;
+  walkSampleClock = 0;
+  walkElapsed = 0;
   autopilot.phase = AUTO ? "settle" : "idle";
   autopilot.t = 0;
-  dronePos.set(s.x, y + 0.5, s.z);
+  dronePos.set(s.x, y + 0.5 * CHAR_SCALE, s.z);
 }
 
 async function chooseSpawn(col) {
@@ -327,6 +399,51 @@ function buildCameraFrustumsMesh(device, cams) {
     vIdx += 6;
   }
 
+  const mesh = new Mesh(device);
+  mesh.setPositions(positions);
+  mesh.setColors(colors, 3);
+  mesh.setIndices(indices);
+  mesh.update(PRIMITIVE_LINES);
+  return mesh;
+}
+
+function buildObjectBoxesMesh(device, boxes) {
+  // Edge outline of every furniture box, with the world corners computed here
+  // from the same footprint maths the router rasterizes with:
+  //   u = along the major axis at world angle yaw, v = across it.
+  // Deliberately NOT a rotated unit box: the physics shape has to trust a yaw
+  // sign, and an independently derived outline is what proves that sign in the
+  // browser instead of letting both paths share one wrong guess.
+  if (!boxes || !boxes.length) return null;
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  let v = 0;
+  for (const b of boxes) {
+    const [cx, cz] = b.center_xz;
+    const a = b.yaw_deg * Math.PI / 180;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const hu = b.size[0] / 2, hw = b.size[2] / 2;
+    const y0 = b.center_y - b.size[1] / 2, y1 = b.center_y + b.size[1] / 2;
+    const corners = [];
+    for (const [qu, qv] of [[-hu, -hw], [hu, -hw], [hu, hw], [-hu, hw]]) {
+      const x = cx + qu * ca - qv * sa;
+      const z = cz + qu * sa + qv * ca;
+      corners.push([x, y0, z], [x, y1, z]);
+    }
+    for (const c of corners) {
+      positions.push(c[0], c[1], c[2]);
+      colors.push(1.0, 0.42, 0.12);
+    }
+    // bottom loop, top loop, then the four verticals
+    const loop = [0, 2, 4, 6];
+    for (const k of [0, 1, 2, 3]) {
+      indices.push(v + loop[k], v + loop[(k + 1) % 4]);
+      indices.push(v + loop[k] + 1, v + loop[(k + 1) % 4] + 1);
+      indices.push(v + loop[k], v + loop[k] + 1);
+    }
+    v += 8;
+  }
   const mesh = new Mesh(device);
   mesh.setPositions(positions);
   mesh.setColors(colors, 3);
@@ -500,7 +617,7 @@ async function boot() {
   window.__walkPath = col.walk_path || null;
 
   if (col.spawn) {
-    dronePos.set(col.spawn.x, groundHF(col.spawn.x, col.spawn.z) + 1.8, col.spawn.z);
+    dronePos.set(col.spawn.x, groundHF(col.spawn.x, col.spawn.z) + CHAR_H, col.spawn.z);
     if (col.spawn.face_xz) {
       P.yaw = Math.atan2(-(col.spawn.face_xz[0] - col.spawn.x), -(col.spawn.face_xz[1] - col.spawn.z));
     }
@@ -526,7 +643,7 @@ async function boot() {
   opts.graphicsDevice = device;
   opts.componentSystems = [
     RenderComponentSystem, CameraComponentSystem, CollisionComponentSystem,
-    RigidBodyComponentSystem, GSplatComponentSystem,
+    RigidBodyComponentSystem, GSplatComponentSystem, AnimComponentSystem,
   ];
   opts.resourceHandlers = [TextureHandler, ContainerHandler, GSplatHandler];
   const application = new AppBase(canvas);
@@ -541,6 +658,7 @@ async function boot() {
   const assets = {
     splat: new Asset("splat", "gsplat", { url: `${ASSET}/${currentPly}` }),
     collision: new Asset("collision", "container", { url: `${ASSET}/../pc/collision.collision.glb` }),
+    rig: new Asset("character", "container", { url: "assets/models/cesium_man.glb" }),
   };
   window.__stage = "assets";
   setLoad(`Downloading 3D splat & collision model…`);
@@ -564,16 +682,71 @@ async function boot() {
   splatEnt.addComponent("gsplat", { asset: assets.splat });
   application.root.addChild(splatEnt);
 
-  // 2. Collision Trimesh
+  // 2. Collision Trimesh — physics always; the wireframe layer is the toggle.
   const colRoot = assets.collision.resource.instantiateRenderEntity();
   application.root.addChild(colRoot);
-  let nCol = 0;
+  colliderEnt = colRoot;
+  // X-ray on purpose: the defect this exists to catch is a collider surface the
+  // splat does not show (a floater shelf a metre above the visible floor), and
+  // depth-testing it against the splat hides exactly that.
+  const colMat = unlitMat(0.25, 0.95, 0.75);
+  colMat.depthTest = false;
+  colMat.update();
   colRoot.findComponents("render").forEach((render) => {
     render.entity.addComponent("rigidbody", { type: "static", friction: 0.6, restitution: 0 });
     render.entity.addComponent("collision", { type: "mesh", renderAsset: render.asset });
-    render.enabled = q.get("showcol") === "1";
-    nCol++;
+    render.enabled = showCollider;
+    for (const mi of render.meshInstances) {
+      // The component setter is not enough: a GLB's mesh instances carry their own
+      // material, and that is the one that reaches the draw call.
+      mi.material = colMat;
+      mi.renderStyle = 1;                    // RENDERSTYLE_WIREFRAME
+      const prim = mi.mesh?.primitive?.[0];
+      if (prim?.count) colliderTris += Math.floor(prim.count / 3);
+    }
   });
+
+  // 2b. Furniture as its own solids. The trimesh above is a 2.5D skin — one
+  // height per column — so it can only ever draw a seat bank as a bump in the
+  // floor, and the capsule cheerfully walks across the upholstery. Each box the
+  // router accepted becomes a real obstacle on the same static body.
+  if (objectBoxes.length) {
+    const objRoot = new Entity("objects");
+    objRoot.addComponent("rigidbody", { type: "static", friction: 0.6, restitution: 0 });
+    // The compound is what makes "on the same static body" true rather than
+    // aspirational. A child collision with no compound ancestor builds its own
+    // body, and this engine registers those in the trigger group: measured with a
+    // ray confined inside a seat, `filterCollisionMask: BODYMASK_STATIC` answered
+    // with the scan sheet 71 cm below it and only `16` answered with the box. So
+    // every sight line, ground probe and round in combat flew through furniture.
+    objRoot.addComponent("collision", { type: "compound" });
+    application.root.addChild(objRoot);
+    for (const b of objectBoxes) {
+      const e = new Entity();
+      e.setLocalPosition(b.center_xz[0], b.center_y, b.center_xz[1]);
+      // -yaw, derived not guessed: PlayCanvas yaw takes local +Z to +X, so local
+      // +X lands on (cos t, 0, -sin t). The footprint's major axis is
+      // (cos yaw, 0, sin yaw), which is t = -yaw for both axes at once.
+      e.setLocalEulerAngles(0, -b.yaw_deg, 0);
+      e.addComponent("collision", {
+        type: "box",
+        halfExtents: new Vec3(b.size[0] / 2, b.size[1] / 2, b.size[2] / 2),
+      });
+      objRoot.addChild(e);
+    }
+    const objMesh = buildObjectBoxesMesh(device, objectBoxes);
+    if (objMesh) {
+      const oMat = unlitMat(1, 1, 1);
+      oMat.diffuseVertexColor = true;
+      oMat.depthTest = false;
+      oMat.update();
+      objectsEnt = new Entity("objectOutlines");
+      objectsEnt.addComponent("render", { meshInstances: [new MeshInstance(objMesh, oMat)] });
+      objectsEnt.enabled = showCollider;
+      application.root.addChild(objectsEnt);
+    }
+    console.log(`[objects] ${objectBoxes.length} furniture colliders on a static body`);
+  }
 
   // 3. Build Camera Frustums & Trajectory 3D Entities
   if (allCameras.length) {
@@ -636,30 +809,45 @@ async function boot() {
     }
   }
 
-  // 6. Character Entity
-  const orange = unlitMat(1, 0.44, 0.19);
-  const skin = unlitMat(1, 0.85, 0.69);
-
+  // 6. Character: a measured person, not a pair of primitives.
+  //
+  // The old avatar drew a capsule from 0.78 m above the entity origin and a
+  // sphere at 1.48 m, while the PHYSICS capsule is centred on that same origin —
+  // so the figure floated half a metre off its own floor and read far taller than
+  // the person it was supposed to be. Both complaints are the same bug, and
+  // heighting it from a typed constant would have kept them apart.
+  //
+  // For a room-scene (character_height 0.15 m in collision.json) every number
+  // here scales by CHAR_SCALE so the hamster gets a hamster-sized capsule, mass,
+  // and friction. Mass 80 kg × CHAR_SCALE³ keeps density constant.
   playerEnt = new Entity("player");
-  const body = new Entity("body");
-  body.addComponent("render", { type: "capsule", material: orange });
-  body.setLocalScale(0.56, 0.9, 0.56); body.setLocalPosition(0, 0.78, 0);
-  const head = new Entity("head");
-  head.addComponent("render", { type: "sphere", material: skin });
-  head.setLocalScale(0.36, 0.36, 0.36); head.setLocalPosition(0, 1.48, 0);
-  playerEnt.addChild(body); playerEnt.addChild(head);
-  playerEnt.addComponent("collision", { type: "capsule", radius: 0.34, height: 1.8 });
+  playerEnt.addComponent("collision", {
+    type: "capsule", radius: 0.34 * CHAR_SCALE, height: 1.8 * CHAR_SCALE,
+  });
   playerRb = playerEnt.addComponent("rigidbody", {
-    type: "dynamic", mass: 80, linearDamping: 0.05, angularDamping: 1,
+    type: "dynamic", mass: 80 * CHAR_SCALE * CHAR_SCALE * CHAR_SCALE,
+    linearDamping: 0.05, angularDamping: 1,
     friction: 0.35, restitution: 0,
   });
   playerRb.angularFactor = new Vec3(0, 0, 0);
   application.root.addChild(playerEnt);
 
+  playerChar = await makeCharacter(application, assets.rig, {
+    parent: playerEnt, height: CHAR_H,
+  });
+  window.__char = playerChar;
+  console.log(`[character] rig authored ${(playerChar.measured.authoredHeight * 100).toFixed(1)} cm ` +
+              `-> ${(100 * playerChar.measured.scale).toFixed(0)}% scale for ` +
+              `${CHAR_H.toFixed(2)} m, clip "${playerChar.clip || "none"}", ` +
+              `rifle ${playerChar.rifle ? "in hand" : "absent"}`);
+
   // 7. Viewer Camera Entity
+  // nearClip scales with CHAR_SCALE so a hamster's own nose does not clip the
+  // geometry it is standing on; 0.08 m (human default) is 53 % of a 0.15 m
+  // hamster's total height and culls the entire wall in front of it.
   cameraEnt = new Entity("camera");
   cameraEnt.addComponent("camera", {
-    fov: 70, nearClip: 0.08, farClip: 3000, clearColorBuffer: true,
+    fov: 70, nearClip: 0.08 * CHAR_SCALE, farClip: 3000, clearColorBuffer: true,
   });
   cameraEnt.camera.clearColor = new Color(SKY.r, SKY.g, SKY.b, 1);
   cameraEnt.camera.toneMapping = TONEMAP_LINEAR;
@@ -672,6 +860,8 @@ async function boot() {
     const btnCams = document.getElementById("btn-cams");
     const btnPoints = document.getElementById("btn-points");
     const btnCov = document.getElementById("btn-cov");
+    const btnCol = document.getElementById("btn-col");
+    const lblCol = document.getElementById("lbl-col");
     const btnSplatVis = document.getElementById("btn-splat-vis");
     const lblSplatVis = document.getElementById("lbl-splat-vis");
     const btnSplat = document.getElementById("btn-splat");
@@ -689,6 +879,15 @@ async function boot() {
     if (btnPoints) {
       btnPoints.classList.toggle("active", showPoints);
     }
+    if (btnCol) {
+      btnCol.classList.toggle("active", showCollider);
+      if (lblCol) {
+        const obj = objectBoxes.length ? ` +${objectBoxes.length} obj` : "";
+        lblCol.textContent = !colliderEnt ? "Collider: none"
+          : colliderTris ? `Collider ${(colliderTris / 1000).toFixed(0)}k${obj}`
+            : `Collider${obj}`;
+      }
+    }
     if (btnCov) {
       btnCov.classList.toggle("active", showCoverage);
     }
@@ -697,9 +896,8 @@ async function boot() {
       lblSplatVis.textContent = splatVisible ? "✨ Splats: ON" : "🚫 Splats: OFF";
     }
     if (btnSplat && lblSplat) {
-      const isFull = currentPly === "scene.full.ply";
-      btnSplat.classList.toggle("active", isFull);
-      lblSplat.textContent = isFull ? "📦 Splat: Full (932k)" : "✨ Splat: Clean (672k)";
+      btnSplat.classList.toggle("active", currentPly === "scene.full.ply");
+      lblSplat.textContent = `✨ Splat: ${splatCountLabel()}`;
     }
     if (btnCam && lblCam) {
       lblCam.textContent = P.firstPerson ? "1st Person" : "3rd Person";
@@ -719,9 +917,9 @@ async function boot() {
       if (playerEnt) {
         const p = playerEnt.getPosition();
         if (Math.abs(p.x) < 0.01 && Math.abs(p.z) < 0.01 && window.__spawn) {
-          dronePos.set(window.__spawn.x, groundHF(window.__spawn.x, window.__spawn.z) + 1.8, window.__spawn.z);
+          dronePos.set(window.__spawn.x, groundHF(window.__spawn.x, window.__spawn.z) + CHAR_H, window.__spawn.z);
         } else {
-          dronePos.set(p.x, p.y + 0.8, p.z);
+          dronePos.set(p.x, p.y + 0.8 * CHAR_SCALE, p.z);
         }
         playerEnt.enabled = false;
         if (playerRb) {
@@ -729,7 +927,7 @@ async function boot() {
           playerRb.linearVelocity = new Vec3(0, 0, 0);
         }
       } else if (window.__spawn) {
-        dronePos.set(window.__spawn.x, groundHF(window.__spawn.x, window.__spawn.z) + 1.8, window.__spawn.z);
+        dronePos.set(window.__spawn.x, groundHF(window.__spawn.x, window.__spawn.z) + CHAR_H, window.__spawn.z);
       }
     } else {
       if (playerEnt) {
@@ -737,7 +935,7 @@ async function boot() {
         if (playerRb) {
           playerRb.type = "dynamic";
           const hit = groundProbe(dronePos.x, dronePos.z);
-          const targetY = hit ? hit.point.y + 1.5 : (groundHF(dronePos.x, dronePos.z) + 1.5);
+          const targetY = hit ? hit.point.y + CHAR_H * 0.86 : (groundHF(dronePos.x, dronePos.z) + CHAR_H * 0.86);
           playerEnt.rigidbody.teleport(dronePos.x, targetY, dronePos.z);
           playerRb.linearVelocity = new Vec3(0, 0, 0);
         }
@@ -758,6 +956,13 @@ async function boot() {
   function togglePointsLayer() {
     showPoints = !showPoints;
     if (sparsePointsEntity) sparsePointsEntity.enabled = showPoints;
+    updateToolbarUI();
+  }
+
+  function toggleCollider() {
+    showCollider = !showCollider;
+    colliderEnt?.findComponents("render").forEach((r) => { r.enabled = showCollider; });
+    if (objectsEnt) objectsEnt.enabled = showCollider;
     updateToolbarUI();
   }
 
@@ -791,9 +996,17 @@ async function boot() {
     await setSplatModel(target);
   }
 
+  /** What the splat toggle/HUD calls the cloud on screen, with the count the asset really holds. */
+  function splatCountLabel() {
+    if (!splatVisible) return "OFF (Hidden)";
+    const which = currentPly === "scene.full.ply" ? "Full" : "Clean";
+    const n = splatEnt?.gsplat?.asset?.resource?.numSplats;
+    return n ? `${which} (${Math.round(n / 1000)}k)` : which;
+  }
+
   async function setSplatModel(filename) {
     if (currentPly === filename && splatEnt?.gsplat?.asset) return;
-    setLoad(`Loading 3D Gaussian Splat (${filename === "scene.full.ply" ? "Full 1.63M Unculled" : "Cleaned 671k"})…`);
+    setLoad(`Loading 3D Gaussian Splat (${filename})…`);
     loadEl.style.opacity = "1";
     try {
       const newAsset = new Asset("splat_" + Date.now(), "gsplat", { url: `${ASSET}/${filename}` });
@@ -904,6 +1117,7 @@ async function boot() {
   document.getElementById("insp-play-seq")?.addEventListener("click", toggleSequencePlayback);
   document.getElementById("btn-cams")?.addEventListener("click", toggleCamerasLayer);
   document.getElementById("btn-points")?.addEventListener("click", togglePointsLayer);
+  document.getElementById("btn-col")?.addEventListener("click", toggleCollider);
   document.getElementById("btn-cov")?.addEventListener("click", toggleCoverageLayer);
   document.getElementById("btn-splat-vis")?.addEventListener("click", toggleSplatVisibility);
   document.getElementById("btn-splat")?.addEventListener("click", () => toggleSplatModel());
@@ -937,6 +1151,16 @@ async function boot() {
     document.getElementById("cov-panel").style.display = "none";
   });
 
+  const btnCombat = document.getElementById("btn-combat");
+  if (btnCombat) {
+    const next = new URLSearchParams(q);
+    next.set("combat", COMBAT ? "0" : "1");
+    btnCombat.href = `${location.pathname}?${next.toString()}`;
+    btnCombat.classList.toggle("active", COMBAT);
+    const lblCombat = document.getElementById("lbl-combat");
+    if (lblCombat) lblCombat.textContent = COMBAT ? "Combat: ON" : "Combat: OFF";
+  }
+
   // Pick nearest camera frustum on click
   function pickCameraFromRay(clientX, clientY) {
     if (!allCameras.length || !showCameras) return;
@@ -965,6 +1189,7 @@ async function boot() {
   application.on("update", (dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     step(dt);
+    combat?.update(dt);
 
     const w = window.__walk;
     w.walked = +P.walked.toFixed(2);
@@ -972,10 +1197,17 @@ async function boot() {
     w.grounded = P.grounded;
     w.violations = P.violations;
     w.yaw = +P.yaw.toFixed(3);
+    if (w.phase !== "idle") {
+      walkElapsed += dt;
+      walkSampleClock += dt;
+      if (walkSampleClock >= WALK_SAMPLE_DT && w.samples.length < WALK_SAMPLE_MAX) {
+        walkSampleClock = 0;
+        w.samples.push([+walkElapsed.toFixed(1), w.walked, w.pos[0], w.pos[1],
+                        w.pos[2], P.grounded ? 1 : 0, P.violations]);
+      }
+    }
 
-    const splatLabel = !splatVisible
-      ? "OFF (Hidden)"
-      : (currentPly === "scene.full.ply" ? "Full (932k)" : "Clean (672k)");
+    const splatLabel = splatCountLabel();
     const camStatus = showCameras ? `ON (${allCameras.length} cams)` : "OFF";
     const covStatus = allCoverageGrid ? `${allCoverageGrid.covered_pct}% cov` : "N/A";
 
@@ -986,12 +1218,12 @@ async function boot() {
       hudEl.textContent =
         `[🚁 DRONE FLY]   Speed: ${curSpeed.toFixed(1)} m/s   Splat: ${splatLabel}   Cams: ${camStatus}   Coverage: ${covStatus}\n` +
         `pos: (${dronePos.x.toFixed(2)}, ${dronePos.y.toFixed(2)}, ${dronePos.z.toFixed(2)})\n` +
-        `WASD 3D Fly | G Splats ON/OFF | P Cams | O Points | V Coverage | J Snap | U Model`;
+        `WASD 3D Fly | G Splats ON/OFF | P Cams | O Points | V Coverage | X Collider | J Snap | U Model`;
     } else {
       hudEl.textContent =
         `[🚶 GROUND WALK]   ${P.firstPerson ? "1st Person" : "3rd Person"}   walked ${P.walked.toFixed(1)} m   falls ${P.violations}\n` +
         `pos: (${w.pos.join(", ")})   ${P.grounded ? "grounded" : "air"}   Splat: ${splatLabel}   Cams: ${camStatus}\n` +
-        `WASD Walk | Shift Run | G Splats ON/OFF | P Cams | O Points | V Coverage | F Drone | C View`;
+        `WASD Walk | Shift Run | G Splats ON/OFF | P Cams | O Points | V Coverage | X Collider | F Drone | C View`;
     }
   });
 
@@ -1026,6 +1258,41 @@ async function boot() {
   setTimeout(() => buildUnderlay(), 500);
 
   if (isDrone) toggleDroneMode(true);
+  if (COMBAT) {
+    P.firstPerson = true;
+    import("./pc/scripts/combat.js")
+      .then(({ installCombat }) => installCombat(app, {
+        app,
+        canvas,
+        camera: cameraEnt,
+        player: playerEnt,
+        rig: assets.rig,
+        asset: ASSET,
+        HF,
+        spawn: col.spawn,
+        walkPath: col.walk_path,
+        cameras: allCameras,
+        endless: q.get("endless") !== "0",
+        config: { bots: Math.max(1, Number(q.get("bots")) || 5) },
+        getYaw: () => P.yaw,
+        grounded: () => P.grounded,
+        /** World point the player's barrel is pointing out of, once the rig has one. */
+        muzzle: () => playerChar?.muzzleWorld(),
+        /** Metres from the player entity's origin DOWN to its collider's floor. */
+        playerFeet: () => FEET,
+        nudgePitch: (d) => { P.pitch = Math.min(1.45, Math.max(-1.45, P.pitch + d)); },
+        respawn: () => spawnFrom(col),
+      }))
+      .then((c) => {
+        combat = c;
+        window.__combat = c;
+      })
+      .catch((e) => {
+        window.__combatError = String(e && e.message ? e.message : e);
+        console.error("[combat] failed to start", e);
+        hudEl.textContent = `[COMBAT FAILED] ${window.__combatError}`;
+      });
+  }
   updateToolbarUI();
 
   // ---------------- input handlers ----------------
@@ -1038,7 +1305,7 @@ async function boot() {
       lastMouseX = e.clientX;
       lastMouseY = e.clientY;
       canvas.requestPointerLock();
-      pickCameraFromRay(e.clientX, e.clientY);
+      if (!window.__combatActive) pickCameraFromRay(e.clientX, e.clientY);
     }
   });
   window.addEventListener("mouseup", () => { isDragging = false; });
@@ -1060,11 +1327,13 @@ async function boot() {
   });
 
   window.addEventListener("keydown", (e) => {
+    if (COMBAT && window.__combatActive && COMBAT_KEYS.includes(e.code)) return;
     if (e.code === "KeyF" || e.key === "f" || e.key === "F") toggleDroneMode();
     if (e.code === "KeyG" || e.key === "g" || e.key === "G") toggleSplatVisibility();
     if (e.code === "KeyP" || e.key === "p" || e.key === "P") toggleCamerasLayer();
     if (e.code === "KeyO" || e.key === "o" || e.key === "O") togglePointsLayer();
     if (e.code === "KeyV" || e.key === "v" || e.key === "V") toggleCoverageLayer();
+    if (e.code === "KeyX" || e.key === "x" || e.key === "X") toggleCollider();
     if (e.code === "KeyU" || e.key === "u" || e.key === "U") toggleSplatModel();
     if (e.code === "KeyC" || e.key === "c" || e.key === "C") { P.firstPerson = !P.firstPerson; updateToolbarUI(); }
     if (e.code === "KeyJ" || e.key === "j" || e.key === "J") snapToSelectedCamera();
@@ -1084,23 +1353,72 @@ async function boot() {
 
 // ---------------- per-frame physics & fly glue ----------------
 const fwdOf = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
-const FEET = 0.9;
+/**
+ * Metres from the player entity's origin DOWN to the floor its capsule stands on.
+ * Provisional: PlayCanvas hands Bullet `height - 2*radius` as a HALF height, so a
+ * `height: 1.8` capsule is not obviously 1.8 m overall, and the grounding test,
+ * the step probe and the character model's feet all read this one number.
+ * measureFeet() replaces it with what the collider actually rests at.
+ */
+let FEET = 0.9 * CHAR_SCALE;
+let feetMeasured = false, feetSamples = [];
+function measureFeet(pos, hitY, vy) {
+  // One frame is not a measurement: at the top of the spawn drop the capsule is
+  // momentarily calm and 2 m off the floor, which would seat the model in mid-air.
+  if (feetMeasured || Math.abs(vy) > 0.15 || !isFinite(hitY) || hitY < -1e8 ||
+      Math.abs(pos.y - hitY - FEET) > 1.0) { feetSamples = []; return; }
+  feetSamples.push(pos.y - hitY);
+  if (feetSamples.length < 12) return;
+  const sorted = feetSamples.slice().sort((a, b) => a - b);
+  const spread = sorted[sorted.length - 1] - sorted[0];
+  if (spread > 0.06) { feetSamples.shift(); return; }   // still ringing
+  FEET = sorted[6];
+  feetMeasured = true;
+  feetSamples = [];
+  playerChar?.seat(-FEET);
+  console.log(`[player] the capsule stands ${FEET.toFixed(2)} m below its origin ` +
+              `(provisional 0.90), i.e. a ${(2 * FEET).toFixed(2)} m tall collider; ` +
+              `the character is seated on this`);
+}
+// The probes that decide whether the body is standing on anything. Every distance
+// below is written for a 1.75 m human and multiplied by CHAR_SCALE, like the
+// follow-cam offsets: in absolute metres a room-scale mover (FEET ~0.03 m) has its
+// ground ray starting 0.8 m under its own feet, i.e. below the floor, so it reads
+// airborne forever and every branch gated on grounding stops firing.
 function groundRay() {
   const p = playerEnt.getPosition();
   return app.systems.rigidbody.raycastFirst(
-    new Vec3(p.x, p.y - 0.80, p.z), new Vec3(p.x, p.y - 2.6, p.z),
+    new Vec3(p.x, p.y - 0.80 * CHAR_SCALE, p.z),
+    new Vec3(p.x, p.y - 2.6 * CHAR_SCALE, p.z),
+    { filterCollisionMask: BODYMASK_STATIC });
+}
+
+/**
+ * The same question as groundRay, cast from above the origin, because that one
+ * starts below it and would find no floor at all if the capsule turns out to
+ * stand nearer than that. Only the spawn-time measurement uses this.
+ */
+function feetProbe(pos) {
+  return app.systems.rigidbody.raycastFirst(
+    new Vec3(pos.x, pos.y + 0.3 * CHAR_SCALE, pos.z),
+    new Vec3(pos.x, pos.y - 3.0 * CHAR_SCALE, pos.z),
     { filterCollisionMask: BODYMASK_STATIC });
 }
 
 const STEP_MAX = 0.5;
 function stepBlocked(dx, dz, pos) {
   const l = Math.hypot(dx, dz);
-  if (l < 0.1) return false;
-  const nx = dx / l, nz = dz / l, reach = 0.34 + 0.30, feet = pos.y - FEET;
+  if (l < 0.1 * CHAR_SCALE) return false;
+  // 0.34 is the capsule radius before it is scaled, so the whole probe - how far
+  // ahead it looks and how high a riser still counts as climbable - belongs to the
+  // body, not to the metre.
+  const nx = dx / l, nz = dz / l,
+        reach = (0.34 + 0.30) * CHAR_SCALE, feet = pos.y - FEET;
   const probe = (y) => app.systems.rigidbody.raycastFirst(
     new Vec3(pos.x, y, pos.z), new Vec3(pos.x + nx * reach, y, pos.z + nz * reach),
     { filterCollisionMask: BODYMASK_STATIC });
-  return !!probe(feet + 0.06) && !probe(feet + STEP_MAX + 0.10);
+  return !!probe(feet + 0.06 * CHAR_SCALE) &&
+         !probe(feet + (STEP_MAX + 0.10) * CHAR_SCALE);
 }
 
 function step(dt) {
@@ -1161,7 +1479,11 @@ function step(dt) {
 
   let onMesh = null;
   const hit = groundRay();
-  if (hit) onMesh = (pos.y - FEET - hit.point.y) < 0.35;
+  const probe = feetProbe(pos);
+  measureFeet(pos, probe ? probe.point.y : -1e9, v.y);
+  // 0.35 m is what a human's feet may hang above the floor it is standing on, so
+  // the same fraction of the body applies at every scale.
+  if (hit) onMesh = (pos.y - FEET - hit.point.y) < 0.35 * CHAR_SCALE;
   P.grounded = !!onMesh;
 
   let mx = 0, mz = 0;
@@ -1184,28 +1506,41 @@ function step(dt) {
       dz = (mz * -c + mx * -s) * sp;
     }
     const hs = Math.hypot(v.x, v.z);
-    const keep = sp > 0 && hs > sp + 0.5;
+    const keep = sp > 0 && hs > sp + 0.5 * CHAR_SCALE;
     let vy = v.y;
-    if (P.grounded && (dx || dz) && stepBlocked(dx, dz, pos)) vy = 4.24;
+    // These two impulses are what a human capsule needs to clear a step or leave
+    // the ground; unscaled they would throw a 3 cm mover out of the room, and
+    // nothing gated on grounding could be trusted to stay on the floor.
+    if (P.grounded && (dx || dz) && stepBlocked(dx, dz, pos)) vy = 4.24 * CHAR_SCALE;
     rb.linearVelocity = new Vec3(keep ? v.x : dx, vy, keep ? v.z : dz);
     rb.activate();
   }
 
   if (P.grounded && (activeKeys["Space"] || activeKeys[" "]) && autopilot.phase === "idle") {
-    rb.linearVelocity = new Vec3(dx, 6.5, dz);
+    rb.linearVelocity = new Vec3(dx, 6.5 * CHAR_SCALE, dz);
   }
+
+  // Cadence follows the body, not the keys: normalised by WALK_SPEED, one clip
+  // cycle per second at walking pace, up to ~2x when sprinting. Reading the key
+  // state instead would keep the legs moving while the capsule is pinned.
+  playerChar?.setSpeed(Math.hypot(rb.linearVelocity.x, rb.linearVelocity.z));
 
   const px = playerEnt.getPosition();
   if (P.prev !== null) {
+    // A frame that moved more than a body-length was not a step, it was a respawn
+    // teleport. Unscaled, a room-scale mover counts whole teleports as distance.
     const jump = Math.hypot(px.x - P.prev.x, px.z - P.prev.z);
-    P.walked += (jump < 1.0 ? jump : 0);
+    P.walked += (jump < 1.0 * CHAR_SCALE ? jump : 0);
   }
   P.prev = { x: px.x, z: px.z };
 
-  if (px.y < groundHF(px.x, px.z) - 4.0) {
+  // How far below the heightfield counts as fallen out of the world, in body
+  // heights: at 4 m absolute a room-scale capsule can sink through the floor and
+  // keep reporting zero falls, which makes the shipped count worth nothing.
+  if (px.y < groundHF(px.x, px.z) - 4.0 * CHAR_SCALE) {
     P.violations++;
-    const g = P.lastGood || { x: window.__spawn?.x ?? 0, y: groundHF(window.__spawn?.x ?? 0, window.__spawn?.z ?? 0) + 1.5, z: window.__spawn?.z ?? 0 };
-    playerEnt.rigidbody.teleport(g.x, g.y + 1, g.z);
+    const g = P.lastGood || { x: window.__spawn?.x ?? 0, y: groundHF(window.__spawn?.x ?? 0, window.__spawn?.z ?? 0) + 1.5 * CHAR_SCALE, z: window.__spawn?.z ?? 0 };
+    playerEnt.rigidbody.teleport(g.x, g.y + 1.0 * CHAR_SCALE, g.z);
     playerRb.linearVelocity = new Vec3(0, 0, 0);
   }
   if (P.grounded && px.x > HF.minX && px.x < HF.maxX && px.z > HF.minZ && px.z < HF.maxZ) {
@@ -1214,17 +1549,28 @@ function step(dt) {
 
   playerEnt.setLocalEulerAngles(0, P.yaw * 180 / Math.PI, 0);
   const [fx, fz] = fwdOf(P.yaw);
+  // Every follow-cam offset is expressed for a 1.75 m human and divided out by
+  // CHAR_SCALE, so a 0.15 m hamster in a room scan gets a hamster's eye line
+  // and a hamster's shoulder-room behind it. Without this the camera hovers
+  // 2 m over the head and looks down on the scene like a drone.
+  const eye_fwd = 0.12 * CHAR_SCALE;
+  const eye_up = 0.62 * CHAR_SCALE;
+  const chase_back = 3.4 * CHAR_SCALE;
+  const chase_up = 2.0 * CHAR_SCALE;
+  const chase_min_clear = 0.4 * CHAR_SCALE;
+  const look_up_fp = 0.55 * CHAR_SCALE;
+  const look_up_tp = 1.15 * CHAR_SCALE;
   if (P.firstPerson) {
-    cameraEnt.setPosition(px.x + fx * 0.12, px.y + 0.62, px.z + fz * 0.12);
+    cameraEnt.setPosition(px.x + fx * eye_fwd, px.y + eye_up, px.z + fz * eye_fwd);
   } else {
-    const cx = px.x - fx * 3.4, cz = px.z - fz * 3.4;
-    const cy = Math.max(px.y + 2.0, groundHF(cx, cz) + 0.4);
+    const cx = px.x - fx * chase_back, cz = px.z - fz * chase_back;
+    const cy = Math.max(px.y + chase_up, groundHF(cx, cz) + chase_min_clear);
     cameraEnt.setPosition(cx, cy, cz);
   }
-  const look = new Vec3(px.x + fx * 5, px.y + (P.firstPerson ? 0.55 : 1.15) + Math.tan(P.pitch) * 5, px.z + fz * 5);
+  const look = new Vec3(px.x + fx * 5, px.y + (P.firstPerson ? look_up_fp : look_up_tp) + Math.tan(P.pitch) * 5, px.z + fz * 5);
   cameraEnt.lookAt(look);
   const w = window.__walk;
-  w.pos = [+px.x.toFixed(3), +(px.y - 0.9).toFixed(3), +px.z.toFixed(3)];
+  w.pos = [+px.x.toFixed(3), +(px.y - FEET).toFixed(3), +px.z.toFixed(3)];
 }
 
 function autopilotStep(dt) {

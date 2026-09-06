@@ -1,0 +1,20 @@
+{
+  "name": "navbake",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline navmesh baker: collision.collision.glb -> work/<scene>/pc/nav.json for the PlayCanvas FPS runtime.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bake:room": "node bake.mjs room_w_jsonl --obj",
+    "bake:rocks": "node bake.mjs rocks --obj",
+    "bake:temple": "node bake.mjs temple --obj --cell 0.25 --radius 0.3 --height 1.6 --climb 0.9 --slope 55 --region 0.6",
+    "bake:all": "npm run bake:room && npm run bake:rocks && npm run bake:temple",
+    "verify:all": "node verify.mjs room_w_jsonl && node verify.mjs rocks && node verify.mjs temple"
+  },
+  "dependencies": {
+    "recast-navigation": "^0.43.1"
+  }
+}
