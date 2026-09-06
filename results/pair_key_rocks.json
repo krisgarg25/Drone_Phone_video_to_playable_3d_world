@@ -1,0 +1,82 @@
+[
+  {
+    "pair": "rocks_AB_00.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_00.png",
+    "real_file": "rocks/00000.jpg",
+    "t_sec": 0.0
+  },
+  {
+    "pair": "rocks_AB_01.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_01.png",
+    "real_file": "rocks/00007.jpg",
+    "t_sec": 1.251
+  },
+  {
+    "pair": "rocks_AB_02.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_02.png",
+    "real_file": "rocks/00014.jpg",
+    "t_sec": 2.377
+  },
+  {
+    "pair": "rocks_AB_03.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_03.png",
+    "real_file": "rocks/00021.jpg",
+    "t_sec": 3.503
+  },
+  {
+    "pair": "rocks_AB_04.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_04.png",
+    "real_file": "rocks/00028.jpg",
+    "t_sec": 4.755
+  },
+  {
+    "pair": "rocks_AB_05.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_05.png",
+    "real_file": "rocks/00035.jpg",
+    "t_sec": 5.881
+  },
+  {
+    "pair": "rocks_AB_06.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_06.png",
+    "real_file": "rocks/00042.jpg",
+    "t_sec": 7.007
+  },
+  {
+    "pair": "rocks_AB_07.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_07.png",
+    "real_file": "rocks/00049.jpg",
+    "t_sec": 8.258
+  },
+  {
+    "pair": "rocks_AB_08.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_08.png",
+    "real_file": "rocks/00056.jpg",
+    "t_sec": 9.384
+  },
+  {
+    "pair": "rocks_AB_09.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_09.png",
+    "real_file": "rocks/00063.jpg",
+    "t_sec": 10.51
+  }
+]

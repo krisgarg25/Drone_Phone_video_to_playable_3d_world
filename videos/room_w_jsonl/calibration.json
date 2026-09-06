@@ -1,0 +1,1 @@
+{ "cameras": [ {"focalLengthX":651.155,"focalLengthY":650.677,"principalPointX":476.171,"principalPointY":357.547,"imageWidth":960,"imageHeight":720,"shutterRollTimeSeconds":0.0149166,"exposureTimeSeconds":0.0199826,"imuToCamera":[[0,-1,0,0],[-1,0,0,0],[0,0,-1,0],[0,0,0,1]],"model":"pinhole"}] }

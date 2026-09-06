@@ -1,0 +1,28 @@
+{
+  "cameras": [
+    {
+      "focalLengthX": 849.4533884525299,
+      "focalLengthY": 850.5607604980469,
+      "principalPointX": 295,
+      "principalPointY": 640,
+      "imageWidth": 590,
+      "imageHeight": 1280,
+      "model": "pinhole",
+      "hold": "landscape",
+      "holdAsked": "landscape",
+      "screenAngle": 0,
+      "screenType": "portrait-primary",
+      "lockedTo": null,
+      "lensAsked": "manual",
+      "lensLabel": null,
+      "lensDeviceId": null,
+      "zoom": null,
+      "zoomRange": null,
+      "zoomRefused": null,
+      "arFovDeg": {
+        "h": 38.30240327654198,
+        "v": 73.91888135514303
+      }
+    }
+  ]
+}

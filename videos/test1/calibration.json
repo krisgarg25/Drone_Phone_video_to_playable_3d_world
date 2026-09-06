@@ -1,0 +1,13 @@
+{
+  "cameras": [
+    {
+      "focalLengthX": 850.8931399583817,
+      "focalLengthY": 850.5607604980469,
+      "principalPointX": 295.5,
+      "principalPointY": 640,
+      "imageWidth": 591,
+      "imageHeight": 1280,
+      "model": "pinhole"
+    }
+  ]
+}

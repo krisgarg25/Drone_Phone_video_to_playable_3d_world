@@ -1,0 +1,82 @@
+[
+  {
+    "pair": "test1_AB_00.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_00.png",
+    "real_file": "data/00000.jpg",
+    "t_sec": 0.122
+  },
+  {
+    "pair": "test1_AB_01.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_01.png",
+    "real_file": "data/00033.jpg",
+    "t_sec": 7.619
+  },
+  {
+    "pair": "test1_AB_02.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_02.png",
+    "real_file": "data/00066.jpg",
+    "t_sec": 13.982
+  },
+  {
+    "pair": "test1_AB_03.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_03.png",
+    "real_file": "data/00149.jpg",
+    "t_sec": 30.761
+  },
+  {
+    "pair": "test1_AB_04.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_04.png",
+    "real_file": "data/00183.jpg",
+    "t_sec": 37.165
+  },
+  {
+    "pair": "test1_AB_05.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_05.png",
+    "real_file": "data/00283.jpg",
+    "t_sec": 56.984
+  },
+  {
+    "pair": "test1_AB_06.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_06.png",
+    "real_file": "data/00346.jpg",
+    "t_sec": 69.102
+  },
+  {
+    "pair": "test1_AB_07.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_07.png",
+    "real_file": "data/00379.jpg",
+    "t_sec": 75.789
+  },
+  {
+    "pair": "test1_AB_08.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_08.png",
+    "real_file": "data/00412.jpg",
+    "t_sec": 81.949
+  },
+  {
+    "pair": "test1_AB_09.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_09.png",
+    "real_file": "data/00445.jpg",
+    "t_sec": 88.434
+  }
+]
