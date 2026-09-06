@@ -1,0 +1,57 @@
+name: fast suites
+
+# What this proves and what it cannot.
+#
+# Proves on a clean checkout: the source tree is self-contained (no file that only
+# exists on the author's machine), the two interpreters' dependency lists install, and
+# the unit / failure-classifier / capture / collider / gate suites pass. The collider
+# job also covers the `npx is a .cmd shim` resolution, which is why this runs on
+# Windows: this pipeline's supported platform is Windows, and a Linux green light would
+# not be evidence about the thing people actually run.
+#
+# Cannot prove: anything needing an NVIDIA GPU (train, evals), the vendored COLMAP
+# binary, or a real reconstruction. Those need `python tests/test_e2e.py` locally -
+# it runs every take in videos/ through all ~15-17 steps and exits non-zero if any of
+# them produces no output. videos/ is gitignored, so CI has no clips to reconstruct.
+#
+# git-lfs is deliberately not fetched: the one LFS file is a 313 MB CUDA provider DLL
+# for COLMAP, which no suite here invokes. Fetching it would burn the clone's whole
+# LFS bandwidth allowance on every push to prove nothing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suites:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install pipeline dependencies
+        run: python -m pip install -r requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
+
+      # With this present, the collider suite verifies the real voxeliser launches
+      # instead of skipping that check.
+      - name: Install the collider tool
+        run: npm ci --prefix tools
+
+      # No .venv exists here, so check_all runs the suites on the interpreter that
+      # invoked it - the same path a contributor takes after installing
+      # requirements.txt into their own environment.
+      - name: Run every fast suite
+        run: python tests/check_all.py

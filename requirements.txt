@@ -1,0 +1,23 @@
+# Pipeline environment — Python 3.12.  Install:  python -m pip install -r requirements.txt
+#
+# Every pin here is the version the acceptance matrix ran on (all seven takes in
+# videos/ completed). Loosen them if you know why; pycolmap in particular must keep
+# matching the vendored COLMAP binary, because the two write and read the same
+# database and sparse-model formats.  See `python pipeline.py doctor`, which checks
+# exactly that coupling and names the fix when it is broken.
+
+numpy==2.5.2                # every geometry array in scripts/
+pillow==12.3.0              # keyframe decode, collider textures, blinded A/B stacks
+plyfile==1.1.5              # .ply gaussian clouds — read in 15 scripts, written by train
+opencv-python==5.0.0.93     # keyframe sharpness/ORB diagnostics, frame extraction
+pycolmap==4.1.1             # must match tools/colmap (COLMAP 4.1.1) — see pipeline.py doctor
+playwright==1.62.0          # headless viewer for the walk test — then:
+                            #   python -m playwright install chromium
+
+# Optional, and only for these paths:
+#   cryptography          — _serve.py uses it to self-sign the HTTPS dev certificate
+#                           the WebXR phone capture page needs. Without it the page
+#                           serves over http and phone AR capture will not start.
+#   spectacularAI         — scripts/poses_lib.py imports it inside the function that
+#                           reads a Spectacular AI recording, so every other take works
+#                           without it.

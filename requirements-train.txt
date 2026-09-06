@@ -1,0 +1,29 @@
+# Training environment — Python 3.10, CUDA 12.4, Windows x86_64.  Install:
+#   py -3.10 -m venv .venv310
+#   .venv310\Scripts\python.exe -m pip install -r requirements-train.txt
+#
+# The pipeline runs everything except `train` and `evals` on .venv (3.12); those two
+# steps use this interpreter. It is a separate environment because the gsplat wheel
+# below is built for exactly one combination — CPython 3.10, torch 2.4, CUDA 12.4,
+# win_amd64 — and there is no sdist fallback that would compile without a matching
+# CUDA toolkit. `python pipeline.py doctor` reports whether this environment exists
+# and whether torch can see the GPU, and names the command to create it if not.
+
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.4.1+cu124
+
+# Prebuilt gsplat from the project's release page (same wheel this repo was trained
+# with — recorded in .venv310's install metadata, not guessed).
+https://github.com/nerfstudio-project/gsplat/releases/download/v1.5.3/gsplat-1.5.3%2Bpt24cu124-cp310-cp310-win_amd64.whl
+
+# gsplat's own runtime needs, and the shared geometry libs the trainer imports.
+numpy==2.5.2
+pillow==12.3.0
+plyfile==1.1.5
+opencv-python==5.0.0.93
+
+# Needs an NVIDIA GPU. The CUDA runtime ships in the wheels above, so no system CUDA
+# toolkit is required, but the driver must be new enough for CUDA 12.4. The machine
+# this was developed on has 6 GB and completes every take, because `train` sizes its
+# pixel budget and gaussian cap from the VRAM free at that moment rather than from a
+# fixed setting — a 4 GB card trains smaller scenes, it does not have to be 6.

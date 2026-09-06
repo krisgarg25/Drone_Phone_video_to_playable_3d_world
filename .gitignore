@@ -12,7 +12,13 @@ env/
 .claude/
 
 # --- Large data / build artifacts ---
-videos/
+# A take's metadata is small and is the fixture tests/run_tests.py measures, so it
+# belongs in the repo; the recorded video (86 MB a take) does not.
+videos/**
+!videos/**/
+!videos/*/*_poses.jsonl
+!videos/*/data_room.json
+!videos/*/calibration.json
 work/
 scratch/
 
@@ -24,6 +30,19 @@ tools/ffmpeg.zip
 *.pem
 *.key
 *.crt
+
+# --- One-off scripts from another project, parked in this folder ---
+# Each writes to a hard-coded C:\Users\...\vid razorpay\... path, so they are neither
+# runnable here nor part of this pipeline. Ignored, not deleted: the files stay.
+# A `git add -A` on the way to publishing would otherwise ship another project's
+# absolute paths inside this repository.
+/add_avatar_to_html.py
+/generate_ai_prompts.py
+/generate_blueprint.py
+/render_avatar_video.py
+/update_hyperframes.py
+/write_kinetic_subtitles.py
+/write_subtitles_hyperframes.py
 
 # --- Outputs / temp files ---
 *.log
