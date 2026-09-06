@@ -235,12 +235,15 @@ def main() -> int:
         check_node(check_only=args.check)
 
     print(f"\n{ok_count} ok, {warn_count} to note, {fail_count} blocking")
-    if py is None:
-        print("Stopped: the pipeline interpreter is not usable, so `doctor` could not run.")
-        return 1
     if args.check:
+        # An absent .venv is the expected finding here, and it was already reported
+        # as one. Only a blocking count makes --check itself fail.
         print("--check: nothing installed. Re-run without it to apply the steps above.")
         return 0 if fail_count == 0 else 1
+    if py is None:
+        print("Stopped: the pipeline interpreter could not be created, so `doctor` "
+              "could not run.")
+        return 1
 
     print("\n=== pipeline.py doctor ===")
     code, out = run([py, "pipeline.py", "doctor"], timeout=1800)

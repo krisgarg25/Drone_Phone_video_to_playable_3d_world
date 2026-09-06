@@ -1105,7 +1105,8 @@ def do_doctor(_cfg: dict) -> None:
     # most expensive class of "random failure" doctor exists to prevent.
     check(PY310.exists(), f"train interpreter ({PY310.name})",
           f"create it: py -3.10 -m venv {PY310.parent.parent.name} then "
-          "pip install torch gsplat numpy plyfile")
+          f"{PY310} -m pip install -r requirements-train.txt "
+          "(or run python scripts/bootstrap.py --with-train)")
     if PY310.exists():
         try:
             t = subprocess.run([str(PY310), "-c",
