@@ -1,14 +1,32 @@
-# Video → walkable 3D world
+<h1 align="center">Video → walkable 3D world</h1>
 
-**Point it at a drone or phone clip. Get back a world you can walk through in a
-browser — with a floor that holds you, walls that stop you, and a machine-verified proof
-that a character can actually get from A to B.**
+<p align="center">
+  <b>Point it at a drone or phone clip. Get back a world you can walk through in a
+  browser — with a floor that holds you, walls that stop you, and a machine-verified
+  proof that a character can actually get from A to B.</b>
+</p>
 
-[![Watch the demo](https://img.youtube.com/vi/xMRw3slJjIo/maxresdefault.jpg)](https://www.youtube.com/watch?v=xMRw3slJjIo)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=xMRw3slJjIo" title="Watch the full demo">
+    <img src="docs/media/walk-preview.gif" width="560" alt="Autopilot walk test running through a boulder field rebuilt from one drone clip">
+  </a>
+</p>
 
-<sub>▶ **We Built a 3D World Generator with AI And Made AI Build the Entire Video!** — the demo, on YouTube</sub>
+<p align="center">
+  <sub>The autopilot walking a world rebuilt from a single drone clip — no hand-tuned
+  settings, and that HUD line is the harness's own telemetry, not a caption.<br>
+  <b>▶ <a href="https://www.youtube.com/watch?v=xMRw3slJjIo">Watch the full demo</a></b>
+  · <a href="#proof-not-promises">jump to the measured results</a></sub>
+</p>
 
-[![fast suites](https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml/badge.svg)](https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml)
+<p align="center">
+  <a href="https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml"><img src="https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml/badge.svg" alt="fast suites"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%20%2B%203.10-blue" alt="Python 3.12 and 3.10">
+  <img src="https://img.shields.io/badge/CUDA-12.4-brightgreen" alt="CUDA 12.4">
+  <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows">
+  <img src="https://img.shields.io/badge/manual%20tuning-none-orange" alt="no manual tuning">
+</p>
 
 This is a 3D Gaussian Splatting pipeline aimed at a different target than most of them:
 not a nicer render, but a **place**. A splat cloud that looks perfect and has no floor, no
@@ -102,6 +120,10 @@ vacuously:
 | test2train | phone | complete | 15/15 | 28.1 m | 26.4 m | 0/336 | 0 |
 | test2horizontal | phone, low texture | partial | 15/15 | 30.1 m | 28.0 m | 0/336 | 0 |
 
+Walk telemetry moves a little between runs: the walk test is a live browser physics sim,
+not a deterministic replay, so frame timing differs. `rocks` measured 5/61 airborne in the
+matrix above and 8/60 in the clip further down — same world, same route, same result.
+
 `partial` means the world shipped **and** the gate then refused to certify it: temple and
 test2horizontal both fail the hard rule *spawn on supported ground*. The run says so on one
 line rather than quietly passing a world it does not trust — both are coarse or mis-scaled
@@ -130,6 +152,23 @@ And the same world from inside it, mid-walk. The HUD line is the walk test's own
 not a caption:
 
 ![character walking a reconstructed boulder field — walked 26.6 m, falls 0, grounded](docs/images/walk-rocks.jpg)
+
+<details>
+<summary><b>▶ The complete 34-second walk test, unedited</b> — one headless run, no cuts</summary>
+
+<p align="center">
+  <video src="docs/media/walk-rocks.mp4" controls preload="metadata" width="800"
+         poster="docs/media/walk-poster.jpg">
+    Your browser can't play this — <a href="docs/media/walk-rocks.mp4">download the clip</a>.
+  </video>
+</p>
+
+The character is driven entirely by the tour route the pipeline generated for this world:
+no keyboard, no hand-placed waypoints, and the `falls` counter is the viewer's own
+collision check. It ends because the autopilot reported its route finished at 32 s — the
+recorder kept running to 34 s.
+
+</details>
 
 Both are `--quality smoke`, i.e. the 300-step test train. `--quality high` is 1280 px,
 15 000 steps and a 3 M gaussian cap.
