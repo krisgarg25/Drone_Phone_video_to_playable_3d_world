@@ -1,26 +1,25 @@
-<h1 align="center">Video → walkable 3D world</h1>
+<h1 align="center">Drone / Phone Video → Walkable 3D World</h1>
 
 <p align="center">
-  <b>Point it at a drone or phone clip. Get back a world you can walk through in a
-  browser — with a floor that holds you, walls that stop you, and a machine-verified
+  <b>Point a drone or a phone at a place. Get back a world you can walk through in a
+  browser — with a floor that holds you, walls that stop you, and machine-verified
   proof that a character can actually get from A to B.</b>
 </p>
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=xMRw3slJjIo" title="Watch the full demo">
-    <img src="docs/media/walk-preview.gif" width="560" alt="Autopilot walk test running through a boulder field rebuilt from one drone clip">
+  <a href="https://www.youtube.com/watch?v=xMRw3slJjIo" title="Watch the 4:30 demo on YouTube">
+    <img src="https://img.youtube.com/vi/xMRw3slJjIo/maxresdefault.jpg" width="720" alt="Play the 4 minute 30 second demo video">
   </a>
 </p>
 
 <p align="center">
-  <sub>The autopilot walking a world rebuilt from a single drone clip — no hand-tuned
-  settings, and that HUD line is the harness's own telemetry, not a caption.<br>
-  <b>▶ <a href="https://www.youtube.com/watch?v=xMRw3slJjIo">Watch the full demo</a></b>
-  · <a href="#proof-not-promises">jump to the measured results</a></sub>
+  <b>▶ <a href="https://www.youtube.com/watch?v=xMRw3slJjIo">Watch the 4:30 demo on YouTube</a></b>
+  · <a href="docs/media/demo-4m30s.mp4">same cut, hosted in this repo (60&nbsp;MB)</a>
+  · <a href="#proof-not-promises">skip to the measured results</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml"><img src="https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml/badge.svg" alt="fast suites"></a>
+  <a href="https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml"><img src="https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.12%20%2B%203.10-blue" alt="Python 3.12 and 3.10">
   <img src="https://img.shields.io/badge/CUDA-12.4-brightgreen" alt="CUDA 12.4">
@@ -28,53 +27,84 @@
   <img src="https://img.shields.io/badge/manual%20tuning-none-orange" alt="no manual tuning">
 </p>
 
-This is a 3D Gaussian Splatting pipeline aimed at a different target than most of them:
-not a nicer render, but a **place**. A splat cloud that looks perfect and has no floor, no
-scale and no way in or out is a screensaver. The interesting, unsolved part is turning a
-reconstruction into something a person can stand in and traverse — and that is where all
-of the engineering below lives.
+<p align="center">
+  <sub>Topics: <code>3d-gaussian-splatting</code> · <code>colmap</code> · <code>photogrammetry</code> ·
+  <code>digital-twin</code> · <code>playcanvas</code> · <code>webgl</code> · <code>drone</code> ·
+  <code>computer-vision</code> · <code>game-physics</code> · <code>arcore</code></sub>
+</p>
+
+Most 3D-from-video pipelines chase a nicer render. This one chases a **place**.
+A splat cloud that looks perfect but has no floor, no scale, and no way in or out
+is a screensaver. The unsolved part — and where all the engineering here lives —
+is turning a reconstruction into something a person can stand in and walk across.
 
 | | |
 |---|---|
-| **Input** | one `.mp4` (drone orbit, walked phone, handheld scan) or a folder of frames, optionally with recorded AR poses |
+| **Input** | one `.mp4` (drone orbit, walked phone scan, handheld clip) or a folder of frames, optionally with recorded AR poses |
 | **Output** | `work/<name>/viewer_assets/` — splat, collision mesh, heightfield, ground colours, generated tour route — served by a PlayCanvas viewer with a third-person character |
 | **Verification** | an autopilot walk test that drives the character headless and logs a sampled trajectory, an 11-rule world gate, and blind A/B evidence against the real footage |
 | **Manual tuning** | none. `--preset auto` diagnoses the footage, and every budget comes from the scene or the GPU |
 
 ---
 
-## What's actually hard here
+## Demo video (4:30)
 
-Four problems do most of the damage, and each one shaped part of this repo.
+The full walkthrough — capture on the phone, reconstruction, walkable result — is
+one 4 minute 30 second cut, available three ways (it is the same video everywhere):
 
-**1. A reconstruction has no metre.** Structure-from-motion recovers a scene up to an
-unknown scale, so "how big is this room" is not answerable from geometry alone. The
-pipeline measures it from physics instead: a drone flies ~5 m/s, a walked phone sits
-~1.6 m above the ground, and the reconstructed camera path divided by either gives a ruler
-(`--speed-anchor`, `--height-anchor`). Get this wrong and the collider voxel grid inflates
-until the voxeliser crashes — which is exactly what it looked like when it did.
+| where | link | notes |
+|---|---|---|
+| **YouTube (best way to watch)** | **[youtube.com/watch?v=xMRw3slJjIo](https://www.youtube.com/watch?v=xMRw3slJjIo)** | streams instantly, click the poster above |
+| **In this repo** | [`docs/media/demo-4m30s.mp4`](docs/media/demo-4m30s.mp4) | 720p, 60 MB — open the file page and it plays in the browser |
+| **Direct stream** | `https://cdn.jsdelivr.net/gh/krisgarg25/Drone_Phone_video_to_playable_3d_world@main/docs/media/demo-4m30s.mp4` | range-request friendly, paste into any player |
 
-**2. Splats are not surfaces.** A Gaussian cloud has no floor to stand on. The collider is
-built by voxelising the cloud into an axis-aligned shell — and that shell turns every
-height change into a **vertical wall**. A capsule of radius 0.34 m cannot climb a 0.35 m
-riser at all: it meets the flat face at its equator, so the contact normal is horizontal
-and there is no lift. Walkability stops being a rendering question and becomes a routing
-question about the body that will walk it.
+> GitHub strips `<video>` tags from READMEs and serves repo files as
+> `application/octet-stream`, so no `.mp4` can play *inline* on this page.
+> That is why the moving pictures below are GIFs cut from real screen
+> recordings — and why the poster above links out to YouTube.
 
-**3. The truth depends on the machine.** Training sizes its pixel budget and gaussian cap
-from the VRAM free *at that moment*, so the same clip yields 7.5k splats or 30k depending
-on what else held the GPU. Every absolute threshold downstream of that fails
-nondeterministically — which is most of what looked like "random crashes, then tweak the
-settings". Anything read off a reconstruction is now judged relatively: share of the cloud,
-spread across the camera path, the scene's own footprint.
+---
 
-**4. A number can be correct and the claim still wrong.** A walk test reporting
-`walked 22 m, falls 0` sounds fine while the character floats. So the telemetry logs a
-sampled route and the runner compares it against the distance claimed. That cross-check is
-what caught the walker's ground probes casting a fixed 0.80–2.60 m band while the capsule
-was scaled by `CHAR_SCALE`: in room-scale worlds the ray started *below its own floor*,
-grounding never registered, and `falls=0` was vacuous because the fall detector needed
-roughly eighty body heights to trip.
+## Real footage, not renders
+
+Everything below is cut from actual screen recordings of the real app — the phone
+capture page, the pipeline monitor, the training run, the walk test. No AI clips.
+
+### 1 · Scan the room with your phone
+
+<p align="center">
+  <img src="docs/media/phone-scan.gif" width="560" alt="Live AR room scan on the phone, with coverage readout and inset map">
+</p>
+
+<p align="center"><sub>Live scan: coverage readout, needs-angles cue, and the inset map filling in as you walk. Recorded on a real phone, straight off the capture page.</sub></p>
+
+### 2 · Run the reconstruction
+
+<p align="center">
+  <img src="docs/media/pipeline-gui.gif" width="720" alt="Drone3D Studio pipeline GUI with reconstruction settings and run monitor">
+</p>
+
+<p align="center"><sub>Drone3D Studio: pick the scene, the capture preset and the quality tier, hit Start reconstruction. The same run can be driven from the terminal.</sub></p>
+
+### 3 · Watch it train, live
+
+<p align="center">
+  <img src="docs/media/train-live.gif" width="720" alt="Run monitor showing COLMAP solve counts and live splat training log">
+</p>
+
+<p align="center"><sub>The run monitor reads <code>work/&lt;scene&gt;/logs</code>, so terminal runs show up here too — keyframes, COLMAP solve counts, training loss and gaussian counts as they happen.</sub></p>
+
+### 4 · Walk the result
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=xMRw3slJjIo" title="Watch the full demo">
+    <img src="docs/media/walk-preview.gif" width="560" alt="Autopilot walk test running through a boulder field rebuilt from one drone clip">
+  </a>
+</p>
+
+<p align="center"><sub>The autopilot walking a world rebuilt from a single drone clip — no hand-tuned settings, and that HUD line is the harness's own telemetry, not a caption.</sub></p>
+
+---
 
 ## How a video becomes a world
 
@@ -86,7 +116,7 @@ flowchart LR
   D --> E["train (gsplat)"]
   E --> F["frame: scale, up, region"]
   F --> G["export: splat + points"]
-  G --> H["sky / clouds cull"]
+  G --> H["sky / cloud cull"]
   H --> I["collider: voxel shell"]
   I --> J["ground surface, chosen by measurement"]
   J --> K["gate: 11 rules"]
@@ -96,19 +126,85 @@ flowchart LR
 
 | stage | what it decides |
 |---|---|
-| **keyframes → COLMAP** | where every camera was. Flag support is probed from the vendored binary rather than assumed; a failing solve walks a rescue ladder (other matcher, other mapper, relaxed thresholds) before giving up, and a legacy-format vocab tree is reported as an unsupported asset instead of a crash |
+| **keyframes → COLMAP** | where every camera was. Flag support is probed from the vendored binary, not assumed; a failing solve walks a rescue ladder (other matcher, other mapper, relaxed thresholds), and a legacy vocab tree is reported as an unsupported asset instead of a crash |
 | **train** | the splat, at a budget derived from free VRAM, checkpointing `splat.partial.ply` so a Windows-level kill that no `except` can catch is still rescuable |
-| **frame** | the hardest step: which way is up, what metre the scene uses, how much of it is a room you can bound. If multi-view support is too thin it degrades to bounding the region by the flight path and the ground under it, and warns — it does not stop a run that already paid for training |
-| **export → sky/clouds** | viewer assets, and for footage flown above a cloud layer, the fog that reconstructs as ~30% of the scene gets cut on painted-area fraction rather than a colour guess |
-| **collider → surface** | the physics shell, then a *choice*: two candidate grounds are built (clipped shell vs heightfield), both are routed, and whichever the autopilot actually walks further on ships — so the physics mesh, the route and the underlay the browser draws cannot disagree |
+| **frame** | the hardest step: which way is up, what a metre is, how much of the scene is a boundable room. Thin multi-view support degrades to bounding the region by the flight path and the ground under it — with a warning, not a failed run |
+| **export → sky/clouds** | viewer assets; fog flown above a cloud layer reconstructs as ~30% of the scene and is cut on painted-area fraction, not a colour guess |
+| **collider → surface** | the physics shell, then a *choice*: two candidate grounds are built (clipped shell vs heightfield), both are routed, and whichever the autopilot walks further on ships — so physics mesh, route and browser underlay cannot disagree |
 | **gate** | 11 severity-tiered rules. Hard ones (no measured ground, inverted floor, spawn in mid-air) name themselves and are **never** downgraded to make a run green |
 | **walk test** | drives the character headless through the real build, logging position, grounding and falls every 0.5 s |
 
+Four problems shaped this design:
+
+1. **A reconstruction has no metre.** SfM recovers a scene up to an unknown
+   scale. The pipeline measures it from physics: a drone flies ~5 m/s, a walked
+   phone sits ~1.6 m above the ground (`--speed-anchor`, `--height-anchor`).
+2. **Splats are not surfaces.** A Gaussian cloud has no floor. The collider is a
+   voxelised shell in which every height change is a vertical wall — a 0.34 m
+   capsule cannot climb a 0.35 m riser at all. Walkability becomes a routing
+   question about the body that will walk it.
+3. **The truth depends on the machine.** Training sizes its budget from VRAM
+   free *at that moment*, so the same clip yields 7.5k or 30k splats. Every
+   downstream threshold is relative (share of cloud, spread across the camera
+   path, the scene's own footprint).
+4. **A number can be right and the claim wrong.** `walked 22 m, falls 0` sounds
+   fine while the character floats — so telemetry logs a sampled route and the
+   runner cross-checks it against the distance claimed.
+
+---
+
+## Record on your phone
+
+You need one thing: a slow walk with a phone. AR pose logging is optional but
+helps a lot indoors. Full detail lives in [`docs/PHONE_CAPTURE.md`](docs/PHONE_CAPTURE.md).
+
+**Step 1 — open the capture page on your phone.**
+
+```bat
+.venv\Scripts\python.exe _serve.py 8137 .
+```
+
+Open the HTTPS address it prints on the phone → `viewer/capture.html` →
+**Start scan**. Grant the camera permission. Recording starts when you tap
+**Start recording** — never before, so no untracked pre-roll poisons the solve.
+
+**Step 2 — walk it right.** This matters more than any setting:
+
+- **Arcs and orbits, never spins.** Every rotation should ride on a sideways
+  step. Standing still and panning is the one move that actively poisons the solve.
+- **Three height passes:** waist, above head, knee height.
+- **Slow and steady**, good light, 60–70%+ overlap between views.
+- **Corners get extra orbit shots** — half a circle around each corner.
+- **One hold per room** (all vertical or all horizontal), 1.5–4 minutes per room.
+
+**Step 3 — get the files to the laptop.** The take transfers as video plus an
+AR pose log and a calibration file. Drop them next to each other:
+
+```
+videos/myscene/walk1.mp4
+videos/myscene/walk1_poses.jsonl
+videos/myscene/walk1_calibration.json
+```
+
+No AR phone? Record plain video with any camera app — the movement rules above
+still carry the solve. iPhone users can also log poses with Record3D; any
+ARCore logger app works on Android (see `docs/PHONE_CAPTURE.md` for formats).
+
+**Step 4 — run it.**
+
+```bat
+.venv\Scripts\python pipeline.py run myscene            REM auto preset, full quality
+.venv\Scripts\python pipeline.py run myscene --quality smoke   REM every step, in minutes
+.venv\Scripts\python pipeline.py view myscene           REM serve + open the walkable viewer
+```
+
+---
+
 ## Proof, not promises
 
-Measured on a 6 GB RTX 3050, every take in `videos/`, `--quality smoke` — a real 300-step
-train, because skipping `train` leaves most of the graph unexercised and the run passes
-vacuously:
+Measured on a 6 GB RTX 3050, every take in `videos/`, `--quality smoke` — a real
+300-step train, because skipping `train` leaves most of the graph unexercised
+and the run passes vacuously:
 
 | take | capture | status | steps | walked | sampled route | airborne | falls |
 |---|---|---|---|---|---|---|---|
@@ -120,14 +216,9 @@ vacuously:
 | test2train | phone | complete | 15/15 | 28.1 m | 26.4 m | 0/336 | 0 |
 | test2horizontal | phone, low texture | partial | 15/15 | 30.1 m | 28.0 m | 0/336 | 0 |
 
-Walk telemetry moves a little between runs: the walk test is a live browser physics sim,
-not a deterministic replay, so frame timing differs. `rocks` measured 5/61 airborne in the
-matrix above and 8/60 in the clip further down — same world, same route, same result.
-
-`partial` means the world shipped **and** the gate then refused to certify it: temple and
-test2horizontal both fail the hard rule *spawn on supported ground*. The run says so on one
-line rather than quietly passing a world it does not trust — both are coarse or mis-scaled
-captures, and that is the honest answer about them.
+`partial` means the world shipped **and** the gate then refused to certify it:
+temple and test2horizontal fail the hard rule *spawn on supported ground*. One
+line says so instead of quietly passing a world the pipeline does not trust.
 
 Reproduce it:
 
@@ -136,48 +227,14 @@ Reproduce it:
 .venv\Scripts\python tests\test_e2e.py     # every take in videos/, ~30 min
 ```
 
-`test_e2e.py` exits non-zero if any take produces no output, **or if there are no takes at
-all** — "0/0 takes clean" is a green light for nothing, and it used to print exactly that.
-
-### What the reconstruction actually looks like
-
-Top is the real drone frame, bottom is the splat rendered from the same camera. These
-stacks ship as blinded evidence with the A/B order kept in a separate key
-(`results/pair_key_<take>.json`), so quality gets judged without anyone knowing which is
-which:
+Top is the real drone frame, bottom is the splat rendered from the same camera —
+blinded A/B stacks, order kept in a separate key (`results/pair_key_<take>.json`):
 
 ![real drone frame above, gsplat render below](results/side_by_side/rocks_AB_02_labeled.jpg)
 
-And the same world from inside it, mid-walk. The HUD line is the walk test's own telemetry,
-not a caption:
+Mid-walk, from inside the same world (HUD line is live telemetry, not a caption):
 
-![character walking a reconstructed boulder field — walked 26.6 m, falls 0, grounded](docs/images/walk-rocks.jpg)
-
-<details>
-<summary><b>▶ The complete 34-second walk test, unedited</b> — one headless run, no cuts</summary>
-
-<p align="center">
-  <a href="https://raw.githubusercontent.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/main/docs/media/walk-rocks.mp4">
-    <img src="docs/media/walk-poster.jpg" width="720" alt="Poster frame from the full 34-second walk-test recording — link opens the clip file">
-  </a>
-</p>
-
-<p align="center"><sub><b>To watch it in place, use the
-<a href="https://www.youtube.com/watch?v=xMRw3slJjIo">demo video</a>.</b> This frame links to
-the raw clip, which downloads: GitHub serves repository files as
-<code>application/octet-stream</code> and strips <code>&lt;video&gt;</code> from READMEs, so
-the only thing that moves on this page without a click is the GIF at the top — that is why
-the hero is a GIF.</sub></p>
-
-The character is driven entirely by the tour route the pipeline generated for this world:
-no keyboard, no hand-placed waypoints, and the `falls` counter is the viewer's own
-collision check. It ends because the autopilot reported its route finished at 32 s — the
-recorder kept running to 34 s.
-
-</details>
-
-Both are `--quality smoke`, i.e. the 300-step test train. `--quality high` is 1280 px,
-15 000 steps and a 3 M gaussian cap.
+![character walking a reconstructed boulder field](docs/images/walk-rocks.jpg)
 
 ## Install
 
@@ -196,125 +253,73 @@ cd Drone_Phone_video_to_playable_3d_world
 python scripts/bootstrap.py --with-train
 ```
 
-`bootstrap.py` creates `.venv` and `.venv310`, installs the Node tools, downloads Chromium
-for the walk test, and finishes by running `pipeline.py doctor`. Add `--check` to see what
-it would do without doing it. Prefer the manual route: `requirements.txt` and
-`requirements-train.txt` are pinned to exactly what the table above ran on, including the
-gsplat CUDA wheel URL.
+`bootstrap.py` creates `.venv` + `.venv310`, installs the Node tools, downloads
+Chromium for the walk test, and finishes by running `pipeline.py doctor` — which
+probes every COLMAP subcommand, checks `pycolmap` against the vendored COLMAP,
+and prints a copy-pasteable `fix:` for anything it rejects (including the nasty
+one: a 313 MB LFS binary that arrived as a 130-byte text pointer).
 
-`doctor` is the check worth trusting — it runs every COLMAP subcommand this repo uses,
-verifies `pycolmap` matches the vendored COLMAP version, probes the GPU and the Node CLI,
-and prints a copy-pasteable `fix:` for anything it rejects. It also catches the nastiest
-clone failure: a 313 MB LFS binary that arrived as a 130-byte text pointer, which COLMAP
-otherwise reports as an unexplained stack buffer overrun.
-
-## Run it
-
-```bash
-copy MyClip.mp4 videos\rocks.mp4                            # a clip, named after your take
-.venv\Scripts\python pipeline.py run rocks                  # full quality, preset auto
-.venv\Scripts\python pipeline.py run rocks --quality smoke  # every step, in minutes
-.venv\Scripts\python pipeline.py view rocks                 # serve + open the viewer
-```
-
-| path | |
-|---|---|
-| `work/<name>/viewer_assets/` | the world — splat, collider, heightfield, route |
-| `work/<name>/report.json` | per-step outcome, timing, which fallback fired and why |
-| `work/<name>/walktest/` | frames, video, and `walk_log.json` with the sampled trajectory |
-| `work/<name>/logs/` | one numbered log per step — the evidence behind the report |
-| `results/blinded/` + `results/pair_key_<name>.json` | real-vs-render A/B stacks and their key |
-
-Other commands: `scan` (diagnose footage, no reconstruction), `status`, `coverage`,
-`capture` (what to film for a preset), `benchmark`, `ui` (dashboard), `doctor`.
-
-## Filming that works
-
-The reconstruction is only as good as the coverage, and this is the part no setting can
-fix. `python pipeline.py capture room` prints the checklist for a preset; the short
-version, learned from the takes above:
-
-- **Overlap beats speed.** Slow the camera down. Motion blur is the most common cause of a
-  sparse or failed solve, and the capture diagnostics report blur and ORB feature counts
-  before anything expensive runs.
-- **Textureless walls are the hard case.** A white room gives COLMAP almost nothing —
-  `test2horizontal` is that take, and it is why the pipeline derives its region from the
-  camera path when geometry support is thin instead of giving up.
-- **Return to where you started.** A closed loop gives the solver loop closures; for drone
-  work fly *through* the cloud layer rather than panning above it, or the fog reconstructs
-  as 30% of your scene.
-- **Record phone AR poses if you can.** `room_w_jsonl` carries them and is the most
-  reliably-scaled indoor take here — see [docs/PHONE_CAPTURE.md](docs/PHONE_CAPTURE.md).
+Other commands: `scan` (diagnose footage before burning GPU hours), `status`,
+`coverage`, `capture` (what to film for a preset), `benchmark`, `ui`
+(dashboard), `doctor`.
 
 ## Failure policy
 
-The rule the repo is built around: **any video produces an output, and every failure names
-itself.**
+The rule the repo is built around: **any video produces an output, and every
+failure names itself.**
 
 - **Classified, not tracebacked.** Every step failure gets a kind (`oom`,
-  `voxel-overflow`, `unsupported-flag`, `unsupported-asset`, `empty-input`, `missing-tool`,
-  `timeout`, `crash`). Retryable ones are repaired — OOM halves the pixel budget, voxel
-  overflow climbs the voxel ladder — and the repair is recorded in the report.
-- **Derived, not tuned.** No per-scene magic numbers; a new constant has to argue why it
-  cannot be measured.
-- **Degrade, don't discard.** A locked screenshot costs one screenshot, not the run. An
-  evidence step that can produce nothing exits 0 and the matrix reports `evidence missing:`
-  — the world still ships.
-- **The gate does not move.** Hard verdicts are never downgraded for a green run, and
-  telemetry is allowed to contradict the headline number.
-- **Stale caches cannot hide a fix.** Each step marker stores a hash of the code that ran,
-  so editing a step invalidates exactly that step and everything downstream of it.
+  `voxel-overflow`, `unsupported-flag`, `crash`…). Retryable ones are repaired
+  and the repair is recorded in `report.json`.
+- **Derived, not tuned.** No per-scene magic numbers; a new constant has to
+  argue why it cannot be measured.
+- **Degrade, don't discard.** Evidence steps that fail still let the world ship;
+  the matrix reports `evidence missing:` rather than failing the run.
+- **The gate does not move.** Hard verdicts are never downgraded for a green run.
+- **Stale caches cannot hide a fix.** Each step marker hashes the code that ran,
+  so editing a step invalidates exactly that step and everything downstream.
 
 ## Layout
 
 ```
 pipeline.py            runner: step graph, budgets, retries, report, viewer
 scripts/               one script per step + shared hardening in robust.py
-viewer/                PlayCanvas walkable viewer (pc.js) + phone capture page
-tools/                 vendored COLMAP, ffmpeg, vocab tree, splat-transform, navbake
+viewer/                PlayCanvas walkable viewer + phone capture page
+tools/                 vendored COLMAP, ffmpeg, vocab tree, splat-transform
 tests/                 check_all.py (fast suites), test_e2e.py (every take)
-docs/                  capture technique and phone AR notes
+docs/                  capture technique, phone AR notes, demo media
 work/<name>/           per-take output — regenerable, gitignored
-README-MVP.md          the engineering log: every step, every measured number, and every
-                       defect this project found by measuring instead of reading
+README-MVP.md          the engineering log: every step, every number, every defect
 ```
 
-`README-MVP.md` is the long form — per-step design, the collider walkability analysis, and
-the before/after for each fix. This page is the door.
+`README-MVP.md` is the long form — per-step design, the collider walkability
+analysis, before/after for each fix. This page is the door.
 
 ## Troubleshooting
 
 | symptom | cause and fix |
 |---|---|
-| COLMAP dies with `stack buffer overrun` / `0xC0000409` | A git-lfs file arrived as a 130-byte pointer. `git lfs install && git lfs pull` — `bootstrap.py --check` says so in one line |
-| `vocab_tree_matcher` fails the same way | The vendored `tools/vocab_tree.bin` is a legacy flann index this COLMAP 4.x refuses to read. Loop closure is skipped and the solve still completes; re-download the faiss build from https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin to get it back |
-| `'C:\Users\you\Desktop\Drone' is not recognized` | The repo root has spaces. Nothing here may use `shell=True`; if you hit this it is a bug — `scripts/robust.py:run_cmd` refuses both forms on purpose |
-| `splat-transform is not installed` | The collider names this instead of raising `[WinError 2]`: `cd tools && npm install`, or re-run `bootstrap.py`. `npx` cannot be a fallback — npm's `npx` is a `.cmd` shim `subprocess` will not start without a shell |
-| Walk test reports `connection refused` on 8137 | A stale `_serve.py` holds it, or none does. The runner starts its own and reuses a live one; `netstat -ano \| findstr 8137` shows who owns it |
-| `train` says no CUDA | `.venv310` missing, or torch can't see the GPU — `bootstrap.py --with-train`, then `pipeline.py doctor` |
-| A take builds a world but the gate fails it | Read `work/<name>/world_check.json`; it names the rule. Two takes here fail *spawn on supported ground* today, and that is reported rather than hidden |
-| Nothing in `videos/` | Clips are gitignored at 86 MB each; the per-take `calibration.json` / `data_poses.jsonl` fixtures deliberately are not, so a clone gets pose data and no footage |
+| COLMAP dies with `stack buffer overrun` / `0xC0000409` | git-lfs file arrived as a pointer. `git lfs install && git lfs pull` |
+| `'C:\Users\you\Desktop\Drone' is not recognized` | repo path has spaces — nothing here may use `shell=True`; if you hit this it is a bug |
+| `splat-transform is not installed` | `cd tools && npm install`, or re-run `bootstrap.py` |
+| Walk test `connection refused` on 8137 | stale `_serve.py` holds the port, or none does — the runner starts its own |
+| `train` says no CUDA | `.venv310` missing or torch can't see the GPU — `bootstrap.py --with-train`, then `pipeline.py doctor` |
+| Gate fails a built world | read `work/<name>/world_check.json` — it names the rule |
+| Nothing in `videos/` | clips are gitignored at ~86 MB each; pose/calibration fixtures are not, so a clone gets pose data and no footage |
 
 ## Known limits
 
-Read these before judging a result — they are honest edges, not setup bugs:
-
-- **The table above is `--quality smoke`.** That proves nothing fails; it is not a claim
-  about final visual quality. Judge that from `results/blinded/`.
-- **Indoor phone takes walk 15–36 m, not 65 m.** Rooms reconstruct small and coverage is
-  thin; several sit close to the scale ambiguity in point 1.
-- **Clone weight.** ~0.71 GB of history, three files within 2 MB of GitHub's 100 MB-per-file
-  limit, and 313 MB in LFS, which costs bandwidth on every clone. The source alone is ~26
-  MB; a `git filter-repo` history rewrite is the only real cure.
-- **`tools/gsplat` and `tools/pc-engine` are submodules** needed only to read or patch those
-  projects — the pipeline uses the installed gsplat wheel and the vendored viewer scripts.
-- **Windows only today.** COLMAP and ffmpeg are vendored as `.exe`; Linux means swapping
-  those and re-testing the walk viewer.
+- The table above is `--quality smoke` — it proves nothing fails, not final
+  visual quality. Judge that from `results/blinded/`.
+- Indoor phone takes walk 15–36 m, not 65 m. Rooms reconstruct small and
+  coverage is thin.
+- Clone weight: history plus the 60 MB demo cut. Source alone is ~26 MB.
+- `tools/gsplat` and `tools/pc-engine` are submodules for reading/patching only.
+- **Windows only today.** COLMAP and ffmpeg are vendored as `.exe`.
 
 ## License and credits
 
 MIT — see [LICENSE](LICENSE). Vendored components keep their own terms: COLMAP
 (BSD-3-Clause), ffmpeg (LGPL/GPL as built), PlayCanvas (MIT),
-[`@playcanvas/splat-transform`](https://github.com/playcanvas/splat-transform) (MIT), and
-[gsplat](https://github.com/nerfstudio-project/gsplat) (Apache-2.0) for the differentiable
-rasteriser this pipeline trains on.
+[`@playcanvas/splat-transform`](https://github.com/playcanvas/splat-transform) (MIT),
+and [gsplat](https://github.com/nerfstudio-project/gsplat) (Apache-2.0).
