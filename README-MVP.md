@@ -1,5 +1,10 @@
 # README-MVP — Drone video → 3D Gaussian Splat → walkable scene
 
+> **Start at [README.md](README.md)** — the front page: what the project is, why it is
+> hard, the demo video, install, and the measured results for every take. This file is
+> the long form underneath it: per-step design, the numbers, and each defect the project
+> found by measuring rather than reading.
+
 **Status: both quality bars WON under blind review.**
 Bar 1 (visual): fresh-context critic shown only blinded A/B stacks — WIN, 10/10
 pairs read as the same scene, zero disqualifying artifacts
