@@ -158,13 +158,16 @@ not a caption:
 
 <p align="center">
   <a href="https://raw.githubusercontent.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/main/docs/media/walk-rocks.mp4">
-    <img src="docs/media/walk-poster.jpg" width="720" alt="Poster frame from the full walk-test recording — click to play the clip">
+    <img src="docs/media/walk-poster.jpg" width="720" alt="Poster frame from the full 34-second walk-test recording — link opens the clip file">
   </a>
 </p>
 
-<p align="center"><sub>Click the frame to play the clip. It is a link rather than an embedded
-player because GitHub's README renderer strips <code>&lt;video&gt;</code> elements — the
-animated preview at the top of this page is a GIF for exactly that reason.</sub></p>
+<p align="center"><sub><b>To watch it in place, use the
+<a href="https://www.youtube.com/watch?v=xMRw3slJjIo">demo video</a>.</b> This frame links to
+the raw clip, which downloads: GitHub serves repository files as
+<code>application/octet-stream</code> and strips <code>&lt;video&gt;</code> from READMEs, so
+the only thing that moves on this page without a click is the GIF at the top — that is why
+the hero is a GIF.</sub></p>
 
 The character is driven entirely by the tour route the pipeline generated for this world:
 no keyboard, no hand-placed waypoints, and the `falls` counter is the viewer's own
