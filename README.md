@@ -157,11 +157,14 @@ not a caption:
 <summary><b>▶ The complete 34-second walk test, unedited</b> — one headless run, no cuts</summary>
 
 <p align="center">
-  <video src="docs/media/walk-rocks.mp4" controls preload="metadata" width="800"
-         poster="docs/media/walk-poster.jpg">
-    Your browser can't play this — <a href="docs/media/walk-rocks.mp4">download the clip</a>.
-  </video>
+  <a href="https://raw.githubusercontent.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/main/docs/media/walk-rocks.mp4">
+    <img src="docs/media/walk-poster.jpg" width="720" alt="Poster frame from the full walk-test recording — click to play the clip">
+  </a>
 </p>
+
+<p align="center"><sub>Click the frame to play the clip. It is a link rather than an embedded
+player because GitHub's README renderer strips <code>&lt;video&gt;</code> elements — the
+animated preview at the top of this page is a GIF for exactly that reason.</sub></p>
 
 The character is driven entirely by the tour route the pipeline generated for this world:
 no keyboard, no hand-placed waypoints, and the `falls` counter is the viewer's own
