@@ -114,72 +114,34 @@ def _step_row(log: Path, now: float) -> dict:
     return row
 
 
-VIDEO_EXTS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"}
-
-
 def scan_scenes(root: Path, now: float = None) -> list:
     now = time.time() if now is None else now
-    root = Path(root)
-    work = root / "work"
-    videos = root / "videos"
-
-    work_dirs = {}
-    if work.is_dir():
-        for d in sorted(p for p in work.iterdir() if p.is_dir()):
-            work_dirs[d.name] = d
-
-    video_sources = {}
-    if videos.is_dir():
-        for p in sorted(videos.iterdir()):
-            if p.is_dir():
-                video_sources[p.name] = p
-            elif p.suffix.lower() in VIDEO_EXTS:
-                if p.stem not in video_sources:
-                    video_sources[p.stem] = p
-
-    all_names = sorted(set(work_dirs.keys()) | set(video_sources.keys()))
-    if not all_names:
+    work = Path(root) / "work"
+    if not work.is_dir():
         return []
-
     out = []
-    for name in all_names:
-        d = work_dirs.get(name)
-        v = video_sources.get(name)
-        has_work = d is not None
-        has_video = v is not None
-
-        logs = _log_files(d / "logs") if has_work else []
+    for d in sorted(p for p in work.iterdir() if p.is_dir()):
+        logs = _log_files(d / "logs")
         steps = [_step_row(p, now) for p in logs]
         reg = None
-        if has_work:
-            poses = d / "keyframes_poses.jsonl"
-            if poses.is_file():
-                def _lines(p):
-                    with p.open(encoding="utf-8", errors="replace") as fh:
-                        return sum(1 for ln in fh if ln.strip())
-                kf = d / "keyframes.jsonl"
-                reg = [_lines(poses), _lines(kf) if kf.is_file() else None]
-            mtimes = [p.stat().st_mtime for p in logs] or [d.stat().st_mtime]
-            updated_ts = max(mtimes)
-        else:
-            try:
-                updated_ts = v.stat().st_mtime
-            except Exception:
-                updated_ts = now
-
+        poses = d / "keyframes_poses.jsonl"
+        if poses.is_file():
+            def _lines(p):
+                with p.open(encoding="utf-8", errors="replace") as fh:
+                    return sum(1 for ln in fh if ln.strip())
+            kf = d / "keyframes.jsonl"
+            reg = [_lines(poses), _lines(kf) if kf.is_file() else None]
+        mtimes = [p.stat().st_mtime for p in logs] or [d.stat().st_mtime]
         out.append({
-            "name": name,
-            "has_work": has_work,
-            "has_video": has_video,
-            "viewable": (d / "viewer_assets" / "scene.ply").is_file() if has_work else False,
-            "trained": (d / "splat.ply").is_file() if has_work else False,
+            "name": d.name,
+            "viewable": (d / "viewer_assets" / "scene.ply").is_file(),
+            "trained": (d / "splat.ply").is_file(),
             "registered": reg,
             "running": any(s["status"] == "running" for s in steps),
-            "updated": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(updated_ts)),
+            "updated": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(max(mtimes))),
             "steps": steps,
         })
     return out
-
 
 
 def tail_run(root: Path, scene: str, cursor: str = "0", limit: int = 1 << 20) -> dict:
@@ -315,59 +277,6 @@ class H(http.server.SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
-    _RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)$")
-
-    def _serve_range(self) -> bool:
-        """Answer single byte-range requests with a 206, so media truly streams.
-
-        HTML5 video seeks by re-asking for a byte window, and
-        SimpleHTTPRequestHandler answers every one of those with a full 200 from
-        byte 0 - so the 4:30 demo "streamed" from this server re-downloaded
-        itself on every seek. Serve exactly the requested window instead.
-        Multipart ranges and anything unparseable fall through to the 200 path.
-        """
-        header = (self.headers.get("Range") or "").strip()
-        if "," in header:
-            return False
-        m = self._RANGE_RE.match(header)
-        if not m or (not m.group(1) and not m.group(2)):
-            return False
-        path = self.translate_path(self.path)
-        if not os.path.isfile(path):
-            return False
-        size = os.path.getsize(path)
-        first, last = m.group(1), m.group(2)
-        if first:
-            start = int(first)
-            end = min(int(last), size - 1) if last else size - 1
-        else:
-            start, end = max(0, size - int(last)), size - 1   # suffix: last N bytes
-        if start >= size or start > end:
-            self.send_error(416, "Requested Range Not Satisfiable")
-            return True
-        self.send_response(206)
-        self.send_header("Content-Type", self.guess_type(path))
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-        self.send_header("Content-Length", str(end - start + 1))
-        # Media here is immutable; without this, end_headers() stamps no-store
-        # and every seek revalidates against the server instead of the cache.
-        self.send_header("Cache-Control", "public, max-age=3600")
-        self.end_headers()
-        left = end - start + 1
-        try:
-            with open(path, "rb") as fh:
-                fh.seek(start)
-                while left > 0:
-                    chunk = fh.read(min(1 << 16, left))
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-                    left -= len(chunk)
-        except (BrokenPipeError, ConnectionResetError):
-            pass   # the player seeked away mid-window; normal for video
-        return True
-
     _scenes_cache = (0.0, None)
 
     def _json(self, data):
@@ -386,8 +295,6 @@ class H(http.server.SimpleHTTPRequestHandler):
         return {"scenes": data}
 
     def do_GET(self):
-        if self._serve_range():
-            return
         if self.path.startswith("/api/info"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
