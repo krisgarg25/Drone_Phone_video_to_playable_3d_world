@@ -260,7 +260,7 @@
       </div>
 
       <div class="field-group">
-        <label>Scene (a folder under work/)</label>
+        <label>Scene (videos/ or work/)</label>
         <select id="scene-select" onchange="onSceneChange()"></select>
       </div>
 
@@ -481,10 +481,8 @@
       const info = await (await fetch("/api/info")).json();
       document.getElementById("cap-url").textContent =
         `https://${info.local_ip}:${info.https_port}/viewer/capture.html`;
-      // Takes are the videos/ folders: everything the server knows that is not a
-      // work/ dir, i.e. footage that has not been through the pipeline yet.
-      const workNames = new Set(scenes.map(s => s.name));
-      const takes = (info.scenes || []).filter(s => !workNames.has(s));
+      // Takes are the raw videos/ folders that have no work directory yet
+      const takes = scenes.filter(s => s.has_video && !s.has_work).map(s => s.name);
       document.getElementById("cap-take").innerHTML = takes.length
         ? takes.map(t => `<option value="${t}">${t}</option>`).join("")
         : `<option value="">no takes yet - send one from the phone</option>`;
@@ -502,11 +500,31 @@
     const sel = document.getElementById("scene-select");
     const list = scenes.slice();
     if (currentScene && !list.some(s => s.name === currentScene))
-      list.unshift({ name: currentScene, running: false });
-    sel.innerHTML = list.length
-      ? list.map(s => `<option value="${s.name}">${s.name}${s.running ? " (running)" : ""}</option>`).join("")
-      : `<option value="">no scenes under work/ yet</option>`;
+      list.unshift({ name: currentScene, running: false, has_work: false, has_video: true, steps: [] });
+
+    const unproc = list.filter(s => !s.has_work);
+    const withWork = list.filter(s => s.has_work);
+
+    let html = "";
+    if (unproc.length) {
+      html += `<optgroup label="📹 Unprocessed Videos (videos/)">`;
+      html += unproc.map(s => `<option value="${s.name}">${s.name} [new / ready to run]</option>`).join("");
+      html += `</optgroup>`;
+    }
+    if (withWork.length) {
+      html += `<optgroup label="⚡ Reconstructions (work/)">`;
+      html += withWork.map(s => {
+        let tag = s.running ? " (running)" : (s.viewable ? " (viewable)" : (s.trained ? " (trained)" : ""));
+        return `<option value="${s.name}">${s.name}${tag}</option>`;
+      }).join("");
+      html += `</optgroup>`;
+    }
+    if (!list.length) {
+      html = `<option value="">no scenes found in videos/ or work/</option>`;
+    }
+    sel.innerHTML = html;
     if (currentScene && list.some(s => s.name === currentScene)) sel.value = currentScene;
+
     const viewSel = document.getElementById("view-select");
     const viewable = scenes.filter(s => s.viewable);
     const keepView = viewSel.value;
@@ -546,11 +564,33 @@
     const sc = sceneByName();
     const body = document.getElementById("step-rows");
     if (!sc) { body.innerHTML = ""; return; }
-    const rows = sc.steps.map(s => Object.assign({}, s));
+    const rows = (sc.steps || []).map(s => Object.assign({}, s));
     // The tail knows the in-flight log a couple of seconds before the scan does.
     if (current && !rows.some(r => r.name === current)) {
       rows.push({ i: rows.length + 1, name: current, status: "running", secs: null, exit: null });
     }
+
+    if (!rows.length && !sc.has_work) {
+      body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:22px 12px; color:var(--text-muted);">
+        📹 <b>Raw footage in videos/ folder</b> — no reconstruction started yet.<br>
+        <span style="font-size:11.5px; margin-top:4px; display:inline-block;">Pick capture preset & quality above, then click <b>🚀 Start reconstruction</b> to begin.</span>
+      </td></tr>`;
+      document.getElementById("m-total").textContent = "--";
+      document.getElementById("m-slow").textContent = "--";
+      document.getElementById("m-reg").textContent = "--";
+      const vEl = document.getElementById("m-verdict");
+      vEl.textContent = "ready to run";
+      vEl.style.color = "#38bdf8";
+
+      const badge = document.getElementById("hdr-status");
+      badge.textContent = `READY: ${currentScene}`;
+      badge.className = "";
+      document.getElementById("run-owner").textContent = "not started";
+      document.getElementById("btn-start").disabled = false;
+      document.getElementById("btn-kill").style.display = "none";
+      return;
+    }
+
     rows.sort((a, b) => a.i - b.i);
     body.innerHTML = rows.map(r =>
       `<tr class="${r.status === "running" ? "run" : r.status === "failed" ? "fail" : ""}">` +

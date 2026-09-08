@@ -14,7 +14,8 @@
 
 <p align="center">
   <b>▶ <a href="https://www.youtube.com/watch?v=xMRw3slJjIo">Watch the 4:30 demo on YouTube</a></b>
-  · <a href="docs/media/demo-4m30s.mp4">same cut, hosted in this repo (60&nbsp;MB)</a>
+  · <a href="docs/watch.html">stream it from this repo</a>
+  · <a href="docs/media/demo-4m30s.mp4">same cut, hosted here (60&nbsp;MB)</a>
   · <a href="#proof-not-promises">skip to the measured results</a>
 </p>
 
@@ -31,6 +32,17 @@
   <sub>Topics: <code>3d-gaussian-splatting</code> · <code>colmap</code> · <code>photogrammetry</code> ·
   <code>digital-twin</code> · <code>playcanvas</code> · <code>webgl</code> · <code>drone</code> ·
   <code>computer-vision</code> · <code>game-physics</code> · <code>arcore</code></sub>
+</p>
+
+<p align="center">
+  <a href="#demo-video-430"><b>Watch</b></a> ·
+  <a href="#real-footage-not-renders">Footage</a> ·
+  <a href="#how-a-video-becomes-a-world">Pipeline</a> ·
+  <a href="#record-on-your-phone">Capture</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#proof-not-promises">Proof</a> ·
+  <a href="#failure-policy">Failure policy</a> ·
+  <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
 Most 3D-from-video pipelines chase a nicer render. This one chases a **place**.
@@ -50,18 +62,29 @@ is turning a reconstruction into something a person can stand in and walk across
 ## Demo video (4:30)
 
 The full walkthrough — capture on the phone, reconstruction, walkable result — is
-one 4 minute 30 second cut, available three ways (it is the same video everywhere):
+one 4 minute 30 second cut, available four ways (it is the same video everywhere):
 
 | where | link | notes |
 |---|---|---|
 | **YouTube (best way to watch)** | **[youtube.com/watch?v=xMRw3slJjIo](https://www.youtube.com/watch?v=xMRw3slJjIo)** | streams instantly, click the poster above |
+| **Local watch page (plays inline)** | [`docs/watch.html`](docs/watch.html) | the repo's own player, instant seek — command below |
 | **In this repo** | [`docs/media/demo-4m30s.mp4`](docs/media/demo-4m30s.mp4) | 720p, 60 MB — open the file page and it plays in the browser |
 | **Direct stream** | `https://cdn.jsdelivr.net/gh/krisgarg25/Drone_Phone_video_to_playable_3d_world@main/docs/media/demo-4m30s.mp4` | range-request friendly, paste into any player |
 
-> GitHub strips `<video>` tags from READMEs and serves repo files as
-> `application/octet-stream`, so no `.mp4` can play *inline* on this page.
-> That is why the moving pictures below are GIFs cut from real screen
-> recordings — and why the poster above links out to YouTube.
+GitHub strips `<video>` tags from READMEs, so no `.mp4` can play *inline* on this
+page — that is why the moving pictures below are GIFs cut from real screen
+recordings. The repo ships its own player instead, and the server behind it
+speaks byte ranges (`HTTP 206`), so the cut truly streams: instant seek, no
+re-download, nothing buffered twice.
+
+```bat
+.venv\Scripts\python.exe _serve.py 8137 .
+REM then open http://localhost:8137/docs/watch.html
+```
+
+The watch page holds both the 4:30 cut and the 12-second HD ground-walk clip
+([`docs/media/walk-rocks-hd.mp4`](docs/media/walk-rocks-hd.mp4), 1918×976,
+recorded straight off the viewer).
 
 ---
 
@@ -103,6 +126,11 @@ capture page, the pipeline monitor, the training run, the walk test. No AI clips
 </p>
 
 <p align="center"><sub>The autopilot walking a world rebuilt from a single drone clip — no hand-tuned settings, and that HUD line is the harness's own telemetry, not a caption.</sub></p>
+
+<p align="center">
+  <b><a href="docs/media/walk-rocks-hd.mp4">HD ground-walk clip</a></b> — 12 s, 1918×976, recorded
+  inside the finished world · <a href="docs/watch.html">stream it on the watch page</a>
+</p>
 
 ---
 
@@ -234,34 +262,110 @@ blinded A/B stacks, order kept in a separate key (`results/pair_key_<take>.json`
 
 Mid-walk, from inside the same world (HUD line is live telemetry, not a caption):
 
-![character walking a reconstructed boulder field](docs/images/walk-rocks.jpg)
+![third-person character mid-walk across a reconstructed boulder field, collider wireframe on, HUD telemetry line live at top left](docs/images/ground-walk-hud.jpg)
 
 ## Install
 
-| | |
-|---|---|
-| OS | **Windows 10/11** — COLMAP and ffmpeg are vendored as `.exe` |
-| GPU | **Required.** NVIDIA, driver new enough for CUDA 12.4. `train` is not optional and gsplat has no CPU path |
-| Python | **3.12** (pipeline) and **3.10** (training) |
-| Node | 18+ — the collision mesh is built by `@playcanvas/splat-transform` |
-| Disk | ~4 GB for both environments, ~1 GB per take while it works |
-| Clone | `git-lfs` — one 313 MB COLMAP CUDA provider lives in LFS |
+Clean clone to first walk in five steps. Everything is Windows-native — no WSL,
+no container, no installer wizard.
+
+### 0 · Prerequisites
+
+| need | why | check |
+|---|---|---|
+| **Windows 10/11** | COLMAP and ffmpeg ship as vendored `.exe` | — |
+| **NVIDIA GPU**, driver new enough for CUDA 12.4 | `train` is not optional and gsplat has no CPU path | `nvidia-smi` |
+| **Python 3.12** and **3.10** | pipeline and training live in separate envs; bootstrap locates both via the `py` launcher or `PATH` | `py -0p` |
+| **Node 18+** | the collision mesh is built by `@playcanvas/splat-transform` | `node -v` |
+| **git + git-lfs** | one 313 MB COLMAP CUDA provider lives in LFS | `git lfs version` |
+| **~4 GB disk**, + ~1 GB per take while it works | two environments plus working files | — |
+
+### 1 · Clone
 
 ```bash
 git clone https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world.git
 cd Drone_Phone_video_to_playable_3d_world
+git lfs pull
+```
+
+`git lfs pull` is the step people skip and regret: without it the 313 MB CUDA
+provider is a 130-byte text pointer, and COLMAP dies with a crash that never
+mentions the real cause.
+
+### 2 · Bootstrap both environments
+
+```bash
 python scripts/bootstrap.py --with-train
 ```
 
-`bootstrap.py` creates `.venv` + `.venv310`, installs the Node tools, downloads
-Chromium for the walk test, and finishes by running `pipeline.py doctor` — which
-probes every COLMAP subcommand, checks `pycolmap` against the vendored COLMAP,
-and prints a copy-pasteable `fix:` for anything it rejects (including the nasty
-one: a 313 MB LFS binary that arrived as a 130-byte text pointer).
+One command, four jobs: create `.venv` (3.12, pipeline) and `.venv310`
+(3.10, CUDA training) from the pinned requirements; install the Node tools
+under `tools/`; download the Chromium the headless walk test drives; then hand
+off to `pipeline.py doctor`. Drop `--with-train` for a pipeline-only
+environment, or run `--check` to change nothing and just list what is missing.
 
-Other commands: `scan` (diagnose footage before burning GPU hours), `status`,
-`coverage`, `capture` (what to film for a preset), `benchmark`, `ui`
-(dashboard), `doctor`.
+### 3 · Verify the toolchain
+
+```bash
+.venv\Scripts\python.exe pipeline.py doctor
+```
+
+`doctor` probes every COLMAP subcommand, checks `pycolmap` against the vendored
+COLMAP, confirms the training env can see the GPU, and prints a copy-pasteable
+`fix:` line for anything it rejects. Green here means the next failure cannot
+be an environmental one.
+
+### 4 · First run
+
+```bat
+.venv\Scripts\python.exe pipeline.py run room_w_jsonl --quality smoke   REM every step, in minutes
+.venv\Scripts\python.exe pipeline.py view room_w_jsonl                  REM serve + open the walkable viewer
+```
+
+`smoke` exercises the whole graph with a real 300-step train, because skipping
+`train` passes vacuously. Then point `videos/<name>/` at your own footage
+([Record on your phone](#record-on-your-phone)) and run without `--quality`
+for the full budget.
+
+### 5 · Drive the viewer
+
+The walker is a third-person character on the reconstructed physics shell.
+Everything is a hotkey, and the HUD line repeats the useful ones:
+
+| key | action | key | action |
+|---|---|---|---|
+| `W A S D` / `Shift` | walk / run | `F` | drone ↔ ground-walk mode |
+| `C` | 1st ↔ 3rd person | `T` | autoplay the generated tour |
+| `G` | splats on/off | `U` | splat clean |
+| `X` | collider wireframe | `V` | coverage overlay |
+| `P` | COLMAP cameras | `O` | tie points |
+| `I` | inspect a source frame | `R` | reset to spawn |
+
+### Every command
+
+| command | what it does |
+|---|---|
+| `run <scene>` | the full step graph; `--preset auto` diagnoses the footage, `--quality smoke` shrinks it to minutes |
+| `view <scene>` | serve `viewer_assets/` and open the walkable viewer |
+| `scan <video>` | diagnose footage before burning GPU hours |
+| `ui` | the browser dashboard: run monitor, live logs, phone upload |
+| `status` · `coverage` · `benchmark` | where a run stands · what the cameras saw · what this GPU can hold |
+| `capture` | what to film for a given preset |
+| `doctor` | toolchain health, with a `fix:` per rejection |
+
+### Manual setup (if you would rather not run bootstrap)
+
+```bat
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+py -3.10 -m venv .venv310
+.venv310\Scripts\python.exe -m pip install -r requirements-train.txt
+cd tools && npm install
+.venv\Scripts\python.exe -m playwright install chromium
+```
+
+Same end state — `bootstrap.py` is these steps plus the LFS pointer check and
+the doctor handoff.
 
 ## Failure policy
 
@@ -287,7 +391,7 @@ scripts/               one script per step + shared hardening in robust.py
 viewer/                PlayCanvas walkable viewer + phone capture page
 tools/                 vendored COLMAP, ffmpeg, vocab tree, splat-transform
 tests/                 check_all.py (fast suites), test_e2e.py (every take)
-docs/                  capture technique, phone AR notes, demo media
+docs/                  capture technique, phone AR notes, demo media, watch page
 work/<name>/           per-take output — regenerable, gitignored
 README-MVP.md          the engineering log: every step, every number, every defect
 ```
@@ -313,7 +417,8 @@ analysis, before/after for each fix. This page is the door.
   visual quality. Judge that from `results/blinded/`.
 - Indoor phone takes walk 15–36 m, not 65 m. Rooms reconstruct small and
   coverage is thin.
-- Clone weight: history plus the 60 MB demo cut. Source alone is ~26 MB.
+- Clone weight: history plus the 60 MB demo cut and the 12 MB HD walk clip.
+  Source alone is ~26 MB.
 - `tools/gsplat` and `tools/pc-engine` are submodules for reading/patching only.
 - **Windows only today.** COLMAP and ffmpeg are vendored as `.exe`.
 
