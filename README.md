@@ -14,8 +14,7 @@
 
 <p align="center">
   <b>▶ <a href="https://www.youtube.com/watch?v=xMRw3slJjIo">Watch the 4:30 demo on YouTube</a></b>
-  · <a href="docs/watch.html">stream it from this repo</a>
-  · <a href="docs/media/demo-4m30s.mp4">same cut, hosted here (60&nbsp;MB)</a>
+  · <a href="docs/media/demo-4m30s.mp4">same cut, hosted in this repo (23&nbsp;MB)</a>
   · <a href="#proof-not-promises">skip to the measured results</a>
 </p>
 
@@ -62,29 +61,19 @@ is turning a reconstruction into something a person can stand in and walk across
 ## Demo video (4:30)
 
 The full walkthrough — capture on the phone, reconstruction, walkable result — is
-one 4 minute 30 second cut, available four ways (it is the same video everywhere):
+one 4 minute 30 second cut, available three ways (it is the same video everywhere):
 
 | where | link | notes |
 |---|---|---|
 | **YouTube (best way to watch)** | **[youtube.com/watch?v=xMRw3slJjIo](https://www.youtube.com/watch?v=xMRw3slJjIo)** | streams instantly, click the poster above |
-| **Local watch page (plays inline)** | [`docs/watch.html`](docs/watch.html) | the repo's own player, instant seek — command below |
-| **In this repo** | [`docs/media/demo-4m30s.mp4`](docs/media/demo-4m30s.mp4) | 720p, 60 MB — open the file page and it plays in the browser |
+| **In this repo** | [`docs/media/demo-4m30s.mp4`](docs/media/demo-4m30s.mp4) | 540p, 23 MB — compressed under GitHub's 25 MB file limit; open the file page and it plays in the browser |
 | **Direct stream** | `https://cdn.jsdelivr.net/gh/krisgarg25/Drone_Phone_video_to_playable_3d_world@main/docs/media/demo-4m30s.mp4` | range-request friendly, paste into any player |
 
-GitHub strips `<video>` tags from READMEs, so no `.mp4` can play *inline* on this
-page — that is why the moving pictures below are GIFs cut from real screen
-recordings. The repo ships its own player instead, and the server behind it
-speaks byte ranges (`HTTP 206`), so the cut truly streams: instant seek, no
-re-download, nothing buffered twice.
-
-```bat
-.venv\Scripts\python.exe _serve.py 8137 .
-REM then open http://localhost:8137/docs/watch.html
-```
-
-The watch page holds both the 4:30 cut and the 12-second HD ground-walk clip
-([`docs/media/walk-rocks-hd.mp4`](docs/media/walk-rocks-hd.mp4), 1918×976,
-recorded straight off the viewer).
+> GitHub strips `<video>` tags from READMEs, so no `.mp4` can play *inline* on
+> this page — that is why the moving pictures below are GIFs cut from real
+> screen recordings, and why the poster above links out to YouTube. The in-repo
+> cut is two-pass encoded to sit under GitHub's 25 MB file limit and muxed
+> faststart, so it starts playing before it finishes downloading.
 
 ---
 
@@ -120,17 +109,12 @@ capture page, the pipeline monitor, the training run, the walk test. No AI clips
 ### 4 · Walk the result
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=xMRw3slJjIo" title="Watch the full demo">
-    <img src="docs/media/walk-preview.gif" width="560" alt="Autopilot walk test running through a boulder field rebuilt from one drone clip">
+  <a href="docs/media/walk-rocks-hd.mp4" title="Open the 1918×976 source clip">
+    <img src="docs/media/walk-result-part13.gif" width="480" alt="Third-person ground walk through a room rebuilt from a phone scan — collider shell on, HUD telemetry live">
   </a>
 </p>
 
-<p align="center"><sub>The autopilot walking a world rebuilt from a single drone clip — no hand-tuned settings, and that HUD line is the harness's own telemetry, not a caption.</sub></p>
-
-<p align="center">
-  <b><a href="docs/media/walk-rocks-hd.mp4">HD ground-walk clip</a></b> — 12 s, 1918×976, recorded
-  inside the finished world · <a href="docs/watch.html">stream it on the watch page</a>
-</p>
+<p align="center"><sub>Twelve seconds of ground walk inside a room rebuilt from one phone scan — collider shell on, no hand-tuned settings, and that HUD line is the harness's own telemetry, not a caption. Click for the 1918×976 source clip.</sub></p>
 
 ---
 
@@ -391,7 +375,7 @@ scripts/               one script per step + shared hardening in robust.py
 viewer/                PlayCanvas walkable viewer + phone capture page
 tools/                 vendored COLMAP, ffmpeg, vocab tree, splat-transform
 tests/                 check_all.py (fast suites), test_e2e.py (every take)
-docs/                  capture technique, phone AR notes, demo media, watch page
+docs/                  capture technique, phone AR notes, demo media
 work/<name>/           per-take output — regenerable, gitignored
 README-MVP.md          the engineering log: every step, every number, every defect
 ```
@@ -417,7 +401,7 @@ analysis, before/after for each fix. This page is the door.
   visual quality. Judge that from `results/blinded/`.
 - Indoor phone takes walk 15–36 m, not 65 m. Rooms reconstruct small and
   coverage is thin.
-- Clone weight: history plus the 60 MB demo cut and the 12 MB HD walk clip.
+- Clone weight: history plus the 23 MB demo cut and the 12 MB HD walk clip.
   Source alone is ~26 MB.
 - `tools/gsplat` and `tools/pc-engine` are submodules for reading/patching only.
 - **Windows only today.** COLMAP and ffmpeg are vendored as `.exe`.
