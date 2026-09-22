@@ -649,6 +649,21 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertIs(record["evidence"]["occlusion_checked"], True)
         self.assertGreaterEqual(record["evidence"]["visibility"]["views_after"], 0)
 
+    def test_refused_preflight_leaves_no_run_directory(self):
+        import cv2
+        self.prepared_geometry()
+        executable = self.root / "tools/colmap/bin/colmap.exe"
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_bytes(b"never executed")
+        metadata = {cv2.CAP_PROP_FPS: 30.0, cv2.CAP_PROP_FRAME_COUNT: 360.0,
+                    cv2.CAP_PROP_FRAME_WIDTH: 1280.0, cv2.CAP_PROP_FRAME_HEIGHT: 720.0}
+        with patch("cv2.VideoCapture", return_value=SimpleNamespace(
+                get=lambda key: metadata[key], release=lambda: None, isOpened=lambda: True)):
+            with self.assertRaisesRegex(ValueError, "1080p"):
+                survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        runs = self.work / "survey/runs"
+        self.assertFalse(runs.exists() and any(runs.iterdir()))
+
     def test_depth_views_returns_none_without_a_dense_model(self):
         self.assertIsNone(survey._depth_views(self.root / "work/flight/survey/runs/absent"))
 

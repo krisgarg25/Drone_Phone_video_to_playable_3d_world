@@ -656,6 +656,29 @@ def _depth_views(run, *, kind="geometric"):
     return views or None
 
 
+def _preflight(root, video, expected_duration):
+    """Verify tooling and source before any work exists: resolution, duration."""
+    import cv2
+    executable = root / "tools/colmap/bin/colmap.exe"
+    if not executable.is_file():
+        raise ValueError("COLMAP executable is missing: " + str(executable))
+    cap = cv2.VideoCapture(str(video))
+    try:
+        fps, count = cap.get(cv2.CAP_PROP_FPS), cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        width, height = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    finally:
+        cap.release()
+    if not all(math.isfinite(x) and x > 0 for x in (fps, count, width, height)):
+        raise ValueError("Cannot verify source video duration and resolution.")
+    if min(width, height) < 1080 or max(width, height) < 1920:
+        raise ValueError(f"Source video resolution {width:g}x{height:g} is below 1080p "
+                         "(1920x1080); reconstruction refused.")
+    duration = count / fps
+    if not math.isfinite(duration) or abs(duration - expected_duration) > max(1.0, duration * .01):
+        raise ValueError("Declared video duration disagrees with the decoded video metadata.")
+    return duration, int(width), int(height)
+
+
 def reconstruct_scene(root, scene, *, allow_gpu=False):
     if allow_gpu is not True:
         raise PermissionError("GPU reconstruction requires explicit approval and --allow-gpu. No work started.")
@@ -669,6 +692,8 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
     video = _source_files(root, scene)[0]
     run_id = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
     run = _safe_path(work, "survey/runs/" + run_id)
+    duration, source_width, source_height = _preflight(
+        root, video, preparation["metadata"]["video_duration_s"])
     run.mkdir(parents=True, exist_ok=False)
     py = str(root / ".venv/Scripts/python.exe")
     commands = [
@@ -688,23 +713,7 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
               "versions": {"python": sys.version, "numpy": np.__version__, "opencv": cv2.__version__}, "commands": commands}
     try:
         _publish_run(work, run, record)
-        executable = root / "tools/colmap/bin/colmap.exe"
-        if not executable.is_file():
-            raise ValueError("COLMAP executable is missing: " + str(executable))
-        cap = cv2.VideoCapture(str(video))
-        try:
-            fps, count = cap.get(cv2.CAP_PROP_FPS), cap.get(cv2.CAP_PROP_FRAME_COUNT)
-            width, height = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        finally:
-            cap.release()
-        if not all(math.isfinite(x) and x > 0 for x in (fps, count, width, height)):
-            raise ValueError("Cannot verify source video duration and resolution.")
-        if min(width, height) < 1080 or max(width, height) < 1920:
-            raise ValueError(f"Source video resolution {width:g}x{height:g} is below 1080p (1920x1080); reconstruction refused.")
-        duration = count / fps
-        if not math.isfinite(duration) or abs(duration - preparation["metadata"]["video_duration_s"]) > max(1.0, duration * .01):
-            raise ValueError("Declared video duration disagrees with the decoded video metadata.")
-        record.update(video_duration_s=duration, video_resolution=[int(width), int(height)])
+        record.update(video_duration_s=duration, video_resolution=[source_width, source_height])
         code_paths = [Path(__file__), Path(evaluation.__file__), Path(georef.__file__)]
         code_paths += [Path(command["argv"][1]) for command in commands[:3]]
         record["code_sha256"] = {str(path.resolve()): evaluation.file_fingerprint(path)["sha256"] for path in code_paths}
