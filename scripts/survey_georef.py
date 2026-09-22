@@ -216,6 +216,65 @@ def _residuals(source, target, model):
 
 
 @_checked
+def sample_positions(times, telemetry, *, max_gap_s=2.0):
+    """Interpolate ENU telemetry at requested times.
+
+    Returns (points, variance, matched). A time with no bracket inside
+    max_gap_s yields NaNs and matched=False; nothing is ever extrapolated.
+    """
+    gap = _number(max_gap_s, "max_gap_s", positive=True)
+    stamps, positions, variances = _telemetry_arrays(telemetry)
+    wanted = np.asarray(times, dtype=np.float64)
+    if wanted.ndim != 1 or not np.isfinite(wanted).all() or np.any(wanted < 0):
+        raise ValueError("times must be a 1-D list of nonnegative finite seconds")
+    points = np.full((len(wanted), 3), np.nan)
+    variance = np.full(len(wanted), np.nan)
+    matched = []
+    for index, time in enumerate(wanted):
+        right = int(np.searchsorted(stamps, time))
+        if right < len(stamps) and stamps[right] == time:
+            points[index], variance[index] = positions[right], variances[right]
+            matched.append(True)
+        elif right == 0 or right == len(stamps) or stamps[right] - stamps[right - 1] > gap:
+            matched.append(False)
+        else:
+            alpha = (time - stamps[right - 1]) / (stamps[right] - stamps[right - 1])
+            points[index] = (1 - alpha) * positions[right - 1] + alpha * positions[right]
+            variance[index] = (1 - alpha) * variances[right - 1] + alpha * variances[right]
+            matched.append(True)
+    return points, variance, matched
+
+
+@_checked
+def camera_positions(camera_rows, telemetry, *, max_gap_s=2.0):
+    """Match camera centres to bracketed telemetry, never extrapolating.
+
+    Returns (local centres, ENU targets, per-pair variance, file names) in camera
+    input order. Cameras with no bracket within max_gap_s are omitted.
+    """
+    if not isinstance(camera_rows, list):
+        raise ValueError("camera_rows must be a list")
+    centres, wanted, files, seen = [], [], [], set()
+    for row in camera_rows:
+        if not isinstance(row["file"], str) or not row["file"]:
+            raise ValueError("Camera file must be a nonempty string")
+        time = _number(row["t_sec"], "camera t_sec")
+        if time < 0 or time in seen:
+            raise ValueError("Camera times must be nonnegative and unique")
+        seen.add(time)
+        rotation = _rotation(row["camera"]["R_rowmajor"])
+        centres.append(-rotation.T @ _array(row["camera"]["t"], (3,), "camera t"))
+        wanted.append(time)
+        files.append(row["file"])
+    points, variance, matched = sample_positions(wanted, telemetry, max_gap_s=max_gap_s)
+    keep = np.asarray(matched, dtype=bool)
+    if not keep.any():
+        return np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0), []
+    return (np.asarray(centres)[keep], points[keep], variance[keep],
+            [name for name, hit in zip(files, matched) if hit])
+
+
+@_checked
 def align_camera_trajectory(camera_rows: list, telemetry: dict, *,
                             max_gap_s=2.0, inlier_threshold_m=3.0) -> dict:
     """Fit x_enu = scale * rotation @ x_local + translation (column vectors).
@@ -236,35 +295,9 @@ def align_camera_trajectory(camera_rows: list, telemetry: dict, *,
     out poses, checkpoints or scenes were used anywhere else is declared by the
     caller and is not proven by this module.
     """
-    gap = _number(max_gap_s, "max_gap_s", positive=True)
     threshold = _number(inlier_threshold_m, "inlier_threshold_m", positive=True)
-    times, positions, variances = _telemetry_arrays(telemetry)
-    if not isinstance(camera_rows, list):
-        raise ValueError("camera_rows must be a list")
-    source, target, variance, files, seen = [], [], [], [], set()
-    for row in camera_rows:
-        if not isinstance(row["file"], str) or not row["file"]:
-            raise ValueError("Camera file must be a nonempty string")
-        time = _number(row["t_sec"], "camera t_sec")
-        if time < 0 or time in seen:
-            raise ValueError("Camera times must be nonnegative and unique")
-        seen.add(time)
-        rotation = _rotation(row["camera"]["R_rowmajor"])
-        center = _array(-rotation.T @ _array(row["camera"]["t"], (3,), "camera t"),
-                        (3,), "camera center")
-        right = int(np.searchsorted(times, time))
-        if right < len(times) and times[right] == time:
-            point, var = positions[right], variances[right]
-        elif right == 0 or right == len(times) or times[right] - times[right - 1] > gap:
-            continue
-        else:
-            alpha = (time - times[right - 1]) / (times[right] - times[right - 1])
-            point = (1 - alpha) * positions[right - 1] + alpha * positions[right]
-            var = (1 - alpha) * variances[right - 1] + alpha * variances[right]
-        source.append(center)
-        target.append(point)
-        variance.append(var)
-        files.append(row["file"])
+    source, target, variance, files = camera_positions(camera_rows, telemetry,
+                                                       max_gap_s=max_gap_s)
     n = len(source)
     if n < 4:
         raise ValueError("Insufficient overlap: need at least four bracketed/exact cameras")

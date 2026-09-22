@@ -478,5 +478,50 @@ class SurveyGeorefTests(unittest.TestCase):
         self.assertEqual(meta, original_meta)
 
 
+    def test_camera_positions_returns_matched_pairs_without_extrapolating(self):
+        rows, tele, _ = self.known_fit()
+        source, target, variance, files = self.geo.camera_positions(rows, tele)
+        self.assertEqual(files, [row["file"] for row in rows])
+        self.assertEqual(source.shape, (len(rows), 3))
+        self.assertEqual(target.shape, source.shape)
+        self.assertEqual(variance.shape, (len(rows),))
+        self.assertTrue(np.all(variance > 0))
+        for row, expected in zip(rows, source):
+            rotation = np.asarray(row["camera"]["R_rowmajor"])
+            np.testing.assert_allclose(
+                expected, -rotation.T @ np.asarray(row["camera"]["t"]), atol=1e-9)
+
+    def test_camera_positions_drops_unbracketed_cameras(self):
+        rows, tele, _ = self.known_fit()
+        extra = rows + [dict(file="beyond.jpg", t_sec=999.0, camera=rows[0]["camera"])]
+        source, target, variance, files = self.geo.camera_positions(extra, tele)
+        self.assertNotIn("beyond.jpg", files)
+        self.assertEqual(len(files), len(rows))
+
+    def test_sample_positions_brackets_and_never_extrapolates(self):
+        _, tele, target = self.known_fit()
+        times = [0.0, 1.0, 2.0]
+        points, variance, matched = self.geo.sample_positions(times, tele)
+        self.assertEqual(matched, [True, True, True])
+        np.testing.assert_allclose(points, np.asarray(target)[[0, 1, 2]], atol=1e-9)
+        self.assertTrue(np.all(variance > 0))
+        # Mid-interval is the average of the bracketing samples.
+        mid, _, _ = self.geo.sample_positions([0.5], tele)
+        np.testing.assert_allclose(mid[0], (np.asarray(target)[0] + np.asarray(target)[1]) / 2,
+                                   atol=1e-9)
+        beyond, _, matched = self.geo.sample_positions([999.0], tele)
+        self.assertEqual(matched, [False])
+        self.assertTrue(np.all(np.isnan(beyond)))
+        with self.assertRaises(ValueError):
+            self.geo.sample_positions([float("nan")], tele)
+
+    def test_camera_positions_rejects_bad_arguments(self):
+        rows, tele, _ = self.known_fit()
+        with self.assertRaises(ValueError):
+            self.geo.camera_positions("not a list", tele)
+        with self.assertRaises(ValueError):
+            self.geo.camera_positions(rows, tele, max_gap_s=0)
+
+
 if __name__ == "__main__":
     unittest.main()

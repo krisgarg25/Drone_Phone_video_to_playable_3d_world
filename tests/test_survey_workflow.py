@@ -209,7 +209,8 @@ class SurveyWorkflowTests(unittest.TestCase):
         executable.write_bytes(b"never executed")
         scripts = self.root / "scripts"
         scripts.mkdir(exist_ok=True)
-        for name in ("extract_keyframes.py", "run_colmap.py", "parse_colmap.py"):
+        for name in ("extract_keyframes.py", "run_colmap.py", "parse_colmap.py",
+                     "survey_priors.py"):
             (scripts / name).write_text("# fake runner fixture; never executed\n")
         calls = []
         self.spawned = []
@@ -243,7 +244,11 @@ class SurveyWorkflowTests(unittest.TestCase):
         calls = self.fake_reconstruction()
         record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
         run = self.work / "survey/runs" / record["id"]
-        self.assertEqual([c[0] for c in calls], ["keyframes", "colmap", "poses", "undistort", "dense", "fusion"])
+        self.assertEqual([c[0] for c in calls], ["keyframes", "priors", "colmap", "poses", "undistort", "dense", "fusion"])
+        colmap = next(argv for argv in self.spawned if argv[1].endswith("run_colmap.py"))
+        self.assertIn("mapper=pose_prior", colmap)
+        priors = next(argv for argv in self.spawned if argv[1].endswith("survey_priors.py"))
+        self.assertIn("pose_priors.jsonl", priors[-1])
         self.assertTrue(all(c[1] == run for c in calls))
         state = survey.scene_status(self.root, "flight")
         self.assertEqual(state.get("latest_run", {}).get("id"), record["id"])
@@ -611,7 +616,7 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertNotIn("nvidia", spawned)
         self.assertNotIn("torch", spawned)
         self.assertEqual([c[0] for c in calls],
-                         ["keyframes", "colmap", "poses", "undistort", "dense", "fusion"])
+                         ["keyframes", "priors", "colmap", "poses", "undistort", "dense", "fusion"])
 
     def test_speed_gate_fires_only_on_a_verified_duration(self):
         self.prepared_geometry()
@@ -622,7 +627,7 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertEqual(record["speed"]["official_status"], "meets_target")
         self.assertFalse(record["speed"]["diagnostic_only"])
         self.assertEqual(record["speed"]["required_stages"],
-                         ["setup", "keyframes", "colmap", "poses", "undistort", "dense",
+                         ["setup", "keyframes", "priors", "colmap", "poses", "undistort", "dense",
                           "fusion", "georeferenced_export"])
         criteria = {c["id"]: c for c in survey.evaluate_scene(self.root, "flight")["evaluation"]["criteria"]}
         self.assertEqual(criteria["speed"]["status"], "meets_target")

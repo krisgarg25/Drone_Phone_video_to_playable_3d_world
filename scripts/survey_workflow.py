@@ -698,7 +698,12 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
     py = str(root / ".venv/Scripts/python.exe")
     commands = [
         {"stage": "keyframes", "argv": [py, str(root / "scripts/extract_keyframes.py"), "--work", str(run), "--video", str(video), "--target", "400", "--train-width", "1600"]},
-        {"stage": "colmap", "argv": [py, str(root / "scripts/run_colmap.py"), str(run)]},
+        {"stage": "priors", "argv": [py, str(root / "scripts/survey_priors.py"),
+                                     "--keyframes", str(run / "keyframes.jsonl"),
+                                     "--preparation", str(work / "survey/preparation.json"),
+                                     "--out", str(run / "pose_priors.jsonl")]},
+        {"stage": "colmap", "argv": [py, str(root / "scripts/run_colmap.py"), str(run),
+                                     "--set", "mapper=pose_prior"]},
         {"stage": "poses", "argv": [py, str(root / "scripts/parse_colmap.py"), "--work", str(run)]},
         *dense_commands(root, run, run / "dense"),
     ]
@@ -706,7 +711,9 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
               "inputs": preparation["inputs"], "steps": [], "hardware": _hardware(),
               "benchmark_qualified": False, "duration_source": "decoder_metadata",
               "timing_scope": "From approval gate through setup, decode metadata, all uncached stages, export, hashes and manifest writes; final manifest/pointer commit excluded.",
-              "warnings": ["Post-hoc GPS similarity alignment; no joint GPS bundle adjustment.",
+              "warnings": ["GPS enters mapping as per-camera position priors and the model is then "
+                           "fitted to ENU with a similarity transform; no IMU, lever arm or "
+                           "clock-offset model is estimated.",
                            "No dynamic masking or independently validated completeness yet.",
                            "Recorded host identity is CPU and RAM only; the GPU model is not recorded, "
                            "so this timing is not a benchmark on declared hardware and never an accuracy claim."],
@@ -715,7 +722,8 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
         _publish_run(work, run, record)
         record.update(video_duration_s=duration, video_resolution=[source_width, source_height])
         code_paths = [Path(__file__), Path(evaluation.__file__), Path(georef.__file__)]
-        code_paths += [Path(command["argv"][1]) for command in commands[:3]]
+        code_paths += [Path(command["argv"][1]) for command in commands
+                       if str(command["argv"][1]).endswith(".py")]
         record["code_sha256"] = {str(path.resolve()): evaluation.file_fingerprint(path)["sha256"] for path in code_paths}
         record["steps"].append({"name": "setup", "status": "done", "secs": time.perf_counter() - started})
         for command in commands:
