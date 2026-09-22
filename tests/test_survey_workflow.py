@@ -654,6 +654,24 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertIs(record["evidence"]["occlusion_checked"], True)
         self.assertGreaterEqual(record["evidence"]["visibility"]["views_after"], 0)
 
+    def test_status_reports_crs_datum_and_operator_measurements(self):
+        self.prepared_geometry()
+        state = survey.scene_status(self.root, "flight")
+        self.assertIn("EPSG:4979", state["crs"])
+        self.assertEqual(state["vertical_datum"], "ellipsoidal")
+        self.assertEqual(state["position_reference"], "camera_center")
+        self.assertNotIn("measurements", state)
+        preparation = json.loads((self.work / "survey/preparation.json").read_text(encoding="utf-8"))
+        rows = [{"kind": "height", "value_m": 12.4, "uncertainty_m": 0.2, "valid": True}]
+        (self.work / "survey/measurements.json").write_text(json.dumps(
+            {"preparation_id": preparation["id"], "measurements": rows}), encoding="utf-8")
+        self.assertEqual(survey.scene_status(self.root, "flight")["measurements"], rows)
+        (self.work / "survey/measurements.json").write_text(json.dumps(
+            {"preparation_id": "elsewhere", "measurements": rows}), encoding="utf-8")
+        stale = survey.scene_status(self.root, "flight")
+        self.assertEqual(stale["status"], "invalid")
+        self.assertIn("different preparation", " ".join(stale["blockers"]))
+
     def test_dense_profile_keeps_consistency_and_fusion_in_agreement(self):
         work = self.root / "work/flight"
         commands = survey.dense_commands(self.root, work, work / "dense")

@@ -522,6 +522,26 @@ def _current_evaluation(work, preparation, context=None, full=False):
     return data
 
 
+def _survey_measurements(work, preparation):
+    """Operator-authored measurements, only while they belong to this preparation.
+
+    A measurement list carries no independent proof of correctness; it is reported
+    verbatim so the UI never has to invent a value, and a stale file invalidates
+    the scene rather than silently disappearing from it.
+    """
+    path = _safe_path(work, "survey/measurements.json")
+    if not path.is_file():
+        return None
+    data = read_json(path)
+    if not isinstance(data, dict) or data.get("preparation_id") != preparation["id"]:
+        raise ValueError("survey/measurements.json belongs to a different preparation; "
+                         "re-run the measurements before reading them off this scene.")
+    rows = data.get("measurements")
+    if not isinstance(rows, list):
+        raise ValueError("survey/measurements.json needs a 'measurements' list.")
+    return rows
+
+
 def scene_status(root, scene):
     evaluation, _ = _modules()
     source, work = scene_paths(root, scene)
@@ -560,6 +580,16 @@ def scene_status(root, scene):
             if alignment:
                 state["status"] = "aligned"
                 state["alignment"] = {key: alignment.get(key) for key in ("scale", "matched_count", "inlier_count", "fit_rmse_m", "accuracy_validated", "coordinate_frame", "warnings")}
+                frame = alignment.get("coordinate_frame") or {}
+                origin = frame.get("origin") or {}
+                state["crs"] = (f"{frame.get('geodetic_crs', 'unknown')} -> local "
+                                f"{frame.get('type', 'unknown')} at "
+                                f"{origin.get('latitude_deg', '?')}, {origin.get('longitude_deg', '?')}")
+                state["vertical_datum"] = frame.get("altitude_datum", "unknown")
+                state["position_reference"] = (preparation.get("metadata") or {}).get("position_reference")
+                measurements = _survey_measurements(work, preparation)
+                if measurements is not None:
+                    state["measurements"] = measurements
                 readiness[3].update(status="ready", detail="Current registered cameras validated")
                 names.append((context["georeference"], "ENU transform; GPS fit is not accuracy"))
                 if latest and latest["status"] == "complete":
