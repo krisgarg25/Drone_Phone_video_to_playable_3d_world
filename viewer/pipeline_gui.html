@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Drone3D Studio — run, view, capture</title>
+<title>Drone3D Studio — survey validation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -220,6 +220,117 @@
     border-radius: 10px; padding: 12px 14px; word-break: break-all;
   }
   .muted { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+
+  /* Survey lane: evidence-first operator workspace, using the Studio tokens. */
+  :root {
+    --survey-blue: #93c5fd;
+    --survey-green: #6ee7b7;
+    --survey-amber: #fcd34d;
+    --survey-red: #fca5a5;
+    --survey-surface: #0c1424;
+    --survey-line: #29374d;
+  }
+  [hidden] { display: none !important; }
+  :where(button, a, select, input, summary):focus-visible {
+    outline: 3px solid var(--survey-blue); outline-offset: 4px;
+  }
+  button:disabled { cursor: not-allowed; opacity: .48; }
+  .lane-btn.on { box-shadow: none; }
+  .survey-heading, .survey-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .survey-eyebrow { color: var(--survey-blue); font: 500 11px 'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
+  .survey-heading h1 { font-size: clamp(25px, 3vw, 34px); font-weight: 600; letter-spacing: -.035em; line-height: 1.15; }
+  .survey-heading p { color: var(--text-muted); font-size: 14px; margin-top: 8px; line-height: 1.5; }
+  .survey-badge { display: inline-flex; align-items: center; border: 1px solid var(--survey-line); border-radius: 5px; padding: 5px 8px; font: 500 11px 'JetBrains Mono', monospace; color: #cbd5e1; background: var(--survey-surface); line-height: 1.5; }
+  .survey-badge.info { color: var(--survey-blue); border-color: #31568b; }
+  .survey-badge.good { color: var(--survey-green); border-color: #226650; }
+  .survey-badge.warn { color: var(--survey-amber); border-color: #765d21; }
+  .survey-badge.bad { color: var(--survey-red); border-color: #81444a; }
+  .survey-flow { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--survey-line); border: 1px solid var(--survey-line); border-radius: 10px; overflow: hidden; }
+  .survey-flow li { background: var(--survey-surface); padding: 13px 16px; font-size: 12px; line-height: 1.45; }
+  .survey-flow span { color: var(--survey-blue); font: 500 11px 'JetBrains Mono', monospace; display: block; margin-bottom: 5px; }
+  .survey-grid { display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1.65fr); gap: 18px; align-items: start; }
+  .survey-stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  #lane-survey .panel { gap: 16px; box-shadow: none; background: var(--survey-surface); backdrop-filter: none; border-color: var(--survey-line); padding: 22px; border-radius: 12px; min-width: 0; }
+  #lane-survey h2 { font-size: 17px; font-weight: 600; letter-spacing: -.015em; }
+  #lane-survey h3 { font-size: 15px; font-weight: 600; line-height: 1.35; }
+  #lane-survey label { font-size: 11px; line-height: 1.6; }
+  #lane-survey .btn-primary { box-shadow: none; background: #2563eb; }
+  #lane-survey .btn-primary:hover:not(:disabled) { background: #1d4ed8; transform: none; }
+  #lane-survey :is(.btn-ghost, .btn-primary) { min-height: 42px; }
+  .survey-note, .survey-no-evidence { color: var(--text-muted); font-size: 12px; line-height: 1.65; }
+  #lane-survey code { font: 11px 'JetBrains Mono', monospace; color: #cbd5e1; overflow-wrap: anywhere; }
+  #lane-survey pre { font: 11px/1.7 'JetBrains Mono', monospace; color: #cbd5e1; background: var(--bg-main); border: 1px solid var(--survey-line); padding: 12px; border-radius: 7px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+  #lane-survey details { border-top: 1px solid var(--survey-line); padding-top: 10px; }
+  #lane-survey summary { color: var(--survey-blue); line-height: 1.6; }
+  #lane-survey details > :not(summary) { margin-top: 10px; }
+  .survey-select-row { display: flex; gap: 8px; }
+  .survey-select-row select { flex: 1; min-width: 0; }
+  .survey-readiness, .survey-artifacts { list-style: none; }
+  .survey-readiness li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 5px 12px; padding: 12px 0; border-bottom: 1px solid var(--survey-line); }
+  .survey-readiness strong { font-size: 13px; font-weight: 500; }
+  .survey-readiness p { grid-column: 1 / -1; color: var(--text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+  .survey-list { padding-left: 17px; color: #cbd5e1; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+  .survey-list li + li { margin-top: 5px; }
+  #survey-input-form { display: flex; flex-direction: column; gap: 14px; }
+  .survey-file { width: 100%; font: 12px 'Outfit', sans-serif; padding: 10px; background: var(--bg-main); border: 1px dashed #50627f; color: #cbd5e1; border-radius: 8px; }
+  .survey-file::file-selector-button { border: 1px solid var(--survey-line); background: #1c2c46; color: var(--text-main); padding: 8px 10px; margin-right: 10px; border-radius: 5px; cursor: pointer; }
+  .survey-template-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .survey-template-row .btn-ghost { padding: 9px 11px; font-size: 12px; }
+  .survey-actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .survey-actions > div { display: flex; flex-direction: column; gap: 5px; }
+  .survey-actions button { width: 100%; text-align: left; justify-content: flex-start; }
+  .survey-targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--survey-line); border-radius: 8px; overflow: hidden; }
+  .survey-targets > div { padding: 16px; }
+  .survey-targets > div + div { border-left: 1px solid var(--survey-line); }
+  .survey-targets dt { font-size: 11px; color: var(--text-muted); margin-bottom: 7px; }
+  .survey-targets dd { font: 500 clamp(18px, 2.4vw, 24px) 'JetBrains Mono', monospace; color: var(--text-main); }
+  .survey-targets p { margin-top: 6px; }
+  .survey-criteria { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .survey-criterion { padding: 16px; border: 1px solid var(--survey-line); border-radius: 9px; background: rgba(8, 12, 20, .45); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .survey-criterion-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+  .survey-weight { font: 500 24px/1 'JetBrains Mono', monospace; color: var(--survey-blue); text-align: right; }
+  .survey-weight small { display: block; color: var(--text-muted); font: 10px/1.4 'JetBrains Mono', monospace; white-space: nowrap; margin-top: 5px; }
+  .survey-criterion-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .survey-criterion-status > span:last-child:not(:first-child) { font-size: 11px; color: #cbd5e1; }
+  .survey-criterion p { color: var(--text-muted); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+  .survey-criterion details, .survey-no-evidence { margin-top: auto; }
+  .survey-metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .survey-metric-grid dt { font-size: 11px; color: var(--text-muted); margin-bottom: 7px; }
+  .survey-metric-grid dd { font: 500 16px 'JetBrains Mono', monospace; color: #e2e8f0; overflow-wrap: anywhere; }
+  .survey-evidence-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .survey-evidence-metrics dt { color: var(--text-muted); font-size: 10px; line-height: 1.6; }
+  .survey-evidence-metrics dd { color: #e2e8f0; font: 500 13px/1.8 'JetBrains Mono', monospace; }
+  .survey-artifacts li { display: flex; flex-direction: column; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--survey-line); overflow-wrap: anywhere; }
+  .survey-artifacts a { color: var(--survey-blue); text-underline-offset: 4px; font-size: 13px; }
+  .survey-command { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--survey-line); }
+  .survey-command pre, .survey-command details { width: 100%; }
+  .survey-command strong { font-size: 13px; }
+  .survey-notice { padding: 12px 14px; border-left: 3px solid var(--survey-blue); background: rgba(59, 130, 246, .08); font-size: 12px; line-height: 1.7; color: #cbd5e1; }
+  .survey-notice.warning { border-color: var(--survey-amber); background: rgba(245, 158, 11, .05); }
+  .survey-error { padding: 14px 16px; border: 1px solid #81444a; background: #321c29; color: #fecaca; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+  #survey-message { min-height: 20px; font-size: 12px; color: var(--survey-blue); line-height: 1.6; }
+  @media (max-width: 1000px) {
+    .survey-grid { grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr); }
+    .survey-criteria { grid-template-columns: 1fr; }
+    .survey-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 720px) {
+    header { padding: 12px 16px; gap: 12px; flex-wrap: wrap; position: static; }
+    main { padding: 16px 12px 30px; }
+    .lanes { display: grid; grid-template-columns: 1fr 1fr; }
+    .survey-grid { grid-template-columns: 1fr; }
+    .survey-heading { align-items: flex-start; flex-direction: column; }
+    .survey-flow { grid-template-columns: 1fr; }
+    .survey-flow li { display: flex; align-items: center; gap: 12px; padding: 9px 14px; }
+    .survey-flow span { margin: 0; }
+    #lane-survey .panel { padding: 18px; }
+    .survey-section-heading { flex-wrap: wrap; }
+    .survey-targets dd { font-size: 20px; }
+    .survey-targets > div { padding: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+  }
 </style>
 </head>
 <body>
@@ -239,14 +350,115 @@
 </header>
 
 <main>
-  <nav class="lanes">
-    <button class="lane-btn on" id="lane-btn-run" onclick="setLane('run')">🚀 Run pipeline</button>
-    <button class="lane-btn" id="lane-btn-view" onclick="setLane('view')">🌐 View model</button>
-    <button class="lane-btn" id="lane-btn-capture" onclick="setLane('capture')">📱 Capture</button>
+  <nav class="lanes" aria-label="Workspace lanes">
+    <button class="lane-btn on" id="lane-btn-survey" aria-controls="lane-survey" aria-pressed="true" onclick="setLane('survey')">Survey validation</button>
+    <button class="lane-btn" id="lane-btn-run" aria-controls="lane-run" aria-pressed="false" onclick="setLane('run')">Run pipeline</button>
+    <button class="lane-btn" id="lane-btn-view" aria-controls="lane-view" aria-pressed="false" onclick="setLane('view')">View model</button>
+    <button class="lane-btn" id="lane-btn-capture" aria-controls="lane-capture" aria-pressed="false" onclick="setLane('capture')">Capture</button>
   </nav>
 
+  <!-- Survey mutations validate and process existing data on the CPU only. -->
+  <section class="lane wide on" id="lane-survey" aria-labelledby="survey-title">
+    <div class="survey-heading">
+      <div><div class="survey-eyebrow">SIH26158 / evidence workspace</div>
+        <h1 id="survey-title">Survey validation</h1>
+        <p>Prepare flight inputs. Align existing geometry. Evaluate the evidence.</p>
+      </div>
+      <span id="survey-status" class="survey-badge neutral">Awaiting scene</span>
+    </div>
+    <ol class="survey-flow" aria-label="Survey workflow">
+      <li><span>01 / INPUTS</span>Select scene & load files</li>
+      <li><span>02 / PREPARE</span>Validate & synchronize</li>
+      <li><span>03 / ALIGN</span>Use existing reconstruction</li>
+      <li><span>04 / EVALUATE</span>Read measured evidence</li>
+      <li><span>05 / EXPORT</span>Download evidence</li>
+    </ol>
+    <p id="survey-message" role="status" aria-live="polite" aria-atomic="true">Select a scene to begin. No GPU execution in this lane.</p>
+    <div id="survey-error" class="survey-error" role="alert" hidden></div>
+    <div class="survey-grid">
+      <div class="survey-stack">
+        <section class="panel" aria-labelledby="survey-input-title">
+          <h2 id="survey-input-title">Scene & flight inputs</h2>
+          <div class="field-group">
+            <label for="survey-scene">Survey scene</label>
+            <div class="survey-select-row">
+              <select id="survey-scene" aria-describedby="survey-video-help"><option value="">Loading scenes…</option></select>
+              <button type="button" id="survey-refresh" class="btn-ghost">Refresh</button>
+            </div>
+          </div>
+          <p class="survey-note" id="survey-video-help">Exactly one source video must already be in <code id="survey-scene-path">videos/&lt;scene&gt;/</code>. This form uploads telemetry and metadata only.</p>
+          <ul id="survey-readiness" class="survey-readiness" aria-label="Input readiness"></ul>
+          <form id="survey-input-form">
+            <div class="field-group"><label for="survey-csv">GPS telemetry · CSV</label><input class="survey-file" id="survey-csv" type="file" accept=".csv,text/csv" required aria-describedby="survey-upload-help"></div>
+            <div class="field-group"><label for="survey-metadata">Flight metadata · JSON</label><input class="survey-file" id="survey-metadata" type="file" accept=".json,application/json" required aria-describedby="survey-upload-help"></div>
+            <p id="survey-upload-help" class="survey-note">Combined JSON request: max 2 MB. The server saves only validated inputs. Existing files are never overwritten (409 conflict).</p>
+            <button class="btn-primary" id="survey-save" type="submit" disabled>Validate & save inputs</button>
+          </form>
+          <details>
+            <summary>Required schema & downloadable templates</summary>
+            <p class="survey-note">CSV requires exactly six columns. <code>t_sec</code> must strictly increase; <code>t_sec + time_offset_s</code> must be within the video duration. Latitude/longitude are WGS84 degrees; camera-center altitude is ellipsoidal metres. <code>horizontal_std_m</code> and <code>vertical_std_m</code> are strictly positive GPS standard deviations in metres. Supply real measured uncertainty, not guessed precision.</p>
+            <p class="survey-note">Header only below: add real observations, not example coordinates.</p>
+            <pre id="survey-csv-header"></pre>
+            <p class="survey-note">Metadata template: replace or verify every value against this flight. In particular, 600 seconds is a template value, not a measured video duration. Verify time alignment, altitude datum, camera reference and single-pass declaration.</p>
+            <pre id="survey-metadata-example"></pre>
+            <div class="survey-template-row">
+              <button type="button" class="btn-ghost" id="survey-csv-template">Download CSV header</button>
+              <button type="button" class="btn-ghost" id="survey-metadata-template">Download metadata JSON</button>
+            </div>
+          </details>
+        </section>
+        <section class="panel" aria-labelledby="survey-operations-title">
+          <div class="survey-section-heading"><h2 id="survey-operations-title">Validation actions</h2><span class="survey-badge info">CPU only</span></div>
+          <div class="survey-actions">
+            <div><button type="button" id="survey-prepare" class="btn-primary" disabled>02 · Prepare survey</button><p class="survey-note">Validate source inputs and prepare survey data.</p></div>
+            <div><button type="button" id="survey-align" class="btn-ghost" disabled>03 · Align existing reconstruction</button><p class="survey-note">Fit GPS to an existing reconstruction. Does not reconstruct or train.</p></div>
+            <div><button type="button" id="survey-evaluate" class="btn-ghost" disabled>04 · Evaluate evidence</button><p class="survey-note">Read available results. Missing measurements stay unknown.</p></div>
+          </div>
+          <h3>Blockers</h3><ul id="survey-blockers" class="survey-list"></ul>
+          <div class="survey-notice warning"><strong id="survey-gpu-state">GPU permission pending · execution disabled</strong><br>Suggested reconstruction commands are text/copy only. Nothing here invokes Run or starts a GPU workload.</div>
+        </section>
+        <section class="panel" aria-labelledby="survey-download-title">
+          <h2 id="survey-download-title">05 · Download evidence</h2>
+          <ul id="survey-artifacts" class="survey-artifacts"></ul>
+          <p class="survey-note">Only server-reported files under this scene’s <code>/work/</code> directory are linked. No fabricated report or aggregate score.</p>
+        </section>
+      </div>
+      <div class="survey-stack">
+        <section class="panel" aria-labelledby="survey-ledger-title">
+          <div class="survey-section-heading"><h2 id="survey-ledger-title">Six criteria. Separate evidence.</h2><span class="survey-eyebrow" style="margin:0">Weights, not scores</span></div>
+          <dl class="survey-targets">
+            <div><dt>Independent accuracy target</dt><dd>≤ 1 m</dd><p class="survey-note">Measured against held-out reference</p></div>
+            <div><dt>End-to-end processing target</dt><dd>&lt; 15 min</dd><p class="survey-note">For a genuine 10 min input video</p></div>
+          </dl>
+          <p class="survey-note">Unknown means evidence has not been supplied or verified. Prepared, aligned and evaluated are workflow states, not passes. There is no overall score.</p>
+          <div id="survey-criteria" class="survey-criteria"></div>
+        </section>
+        <section class="panel" aria-labelledby="survey-alignment-title">
+          <h2 id="survey-alignment-title">GPS fit ≠ independent accuracy</h2>
+          <div id="survey-alignment"></div>
+          <details>
+            <summary>Independent checkpoints: what Evaluate reads</summary>
+            <p class="survey-note">Evaluate optionally reads <code id="survey-checkpoint-path">work/&lt;scene&gt;/survey/checkpoints.json</code>. Checkpoints must be held out of alignment and pair independently surveyed references with corresponding reconstructed points, in the coordinate frames required by the evaluator.</p>
+            <p class="survey-note">Required JSON fields: <code>independent: true</code>, <code>alignment: "none"</code>, and <code>coordinate_frame</code> copied exactly from this scene’s <code>georeference.json</code>, including its origin. <code>checkpoints</code> must contain 1–10,000 objects, each with <code>reconstructed</code> and <code>reference</code> three-number coordinate arrays in that shared ENU metre frame. No best-fit alignment is performed on these pairs.</p>
+            <p class="survey-note">GPS samples or alignment inliers are not independent checkpoints. Without a validated checkpoint file, accuracy remains unknown. This UI does not create reference measurements.</p>
+          </details>
+        </section>
+        <section class="panel" aria-labelledby="survey-provenance-title">
+          <h2 id="survey-provenance-title">Evidence sources & limitations</h2>
+          <ul id="survey-warnings" class="survey-list"></ul>
+          <div class="survey-notice">Source: the scene’s survey API response and linked on-disk artifacts. Expand each criterion for the server’s measurements, sources and warnings. Runtime inherited from existing logs is unverified unless a complete, declared-hardware benchmark is supplied.</div>
+          <details>
+            <summary>Suggested commands · review and copy only</summary>
+            <p class="survey-note">Commands below are never executed here. GPU work needs explicit permission. Shell quoting shown is POSIX-style; check the exact arguments for your terminal.</p>
+            <div id="survey-commands" class="survey-note"></div>
+          </details>
+        </section>
+      </div>
+    </div>
+  </section>
+
   <!-- ================= RUN ================= -->
-  <section class="lane on" id="lane-run">
+  <section class="lane" id="lane-run">
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title">⚙️ Reconstruction settings</div>
@@ -260,7 +472,7 @@
       </div>
 
       <div class="field-group">
-        <label>Scene (videos/ or work/)</label>
+        <label for="scene-select">Scene (videos/ or work/)</label>
         <select id="scene-select" onchange="onSceneChange()"></select>
       </div>
 
@@ -367,7 +579,7 @@
         </div>
       </div>
       <div class="field-group">
-        <label>Model (scenes with an exported scene.ply)</label>
+        <label for="view-select">Model (scenes with an exported scene.ply)</label>
         <select id="view-select" onchange="updateViewFrame()"></select>
       </div>
       <iframe class="view-frame" id="view-frame" title="walkable 3D model" src="about:blank"></iframe>
@@ -406,7 +618,7 @@
   </section>
 
   <!-- ================= MONITOR ================= -->
-  <section class="panel">
+  <section class="panel" id="run-monitor" hidden>
     <div class="panel-header">
       <div class="panel-title">🖥️ Run monitor — <span id="mon-scene" style="color:#93c5fd;">no scene selected</span></div>
       <span class="muted">reads work/&lt;scene&gt;/logs, so runs started in a terminal show up here too</span>
@@ -425,6 +637,7 @@
   </section>
 </main>
 
+<script src="/viewer/survey_dashboard.js"></script>
 <script>
   let selectedPreset = "room";
   let selectedQuality = "high";
@@ -436,6 +649,13 @@
   let cursor = "0";
   let termStick = true;
   let lastRunning = false;
+  let activeLane = "survey";
+  let scenesRefreshing = false;
+  let tailRequest = 0;
+  let startPending = false;
+  const surveyDashboard = SurveyDashboard.mount(document.getElementById("lane-survey"), {
+    onSceneChange: selectScene, refreshScenes
+  });
 
   const PRESET_ICONS = {
     auto: "✨", room: "🏠", indoor_large: "🏢", outdoor_building: "🏛️",
@@ -448,27 +668,38 @@
 
   // ------------------------------------------------------------ lanes
   function setLane(name) {
-    for (const l of ["run", "view", "capture"]) {
+    if (!["survey", "run", "view", "capture"].includes(name)) name = "survey";
+    activeLane = name;
+    for (const l of ["survey", "run", "view", "capture"]) {
       document.getElementById("lane-" + l).classList.toggle("on", l === name);
       document.getElementById("lane-btn-" + l).classList.toggle("on", l === name);
+      document.getElementById("lane-btn-" + l).setAttribute("aria-pressed", String(l === name));
     }
-    if (name === "view") updateViewFrame();
+    document.getElementById("run-monitor").hidden = name === "survey";
+    surveyDashboard.setActive(name === "survey");
+    updateViewFrame();
+    if (name !== "survey") pollTail();
+    const url = new URL(location.href);
+    url.searchParams.set("lane", name);
+    history.replaceState(null, "", url);
   }
 
   function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return SurveyDashboard.escapeHtml(str);
   }
 
   // ------------------------------------------------------------ boot
   async function loadInitialData() {
     const qs = new URLSearchParams(location.search);
-    const wantScene = qs.get("scene");
+    const wantScene = SurveyDashboard.validScene(qs.get("scene")) ? qs.get("scene") : "";
+    setLane(qs.get("lane") || "survey");
+    if (wantScene) selectScene(wantScene);
     if (wantScene && qs.get("uploaded") === "1") {
       document.getElementById("uploaded-scene").textContent = wantScene;
       document.getElementById("uploaded-banner").style.display = "block";
     }
     try {
-      const pData = await (await fetch("/api/presets")).json();
+      const pData = await SurveyDashboard.readResponse(await fetch("/api/presets", { signal: AbortSignal.timeout(10000) }));
       presetsData = pData.presets || {};
       qualitiesData = pData.qualities || {};
       renderPresets();
@@ -476,27 +707,34 @@
     } catch (e) { console.warn("presets:", e); }
 
     await refreshScenes();
+    if (!currentScene && scenes.length) selectScene(scenes[0].name);
 
     try {
-      const info = await (await fetch("/api/info")).json();
+      const info = await SurveyDashboard.readResponse(await fetch("/api/info", { signal: AbortSignal.timeout(10000) }));
       document.getElementById("cap-url").textContent =
         `https://${info.local_ip}:${info.https_port}/viewer/capture.html`;
       // Takes are the raw videos/ folders that have no work directory yet
       const takes = scenes.filter(s => s.has_video && !s.has_work).map(s => s.name);
       document.getElementById("cap-take").innerHTML = takes.length
-        ? takes.map(t => `<option value="${t}">${t}</option>`).join("")
+        ? takes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")
         : `<option value="">no takes yet - send one from the phone</option>`;
     } catch (e) { console.warn("info:", e); }
-
-    if (wantScene) selectScene(wantScene);
-    else if (scenes.length) selectScene(scenes[0].name);
   }
 
   async function refreshScenes() {
+    if (scenesRefreshing) return;
+    scenesRefreshing = true;
     try {
-      const data = await (await fetch("/api/scenes")).json();
-      scenes = data.scenes || [];
-    } catch (e) { return; }
+      const response = await fetch("/api/scenes", { signal: AbortSignal.timeout(15000), cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data.scenes)) throw new Error("Invalid scene list");
+      scenes = data.scenes.filter(s => s && SurveyDashboard.validScene(s.name));
+    } catch (e) {
+      surveyDashboard.showSceneError("Scene API unavailable. Check the server connection, then choose Refresh.");
+      return;
+    } finally { scenesRefreshing = false; }
+    surveyDashboard.setScenes(scenes);
     const sel = document.getElementById("scene-select");
     const list = scenes.slice();
     if (currentScene && !list.some(s => s.name === currentScene))
@@ -541,8 +779,12 @@
   }
 
   function selectScene(name) {
-    if (!name || name === currentScene) { renderStepTable(); return; }
+    if (name && !SurveyDashboard.validScene(name)) return;
+    if (name === currentScene) { renderStepTable(); return; }
     currentScene = name;
+    tailRequest++;
+    lastRunning = false;
+    surveyDashboard.setScene(name);
     cursor = "0";
     runStartSteps = null;
     document.getElementById("term-box").innerHTML = "";
@@ -594,11 +836,11 @@
     rows.sort((a, b) => a.i - b.i);
     body.innerHTML = rows.map(r =>
       `<tr class="${r.status === "running" ? "run" : r.status === "failed" ? "fail" : ""}">` +
-      `<td class="num">${r.i}</td><td>${escapeHtml(r.name)}</td>` +
-      `<td>${r.status}${r.attempts > 1 ? " ×" + r.attempts : ""}` +
+      `<td class="num">${escapeHtml(r.i)}</td><td>${escapeHtml(r.name)}</td>` +
+      `<td>${escapeHtml(r.status)}${r.attempts > 1 ? " ×" + escapeHtml(r.attempts) : ""}` +
       `${r.kind && r.status === "failed" ? " " + escapeHtml(r.kind) : ""}</td>` +
-      `<td class="num">${r.secs != null ? r.secs.toFixed(1) : ""}</td>` +
-      `<td class="num">${r.exit != null ? r.exit : ""}</td></tr>`).join("");
+      `<td class="num">${Number.isFinite(r.secs) ? r.secs.toFixed(1) : ""}</td>` +
+      `<td class="num">${r.exit != null ? escapeHtml(r.exit) : ""}</td></tr>`).join("");
 
     const done = rows.filter(r => r.secs != null);
     const total = done.reduce((a, r) => a + r.secs, 0);
@@ -629,10 +871,14 @@
   }
 
   async function pollTail() {
-    if (!currentScene) return;
+    if (!currentScene || activeLane === "survey" || document.hidden) return;
+    const scene = currentScene;
+    const request = ++tailRequest;
     try {
-      const res = await fetch(`/api/tail?scene=${encodeURIComponent(currentScene)}&cursor=${encodeURIComponent(cursor)}`);
+      const res = await fetch(`/api/tail?scene=${encodeURIComponent(scene)}&cursor=${encodeURIComponent(cursor)}`, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return;
       const t = await res.json();
+      if (request !== tailRequest || scene !== currentScene || activeLane === "survey") return;
       // A new run truncates the step logs, so the old run's text must not stay on
       // screen: on the idle-to-running transition, clear and replay from the top.
       if (t.running && !lastRunning) {
@@ -724,20 +970,18 @@
     if (document.getElementById("view-auto").checked) q.push("auto=1");
     if (!document.getElementById("view-cams").checked) q.push("cams=0");
     if (document.getElementById("view-under").checked) q.push("underlay=1");
-    return `/viewer/pc.html?asset=/work/${name}/viewer_assets` + (q.length ? "&" + q.join("&") : "");
+    return `/viewer/pc.html?asset=${encodeURIComponent('/work/' + name + '/viewer_assets')}` + (q.length ? "&" + q.join("&") : "");
   }
 
   function updateViewFrame() {
     const src = viewSrc();
     const frame = document.getElementById("view-frame");
     const open = document.getElementById("view-open");
-    if (!src) { frame.src = "about:blank"; open.style.display = "none"; return; }
-    open.style.display = "";
-    open.href = src;
-    // Loaded while its lane is hidden, the viewer sizes its canvas 0x0 and has no
-    // resize handler to recover - so the frame only gets its src once it is on screen.
-    if (!document.getElementById("lane-view").classList.contains("on")) return;
-    if (frame.getAttribute("src") !== src) frame.src = src;
+    open.style.display = src ? "" : "none";
+    if (src) open.href = src;
+    // No hidden WebGL model loads on refresh, and leaving View releases its context.
+    const next = SurveyDashboard.viewFrameSource(activeLane, src);
+    if (frame.getAttribute("src") !== next) frame.src = next;
   }
 
   // ------------------------------------------------------------ capture lane
@@ -772,29 +1016,43 @@
       high: { title: "✨ High (1280p)", vram: "~3.8 GB VRAM" },
       ultra: { title: "💎 Ultra (1440p)", vram: "~5.5 GB VRAM" }
     };
-    cont.innerHTML = Object.entries(qualitiesData).map(([k, v]) => {
+    cont.replaceChildren();
+    for (const [k, v] of Object.entries(qualitiesData)) {
       const info = labels[k] || { title: k.toUpperCase(), vram: "" };
       const stepsK = v.steps ? Math.round(v.steps / 1000) + "k steps" : "";
       const capM = v.cap ? (v.cap / 1000000).toFixed(1) + "M cap" : "";
-      return `<div class="quality-pill ${k === selectedQuality ? "active" : ""}" onclick="setQuality('${k}')">
-        <div style="font-weight:700;">${info.title}</div>
-        <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">${stepsK} • ${capM}</div>
-        <div style="font-size:9.5px; color:#a78bfa; margin-top:1px;">${info.vram}</div></div>`;
-    }).join("");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "quality-pill" + (k === selectedQuality ? " active" : "");
+      button.setAttribute("aria-pressed", String(k === selectedQuality));
+      button.style.color = "var(--text-main)";
+      button.innerHTML = `<span style="display:block;font-weight:700;">${escapeHtml(info.title)}</span>
+        <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px;">${escapeHtml(stepsK)} · ${escapeHtml(capM)}</span>
+        <span style="display:block;font-size:9.5px;color:#a78bfa;margin-top:1px;">${escapeHtml(info.vram)}</span>`;
+      button.addEventListener("click", () => setQuality(k));
+      cont.appendChild(button);
+    }
   }
 
   function renderPresets() {
     const cont = document.getElementById("presets-container");
     if (!presetsData || !Object.keys(presetsData).length) return;
-    cont.innerHTML = Object.entries(presetsData).map(([k, v]) => `
-      <div class="preset-card ${k === selectedPreset ? "active" : ""}" onclick="selectPreset('${k}')">
-        <div class="preset-card-top">
-          <span class="preset-icon">${PRESET_ICONS[k] || "📦"}</span>
-          <span style="font-size:9px; background:rgba(255,255,255,0.1); padding:2px 5px; border-radius:99px;">${k}</span>
-        </div>
-        <div class="preset-name">${v.label || k}</div>
-        <div class="preset-desc">${v.advice ? v.advice.slice(0, 42) + "..." : ""}</div>
-      </div>`).join("");
+    cont.replaceChildren();
+    for (const [k, v] of Object.entries(presetsData)) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "preset-card" + (k === selectedPreset ? " active" : "");
+      button.setAttribute("aria-pressed", String(k === selectedPreset));
+      button.style.textAlign = "left";
+      button.innerHTML = `<span class="preset-card-top">
+          <span class="preset-icon">${escapeHtml(PRESET_ICONS[k] || "3D")}</span>
+          <span style="font-size:9px;background:rgba(255,255,255,.1);padding:2px 5px;border-radius:99px;color:var(--text-muted);">${escapeHtml(k)}</span>
+        </span>
+        <span class="preset-name">${escapeHtml(v.label || k)}</span>
+        <span class="preset-desc">${escapeHtml(typeof v.advice === "string" ? v.advice.slice(0, 42) + "..." : "")}</span>`;
+      button.addEventListener("click", () => selectPreset(k));
+      cont.appendChild(button);
+    }
     updateAdvice();
   }
 
@@ -804,7 +1062,7 @@
     const p = presetsData[selectedPreset];
     if (p && p.advice) {
       document.getElementById("preset-advice").innerHTML =
-        `<b>💡 Strategy for ${p.label || selectedPreset}:</b> ${p.advice}`;
+        `<b>Strategy for ${escapeHtml(p.label || selectedPreset)}:</b> ${escapeHtml(p.advice)}`;
     }
   }
 
@@ -815,7 +1073,9 @@
 
   async function launchPipeline() {
     const scene = document.getElementById("scene-select").value;
-    if (!scene) return;
+    if (!scene || startPending) return;
+    if (!window.confirm(`Start reconstruction for ${scene}? This uses GPU and may consume substantial GPU memory and processing time. Continue?`)) return;
+    startPending = true;
     document.getElementById("btn-start").disabled = true;
     const extra = [];
     const mapper = document.getElementById("adv-mapper").value;
@@ -830,24 +1090,27 @@
     }
     if (document.getElementById("adv-fresh").checked) extra.push("--fresh");
     try {
-      await fetch("/api/run", {
+      await SurveyDashboard.readResponse(await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scene, preset: selectedPreset, quality: selectedQuality, extra_args: extra })
-      });
-      selectScene(scene);
+      }));
+      await refreshScenes();
+      if (currentScene === scene) pollTail();
     } catch (e) {
-      console.error(e);
-      document.getElementById("btn-start").disabled = false;
+      window.alert(`Reconstruction could not start: ${e.message}`);
+    } finally {
+      startPending = false;
+      renderStepTable();
     }
   }
 
   async function killPipeline() { await fetch("/api/kill", { method: "POST" }); }
 
-  // One heartbeat: the scene list refreshes slowly, the log tail quickly while
-  // anything is moving and slows down once the run is over.
-  setInterval(() => { pollTail(); }, 800);
-  setInterval(() => { refreshScenes(); }, 4000);
+  // Survey data is read on scene selection, explicit refresh and CPU mutations.
+  // Never poll or load an inactive model just to update survey evidence.
+  setInterval(() => { if (!document.hidden && activeLane !== "survey") pollTail(); }, 1600);
+  setInterval(() => { if (!document.hidden && activeLane !== "survey") refreshScenes(); }, 5000);
 
   loadInitialData();
 </script>

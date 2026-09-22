@@ -41,6 +41,12 @@ SUITES = [
     ("collider", "test_collider.py", 10),
     ("gate", "test_gate.py", 10),
     ("unit", "run_tests.py", 10),
+    ("survey-georef", "test_survey_georef.py", 5),
+    ("survey-evaluation", "test_survey_evaluation.py", 5),
+    ("survey-calibration", "test_camera_intrinsics.py", 5),
+    ("survey-workflow", "test_survey_workflow.py", 5),
+    ("survey-api", "test_survey_api.py", 5),
+    ("survey-cli", "test_survey_cli.py", 5),
 ]
 E2E = ("e2e", "test_e2e.py", 180)
 
@@ -48,8 +54,12 @@ E2E = ("e2e", "test_e2e.py", 180)
 def run_suite(script: str, minutes: float, extra: list[str]) -> tuple[bool, float, str]:
     t0 = time.time()
     cmd = [str(PY), str(ROOT / "tests" / script), *extra]
+    env = dict(os.environ)
+    if script.startswith("test_survey_") or script == "test_camera_intrinsics.py":
+        cmd = [str(PY), "-m", "unittest", "discover", "-s", str(ROOT / "tests"), "-p", script, "-v"]
+        env.update(CUDA_VISIBLE_DEVICES="-1", PYTHONDONTWRITEBYTECODE="1")
     try:
-        p = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
+        p = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env,
                            timeout=minutes * 60, encoding="utf-8", errors="replace")
         out = (p.stdout or "") + (p.stderr or "")
         ok = p.returncode == 0

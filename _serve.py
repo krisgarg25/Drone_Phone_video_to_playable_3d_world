@@ -117,10 +117,18 @@ def _step_row(log: Path, now: float) -> dict:
 def scan_scenes(root: Path, now: float = None) -> list:
     now = time.time() if now is None else now
     work = Path(root) / "work"
-    if not work.is_dir():
-        return []
+    videos = Path(root) / "videos"
+    work_names = {p.name for p in work.iterdir() if p.is_dir()} if work.is_dir() else set()
+    video_names = set()
+    if videos.is_dir():
+        for path in videos.iterdir():
+            if path.is_dir() and any(p.is_file() and p.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv", ".m4v", ".avi") for p in path.iterdir()):
+                video_names.add(path.name)
+            elif path.is_file() and path.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv", ".m4v", ".avi"):
+                video_names.add(path.stem)
     out = []
-    for d in sorted(p for p in work.iterdir() if p.is_dir()):
+    for name in sorted(work_names | video_names):
+        d = work / name
         logs = _log_files(d / "logs")
         steps = [_step_row(p, now) for p in logs]
         reg = None
@@ -131,9 +139,11 @@ def scan_scenes(root: Path, now: float = None) -> list:
                     return sum(1 for ln in fh if ln.strip())
             kf = d / "keyframes.jsonl"
             reg = [_lines(poses), _lines(kf) if kf.is_file() else None]
-        mtimes = [p.stat().st_mtime for p in logs] or [d.stat().st_mtime]
+        mtimes = [p.stat().st_mtime for p in logs] or [d.stat().st_mtime if d.is_dir() else now]
         out.append({
             "name": d.name,
+            "has_work": name in work_names,
+            "has_video": name in video_names,
             "viewable": (d / "viewer_assets" / "scene.ply").is_file(),
             "trained": (d / "splat.ply").is_file(),
             "registered": reg,
@@ -294,7 +304,58 @@ class H(http.server.SimpleHTTPRequestHandler):
             H._scenes_cache = (now, data)
         return {"scenes": data}
 
+    def _survey_json(self, data, status=200):
+        payload = json.dumps(data, allow_nan=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _survey(self, action=None):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import survey_workflow as survey
+        try:
+            if action is None:
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                result = survey.scene_status(Path(self.directory), query.get("scene", [""])[0])
+            else:
+                actions = {"inputs": survey.save_inputs, "prepare": survey.prepare_scene,
+                           "align": survey.align_scene, "evaluate": survey.evaluate_scene}
+                if action not in actions:
+                    self._survey_json({"error": "Unknown survey action. GPU execution is available only through the explicit CLI gate."}, 404)
+                    return
+                origin = self.headers.get("Origin")
+                if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host"):
+                    self._survey_json({"error": "Cross-origin survey writes are not allowed."}, 403)
+                    return
+                if self.headers.get_content_type() != "application/json":
+                    raise ValueError("Expected application/json.")
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > survey.MAX_INPUT_BYTES:
+                    raise ValueError("Supply a JSON request below 2 MiB.")
+                request = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(request, dict):
+                    raise ValueError("Request must be a JSON object.")
+                scene = request.get("scene", "")
+                arguments = [Path(self.directory), scene]
+                if action == "inputs":
+                    arguments += [request.get("telemetry_csv"), request.get("metadata")]
+                with process_lock:
+                    if active_process is not None and active_process.poll() is None:
+                        self._survey_json({"error": "Wait for the running reconstruction before changing survey evidence."}, 409)
+                        return
+                    result = actions[action](*arguments)
+            self._survey_json(result)
+        except FileExistsError as error:
+            self._survey_json({"error": str(error)}, 409)
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            self._survey_json({"error": str(error)}, 400)
+
     def do_GET(self):
+        if urllib.parse.urlparse(self.path).path == "/api/survey":
+            self._survey()
+            return
         if self.path.startswith("/api/info"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -362,6 +423,10 @@ class H(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         global active_process
+        path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/api/survey/"):
+            self._survey(path.removeprefix("/api/survey/"))
+            return
         if self.path.startswith("/api/run"):
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)

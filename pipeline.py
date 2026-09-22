@@ -722,6 +722,8 @@ def code_digest(argv) -> str:
     files |= {(ROOT / a).resolve() if not Path(str(a)).is_absolute()
               else Path(str(a)).resolve()
               for a in argv if str(a).endswith(".py")}
+    if any(path.name == "train_splat.py" for path in files):
+        files.add((ROOT / "scripts" / "camera_intrinsics.py").resolve())
     h = hashlib.sha1()
     for f in sorted(files):
         h.update(f.name.encode("utf-8"))
