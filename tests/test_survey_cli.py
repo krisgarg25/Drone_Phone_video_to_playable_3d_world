@@ -26,7 +26,13 @@ class SurveyCliTests(unittest.TestCase):
         scripts = {script for _, script, _ in module.SUITES}
         self.assertTrue({"test_survey_georef.py", "test_survey_evaluation.py",
                          "test_camera_intrinsics.py", "test_survey_workflow.py",
-                         "test_survey_api.py", "test_survey_cli.py"}.issubset(scripts))
+                         "test_survey_api.py", "test_survey_cli.py",
+                         "test_survey_evidence.py", "test_survey_visibility.py",
+                         "test_survey_selection.py", "test_survey_products.py",
+                         "test_survey_priors.py"}.issubset(scripts),
+                        sorted({"test_survey_evidence.py", "test_survey_visibility.py",
+                                "test_survey_selection.py", "test_survey_products.py",
+                                "test_survey_priors.py"} - scripts))
 
     def test_training_cache_depends_on_its_sibling_imports(self):
         import pipeline
