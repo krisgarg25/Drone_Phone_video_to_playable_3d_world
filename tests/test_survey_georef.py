@@ -236,6 +236,7 @@ class SurveyGeorefTests(unittest.TestCase):
         result = self.geo.align_camera_trajectory(rows, gps)
         self.assertEqual(set(result), {"schema_version", "status", "method", "scale",
             "rotation", "translation", "coordinate_frame", "matched_count", "inlier_count",
+            "matched_files", "inlier_files",
             "residuals_m", "inlier_mask", "fit_rmse_m", "warnings", "accuracy_validated"})
         self.assertEqual(result["schema_version"], 1)
         self.assertEqual(result["status"], "aligned")
@@ -247,6 +248,50 @@ class SurveyGeorefTests(unittest.TestCase):
         self.assertIn("anisotropic", warnings)
         self.assertTrue(all(type(x) is bool for x in result["inlier_mask"]))
         json.dumps(result, allow_nan=False)
+
+    def test_independence_is_declared_by_the_caller_not_proven_here(self):
+        rows, gps, _ = self.known_fit()
+        warnings = " ".join(self.geo.align_camera_trajectory(rows, gps)["warnings"]).lower()
+        self.assertIn("independen", warnings)
+        self.assertIn("declared", warnings)
+        self.assertIn("not proven", warnings)
+
+    def test_fit_records_which_cameras_entered_and_which_stayed(self):
+        rows, gps, target = self.known_fit()
+        for i, row in enumerate(rows):
+            row["file"] = f"cam_{i:04d}.jpg"
+        gps["samples"][3]["position"] = (target[3] + [150, -60, 40]).tolist()
+        result = self.geo.align_camera_trajectory(rows, gps, inlier_threshold_m=0.05)
+        names = [f"cam_{i:04d}.jpg" for i in range(8)]
+        self.assertEqual(result["matched_files"], names)
+        self.assertEqual(result["inlier_files"], [n for i, n in enumerate(names) if i != 3])
+        # The names must index the same rows as the residuals and the mask, in the
+        # same order, or the record proves nothing about the fit.
+        self.assertEqual(len(result["matched_files"]), result["matched_count"])
+        self.assertEqual(len(result["inlier_files"]), result["inlier_count"])
+        self.assertEqual(len(result["residuals_m"]), len(result["matched_files"]))
+        self.assertEqual(len(result["inlier_mask"]), len(result["matched_files"]))
+        self.assertEqual(result["inlier_files"],
+                         [n for n, keep in zip(result["matched_files"], result["inlier_mask"]) if keep])
+        json.dumps(result, allow_nan=False)
+
+    def test_cameras_held_out_of_the_fit_are_absent_from_the_record(self):
+        rows, gps, _ = self.known_fit(local=LOCAL[:4])
+        for i, row in enumerate(rows):
+            row["file"] = f"used_{i}.jpg"
+        for row, sample in zip(rows, gps["samples"]):
+            row["t_sec"] = sample["t_sec"] = row["t_sec"] * 5 + 1
+        extras = cameras(np.ones((3, 3)) * 100, [0, 3, 17])
+        for i, row in enumerate(extras):
+            row["file"] = f"heldout_{i}.jpg"
+        result = self.geo.align_camera_trajectory(rows + extras, gps)
+        self.assertEqual(result["matched_files"],
+                         ["used_0.jpg", "used_1.jpg", "used_2.jpg", "used_3.jpg"])
+        self.assertEqual(result["inlier_files"], result["matched_files"])
+        for name in ("heldout_0.jpg", "heldout_1.jpg", "heldout_2.jpg"):
+            self.assertNotIn(name, " ".join(result["matched_files"]))
+        self.assertEqual(result["matched_count"], 4)
+        self.assertEqual(len(result["residuals_m"]), 4)
 
     def test_planar_noncollinear_trajectory_allowed_with_four_cameras(self):
         points = LOCAL[:4].copy()

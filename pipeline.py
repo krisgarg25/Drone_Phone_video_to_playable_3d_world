@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -714,16 +715,33 @@ def code_digest(argv) -> str:
     never the code. An edit to scripts/walk_path_from_glb.py therefore left every
     downstream step "done" and the pipeline shipped a route planned by source
     that no longer exists: the same defect as a stale ground.f32 beside a rebuilt
-    collider, one level up. Covers the .py files the command names plus
-    robust.py, which every step script imports and which has changed a step's
-    behaviour on its own more than once.
+    collider, one level up. Covers the .py files the command names, every sibling
+    module they import, and robust.py, which every step script imports and which
+    has changed a step's behaviour on its own more than once.
     """
-    files = {(ROOT / "scripts" / "robust.py").resolve()}
+    scripts = (ROOT / "scripts").resolve()
+    files = {scripts / "robust.py"}
     files |= {(ROOT / a).resolve() if not Path(str(a)).is_absolute()
               else Path(str(a)).resolve()
               for a in argv if str(a).endswith(".py")}
-    if any(path.name == "train_splat.py" for path in files):
-        files.add((ROOT / "scripts" / "camera_intrinsics.py").resolve())
+    pending = [f for f in files if f.parent == scripts]
+    seen = set()
+    while pending:
+        path = pending.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # `import robust as rb` and `from camera_intrinsics import f` both name a
+        # sibling module; either one changes what the step computes.
+        for name in re.findall(r"^(?:from|import)\s+([a-z_][a-z0-9_]*)\b", source, re.M):
+            sibling = scripts / (name + ".py")
+            if sibling.exists() and sibling not in files:
+                files.add(sibling)
+                pending.append(sibling)
     h = hashlib.sha1()
     for f in sorted(files):
         h.update(f.name.encode("utf-8"))

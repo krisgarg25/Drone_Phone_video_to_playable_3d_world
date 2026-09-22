@@ -229,13 +229,19 @@ def align_camera_trajectory(camera_rows: list, telemetry: dict, *,
     from independent errors. Timing/interpolation error and correlated GNSS bias
     are unmodelled. This is not anisotropic covariance fitting or bundle adjustment.
     fit_rmse_m is UNWEIGHTED inlier fit RMSE, NOT independently measured accuracy.
+
+    matched_files and inlier_files record which camera images entered and stayed
+    in the fit, in camera input order, so a reviewer can audit which checkpoints
+    were held out. Naming them does not make them independent: whether the held
+    out poses, checkpoints or scenes were used anywhere else is declared by the
+    caller and is not proven by this module.
     """
     gap = _number(max_gap_s, "max_gap_s", positive=True)
     threshold = _number(inlier_threshold_m, "inlier_threshold_m", positive=True)
     times, positions, variances = _telemetry_arrays(telemetry)
     if not isinstance(camera_rows, list):
         raise ValueError("camera_rows must be a list")
-    source, target, variance, seen = [], [], [], set()
+    source, target, variance, files, seen = [], [], [], [], set()
     for row in camera_rows:
         if not isinstance(row["file"], str) or not row["file"]:
             raise ValueError("Camera file must be a nonempty string")
@@ -258,6 +264,7 @@ def align_camera_trajectory(camera_rows: list, telemetry: dict, *,
         source.append(center)
         target.append(point)
         variance.append(var)
+        files.append(row["file"])
     n = len(source)
     if n < 4:
         raise ValueError("Insufficient overlap: need at least four bracketed/exact cameras")
@@ -304,11 +311,15 @@ def align_camera_trajectory(camera_rows: list, telemetry: dict, *,
     else:
         raise ValueError("Robust inlier refit did not converge")
     scale, rotation, translation = model
+    inlier_files = [name for name, keep in zip(files, mask.tolist()) if keep]
     warnings = [
         "Fit residuals are not independent accuracy validation; GNSS bias remains possible.",
         "Scalar inverse mean-variance weights assume per-axis horizontal std; no anisotropic "
         "covariance fitting or bundle adjustment. Interpolated variance is conservatively "
-        "averaged; timing, motion-model error and temporal correlations are unmodelled."]
+        "averaged; timing, motion-model error and temporal correlations are unmodelled.",
+        "Independence of the checkpoints held out of this alignment is declared by the caller "
+        "and is not proven by this module; matched_files and inlier_files record which cameras "
+        "entered and stayed in the fit so the claim can be audited."]
     if n != len(camera_rows):
         warnings.append(f"{len(camera_rows) - n} unmatched cameras omitted (no brackets or gap too large).")
     if int(mask.sum()) != n:
@@ -316,7 +327,9 @@ def align_camera_trajectory(camera_rows: list, telemetry: dict, *,
     return dict(schema_version=1, status="aligned", method="deterministic_ransac_weighted_sim3",
                 scale=scale, rotation=rotation.tolist(), translation=translation.tolist(),
                 coordinate_frame=copy.deepcopy(telemetry["coordinate_frame"]), matched_count=n,
-                inlier_count=int(mask.sum()), residuals_m=residuals.tolist(), inlier_mask=mask.tolist(),
+                inlier_count=int(mask.sum()), matched_files=list(files),
+                inlier_files=inlier_files, residuals_m=residuals.tolist(),
+                inlier_mask=mask.tolist(),
                 fit_rmse_m=float(np.sqrt(np.mean(residuals[mask] ** 2))), warnings=warnings,
                 accuracy_validated=False)
 

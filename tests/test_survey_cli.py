@@ -28,19 +28,24 @@ class SurveyCliTests(unittest.TestCase):
                          "test_camera_intrinsics.py", "test_survey_workflow.py",
                          "test_survey_api.py", "test_survey_cli.py"}.issubset(scripts))
 
-    def test_training_cache_depends_on_intrinsics_helper(self):
+    def test_training_cache_depends_on_its_sibling_imports(self):
         import pipeline
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             scripts = root / "scripts"
             scripts.mkdir()
-            for name in ("robust.py", "train_splat.py", "camera_intrinsics.py"):
+            for name in ("robust.py", "train_splat.py", "camera_intrinsics.py", "parse_colmap.py"):
                 (scripts / name).write_text("version = 1\n")
+            (scripts / "train_splat.py").write_text(
+                "import camera_intrinsics\nfrom parse_colmap import qvec2rot\n")
+            argv = ["python", "scripts/train_splat.py"]
             with patch.object(pipeline, "ROOT", root):
-                before = pipeline.code_digest(["python", "scripts/train_splat.py"])
-                (scripts / "camera_intrinsics.py").write_text("version = 2\n")
-                after = pipeline.code_digest(["python", "scripts/train_splat.py"])
-            self.assertNotEqual(before, after)
+                before = pipeline.code_digest(argv)
+                for changed in ("camera_intrinsics.py", "parse_colmap.py"):
+                    (scripts / changed).write_text("version = 2\n")
+                    self.assertNotEqual(pipeline.code_digest(argv), before,
+                                        f"editing {changed} must invalidate the train step")
+                    (scripts / changed).write_text("version = 1\n")
 
     def test_help_lists_safe_actions_and_gate(self):
         result = self.run_cli("--help")

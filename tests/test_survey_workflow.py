@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -211,11 +212,13 @@ class SurveyWorkflowTests(unittest.TestCase):
         for name in ("extract_keyframes.py", "run_colmap.py", "parse_colmap.py"):
             (scripts / name).write_text("# fake runner fixture; never executed\n")
         calls = []
+        self.spawned = []
 
         def runner(argv, **kwargs):
             stage = Path(kwargs["stdout"].name).stem
             run = Path(kwargs["stdout"].name).parent
             calls.append((stage, run))
+            self.spawned.append([str(part) for part in argv])
             if stage == "poses":
                 self.write_geometry(run, scale=3)
             if stage == "fusion" and not omit_cloud:
@@ -262,10 +265,10 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertEqual(result["report_source"], f"survey/runs/{record['id']}/run.json")
         self.assertEqual(result["georeference_source"], f"survey/runs/{record['id']}/georeference.json")
         self.assertEqual(result["report_sha256"], survey._modules()[0].file_fingerprint(run / "run.json")["sha256"])
-        self.assertEqual(record["hardware"]["status"], "not_recorded")
+        self.assertEqual(record["hardware"]["status"], "recorded")
         self.assertFalse(record["benchmark_qualified"])
-        self.assertTrue(record["speed"]["diagnostic_only"])
-        self.assertEqual(record["speed"]["official_status"], "not_evaluated")
+        self.assertFalse(record["speed"]["diagnostic_only"])
+        self.assertEqual(record["speed"]["official_status"], "meets_target")
         self.assertEqual(record["video_duration_s"], 600)
         self.assertGreaterEqual(record["secs"], sum(s["secs"] for s in record["steps"]))
         self.assertEqual(record["steps"][0]["name"], "setup")
@@ -378,7 +381,11 @@ class SurveyWorkflowTests(unittest.TestCase):
         payload = report_path.read_bytes()
         report_path.write_bytes(payload.replace(b'"point_count": 2', b'"point_count": 9'))
         os.utime(report_path, ns=(before.st_atime_ns, before.st_mtime_ns))
-        self.assertEqual(survey.scene_status(self.root, "flight")["status"], "aligned")
+        # run.json is a KB-scale survey JSON, so a poll rehashes it instead of
+        # presenting a timing/provenance verdict that no longer matches its bytes.
+        state = survey.scene_status(self.root, "flight")
+        self.assertEqual(state["status"], "invalid")
+        self.assertIn("run.json", " ".join(state["blockers"]))
         with self.assertRaisesRegex(ValueError, "run.json"):
             survey.evaluate_scene(self.root, "flight")
         for changes in ({"preparation_id": "old"}, {"id": "20200101T000000-00000000"},
@@ -460,6 +467,190 @@ class SurveyWorkflowTests(unittest.TestCase):
         state = survey.scene_status(self.root, "flight")
         self.assertEqual(state["status"], "invalid")
         self.assertIn("report.json", " ".join(state["blockers"]))
+
+    def test_points3d_relative_path_uses_one_constant(self):
+        self.prepared_geometry()
+        self.assertEqual(survey.POINTS3D, "colmap/sparse/txt/points3D.txt")
+        self.assertIn(survey.POINTS3D, survey.RUN_FILES)
+        self.assertTrue((self.work / survey.POINTS3D).is_file())
+        georeference = survey.read_json(self.work / "survey/georeference.json")
+        self.assertEqual(georeference["sources"]["sparse"]["relative_path"], survey.POINTS3D)
+
+    def test_truncated_points3d_row_reports_the_row_not_a_path(self):
+        sparse = self.root / "work/flight/colmap/sparse/txt/points3D.txt"
+        sparse.parent.mkdir(parents=True, exist_ok=True)
+        for text in ("1 0 0 0 10 20 30 0.1\n2 1 2 3 40 50\n", "1 0 0 0 10 20\n",
+                     "1 0 0\n2 1 2 3 4 5 6 0.1\n", "1 0 0 0 ten 20 30 0.1\n"):
+            sparse.write_text(text, encoding="utf-8")
+            with self.subTest(text=text), self.assertRaises(ValueError) as caught:
+                survey._read_sparse_points(sparse, survey.POINTS3D)
+            message = str(caught.exception)
+            self.assertIn("row", message)
+            self.assertNotIn(str(self.root), message)
+            self.assertIsNone(re.search(r"[A-Za-z]:[\\/]", message), message)
+        self.prepared_geometry()
+        sparse.write_text("1 0 0 0 10 20\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "row"):
+            survey.align_scene(self.root, "flight")
+
+    def test_evidence_artifacts_require_verified_provenance(self):
+        state = self.prepared_geometry()
+        evidence = self.work / "survey/evidence"
+        self.assertTrue((evidence / "evidence_points.ply").is_file())
+        self.assertTrue((evidence / "evidence_summary.json").is_file())
+        names = [a["name"] for a in state["artifacts"]]
+        self.assertIn("evidence_points.ply", names)
+        self.assertIn("evidence_summary.json", names)
+        # A re-align without the sparse model keeps the old ENU clouds on disk: they
+        # are stale evidence for a coordinate frame nothing current attests to.
+        (self.work / survey.POINTS3D).unlink()
+        survey.align_scene(self.root, "flight")
+        state = survey.scene_status(self.root, "flight")
+        self.assertEqual(state["status"], "aligned")
+        self.assertTrue((evidence / "evidence_points.ply").is_file())
+        names = [a["name"] for a in state["artifacts"]]
+        self.assertNotIn("evidence_points.ply", names)
+        self.assertNotIn("evidence_summary.json", names)
+        self.assertNotIn("sparse_points.ply", names)
+
+    def test_tampered_evidence_is_rejected_and_realign_restores_it(self):
+        self.prepared_geometry()
+        cloud = self.work / "survey/evidence/evidence_points.ply"
+        summary = self.work / "survey/evidence/evidence_summary.json"
+        for path in (cloud, summary):
+            before = path.stat()
+            path.write_bytes(b"X" * before.st_size)
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+            with self.subTest(evidence=path.name), self.assertRaisesRegex(ValueError, "Evidence"):
+                survey.evaluate_scene(self.root, "flight")
+            survey.align_scene(self.root, "flight")
+            self.assertEqual(survey.scene_status(self.root, "flight")["status"], "aligned")
+
+    def test_tampered_evaluation_cannot_change_reported_criteria(self):
+        self.prepared_geometry()
+        survey.evaluate_scene(self.root, "flight")
+        path = self.work / "survey/evaluation.json"
+        data = survey.read_json(path)
+        for criterion in data["criteria"]:
+            criterion.update(status="meets_target", official_status="meets_target",
+                             reason="hand-edited claim of an official pass")
+        survey.write_json(path, data)
+        state = survey.scene_status(self.root, "flight")
+        self.assertEqual(state["status"], "evaluated")
+        self.assertNotIn("meets_target", json.dumps(state["evaluation"]["criteria"]))
+        self.assertEqual(state["evaluation"]["criteria"],
+                         survey._modules()[0].build_evaluation()["criteria"])
+
+    def test_claimed_accuracy_pass_is_recomputed_from_the_checkpoint_evidence(self):
+        state = self.prepared_geometry()
+        self.references(state["alignment"]["coordinate_frame"])
+        state = survey.evaluate_scene(self.root, "flight")
+        accuracy = next(c for c in state["evaluation"]["criteria"] if c["id"] == "accuracy")
+        self.assertEqual(accuracy["status"], "measured")
+        self.assertAlmostEqual(accuracy["metrics"]["rmse_3d_m"], .1)
+        path = self.work / "survey/evaluation.json"
+        data = survey.read_json(path)
+        data["criteria"][0].update(status="meets_target", official_pass=True,
+                                   metrics={"rmse_3d_m": 0.001})
+        survey.write_json(path, data)
+        accuracy = next(c for c in survey.scene_status(self.root, "flight")["evaluation"]["criteria"]
+                        if c["id"] == "accuracy")
+        self.assertEqual(accuracy["status"], "measured")
+        self.assertNotIn("official_pass", accuracy)
+        self.assertAlmostEqual(accuracy["metrics"]["rmse_3d_m"], .1)
+
+    def test_stat_preserving_checkpoint_edit_is_detected_on_a_poll(self):
+        state = self.prepared_geometry()
+        self.references(state["alignment"]["coordinate_frame"])
+        self.assertEqual(survey.evaluate_scene(self.root, "flight")["status"], "evaluated")
+        path = self.work / "survey/checkpoints.json"
+        original = path.read_bytes()
+        tampered = original.replace(b"10.1", b"10.2")
+        self.assertEqual(len(tampered), len(original))
+        before = path.stat()
+        path.write_bytes(tampered)
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        state = survey.scene_status(self.root, "flight")
+        self.assertEqual(state["status"], "invalid")
+        self.assertIn("checkpoints.json", " ".join(state["blockers"]))
+
+    def test_stat_preserving_georeference_edit_is_detected_on_a_poll(self):
+        self.prepared_geometry()
+        survey.evaluate_scene(self.root, "flight")
+        path = self.work / "survey/georeference.json"
+        original = path.read_bytes()
+        # Nudge the fitted scale in place: a different transform, same bytes, and
+        # nothing on the poll path recomputes a point cloud, so only the digest
+        # of georeference.json itself can catch it.
+        found = re.search(rb'"scale": (\d+\.\d+)', original)
+        self.assertIsNotNone(found)
+        token = found.group(1)
+        changed = token[:-1] + (b"1" if token.endswith(b"0") else b"0")
+        self.assertEqual(len(changed), len(token))
+        self.assertNotEqual(float(changed), float(token))
+        tampered = original[:found.start(1)] + changed + original[found.end(1):]
+        self.assertEqual(len(tampered), len(original))
+        before = path.stat()
+        path.write_bytes(tampered)
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        state = survey.scene_status(self.root, "flight")
+        self.assertEqual(state["status"], "invalid")
+        self.assertIn("georeference.json", " ".join(state["blockers"]))
+
+    def test_run_records_host_identity_without_probing_the_gpu(self):
+        self.prepared_geometry()
+        calls = self.fake_reconstruction()
+        record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        hardware = record["hardware"]
+        self.assertEqual(hardware["status"], "recorded")
+        self.assertTrue(hardware["cpu"].strip())
+        self.assertGreater(hardware["logical_cores"], 0)
+        self.assertTrue(hardware["total_ram_bytes"] is None or hardware["total_ram_bytes"] > 0)
+        self.assertEqual(hardware["gpu"], "not_recorded_gpu")
+        spawned = " ".join(" ".join(argv) for argv in self.spawned).lower()
+        self.assertNotIn("nvidia", spawned)
+        self.assertNotIn("torch", spawned)
+        self.assertEqual([c[0] for c in calls],
+                         ["keyframes", "colmap", "poses", "undistort", "dense", "fusion"])
+
+    def test_speed_gate_fires_only_on_a_verified_duration(self):
+        self.prepared_geometry()
+        self.fake_reconstruction()
+        record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        self.assertEqual(record["video_duration_s"], 600)
+        self.assertEqual(record["speed"]["status"], "measured")
+        self.assertEqual(record["speed"]["official_status"], "meets_target")
+        self.assertFalse(record["speed"]["diagnostic_only"])
+        self.assertEqual(record["speed"]["required_stages"],
+                         ["setup", "keyframes", "colmap", "poses", "undistort", "dense",
+                          "fusion", "georeferenced_export"])
+        criteria = {c["id"]: c for c in survey.evaluate_scene(self.root, "flight")["evaluation"]["criteria"]}
+        self.assertEqual(criteria["speed"]["status"], "meets_target")
+        self.assertEqual(criteria["accuracy"]["status"], "not_evaluated")
+        self.assertFalse(criteria["speed"].get("metrics", {}).get("diagnostic_only"))
+
+
+    def test_run_records_evidence_and_says_occlusion_was_not_checked(self):
+        self.prepared_geometry()
+        self.fake_reconstruction()
+        record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        run = self.work / "survey/runs" / record["id"]
+        self.assertTrue((run / "evidence/evidence_points.ply").is_file())
+        self.assertIs(record["evidence"]["occlusion_checked"], False)
+        self.assertIn("evidence/evidence_summary.json", record["files"])
+        state = survey.scene_status(self.root, "flight")
+        self.assertIn("evidence_points.ply", [a["name"] for a in state["artifacts"]])
+        # With depth maps present the same call must claim occlusion checking.
+        views = [{"K": np.eye(3) * 100.0, "viewmat": np.eye(4),
+                  "depth": np.full((9, 9), 5.0, np.float32)}]
+        with patch.object(survey, "_depth_views", return_value=views):
+            record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        run = self.work / "survey/runs" / record["id"]
+        self.assertIs(record["evidence"]["occlusion_checked"], True)
+        self.assertGreaterEqual(record["evidence"]["visibility"]["views_after"], 0)
+
+    def test_depth_views_returns_none_without_a_dense_model(self):
+        self.assertIsNone(survey._depth_views(self.root / "work/flight/survey/runs/absent"))
 
 
 if __name__ == "__main__":

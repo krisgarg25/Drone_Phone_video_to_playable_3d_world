@@ -59,6 +59,42 @@ class SurveyVisibilityTests(unittest.TestCase):
         points = np.array([[0.0, 0.0, 5.0]])
         self.assertEqual(vis.visible_support(points, [_view(depth), _view(depth)]).tolist(), [2])
 
+    def test_depth_is_compared_as_ray_distance_not_as_camera_z(self):
+        """COLMAP stereo depth is measured along the unit ray, not on the z axis."""
+        # fx=100, principal point (100,100) in a 200x200 frame, camera at the origin.
+        view = _view(np.full((200, 200), 5.0, np.float32), cx=100.0, cy=100.0)
+        off_axis = np.array([[3.0, 4.0, 5.0]])  # z = 5 but |xyz_cam| = sqrt(50) ~ 7.07
+        # The recorded surface at that pixel is 5 along the ray, so the point is
+        # beyond it. A z-only comparison would wrongly accept it as visible.
+        self.assertEqual(vis.visible_support(off_axis, [view]).tolist(), [0])
+        # Move the recorded surface out to the ray distance and it is on the surface.
+        view["depth"] = np.full((200, 200), float(np.sqrt(50.0)), np.float32)
+        self.assertEqual(vis.visible_support(off_axis, [view]).tolist(), [1])
+        # Still beyond it once the ray distance exceeds the recorded surface.
+        view["depth"] = np.full((200, 200), 6.9, np.float32)
+        self.assertEqual(vis.visible_support(off_axis, [view]).tolist(), [0])
+
+    def test_projection_casts_reject_unrepresentable_pixel_indices(self):
+        depth = np.full((9, 9), 5.0, np.float32)
+        for focal in (1e30, 1e308):  # finite scale that floors past int64 range
+            view = _view(depth, fx=focal)
+            with self.subTest(focal=focal), self.assertRaisesRegex(ValueError, "pixel"):
+                vis.visible_support(np.array([[1.0, 0.0, 5.0]]), [view])
+        # Overflow to infinity in the projection must be rejected, not cast.
+        view = _view(depth, fx=1e300)
+        with self.assertRaisesRegex(ValueError, "pixel"):
+            vis.visible_support(np.array([[1e10, 0.0, 5.0]]), [view])
+        # Points behind the camera are excluded before any pixel index is cast.
+        self.assertEqual(vis.visible_support(np.array([[1e300, 0.0, -5.0]]),
+                                             [_view(depth)]).tolist(), [0])
+
+    def test_summary_rejects_counts_that_do_not_survive_the_int64_cast(self):
+        for bad in (np.array([1e30]), np.array([np.nan]), np.array([-1]), np.array([2.5])):
+            with self.subTest(bad=bad.tolist()), self.assertRaisesRegex(ValueError, "support"):
+                vis.visibility_summary(bad, np.array([1]))
+            with self.subTest(bad=bad.tolist()), self.assertRaisesRegex(ValueError, "support"):
+                vis.visibility_summary(np.array([2]), bad)
+
     def test_summary_reports_retained_views_and_lost_points(self):
         summary = vis.visibility_summary(np.array([4, 3, 2, 1]), np.array([4, 0, 2, 0]), min_views=2)
         self.assertEqual(summary["point_count"], 4)

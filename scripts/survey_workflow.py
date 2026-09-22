@@ -12,6 +12,20 @@ from urllib.parse import quote
 
 VIDEO_EXTS = {".mp4", ".mov", ".webm", ".m4v", ".avi", ".mkv"}
 MAX_INPUT_BYTES = 2 * 1024 * 1024
+# One spelling for the COLMAP sparse model. It is opened, fingerprinted and
+# verified through this constant alone, so provenance cannot silently stop
+# matching because two call sites disagreed about the case of points3D.
+POINTS3D = "colmap/sparse/txt/points3D.txt"
+EVIDENCE_POINTS = "survey/evidence/evidence_points.ply"
+EVIDENCE_SUMMARY = "survey/evidence/evidence_summary.json"
+# These KB-scale survey verdicts are rehashed whenever the dashboard polls: a
+# stat-only freshness check lets a hand-edited pass, or an evaluation.json left
+# behind by an older run, keep rendering green. evaluation.json is green-proof a
+# different way - its criteria are recomputed from the other three - and the video
+# and the PLY clouds are far too large to digest per poll, so they stay on
+# size-plus-mtime checks.
+HASH_ON_READ = ("checkpoints.json", "surface_reference.json", "georeference.json",
+                "evaluation.json", "run.json")
 
 
 def scene_paths(root, scene):
@@ -77,8 +91,9 @@ def _fingerprint(path, root):
 
 
 def _matches(path, evidence, full=False):
-    # Polling is stat-only. Actions also verify the content digest, including
-    # edits that preserve file size and timestamps.
+    # Polling is stat-only for the large inputs. Actions also verify the content
+    # digest, including edits that preserve file size and timestamps, and the
+    # KB-scale verdict files are digested on a poll too.
     if not isinstance(evidence, dict) or not path.is_file():
         return False
     if not re.fullmatch(r"[a-f0-9]{64}", str(evidence.get("sha256", ""))):
@@ -86,6 +101,7 @@ def _matches(path, evidence, full=False):
     stat = path.stat()
     if stat.st_size != evidence.get("size_bytes") or stat.st_mtime_ns != evidence.get("mtime_ns"):
         return False
+    full = full or path.name in HASH_ON_READ
     return not full or _modules()[0].file_fingerprint(path)["sha256"] == evidence["sha256"]
 
 
@@ -159,16 +175,25 @@ def _camera_rows(path):
         return [json.loads(line) for line in stream if line.strip()]
 
 
-def _read_sparse_points(path):
+def _read_sparse_points(path, label=None):
+    """Parse COLMAP points3D rows: id, x y z, r g b, error, then the track."""
     import numpy as np
+    label = label or Path(path).name
     xyz, rgb = [], []
-    with path.open(encoding="utf-8") as stream:
-        for line in stream:
+    with Path(path).open(encoding="utf-8") as stream:
+        for number, line in enumerate(stream, 1):
             if not line.strip() or line.lstrip().startswith("#"):
                 continue
             fields = line.split()
-            xyz.append([float(x) for x in fields[1:4]])
-            rgb.append([int(x) for x in fields[4:7]])
+            if len(fields) < 7:
+                raise ValueError("Truncated COLMAP points3D row " + str(number) + " in " + label
+                                 + ": 7 fields required (id x y z r g b), found " + str(len(fields)))
+            try:
+                xyz.append([float(x) for x in fields[1:4]])
+                rgb.append([int(x) for x in fields[4:7]])
+            except ValueError as error:
+                raise ValueError("Unreadable COLMAP points3D row " + str(number) + " in " + label
+                                 + ": " + str(error)) from error
     points = np.asarray(xyz, dtype=np.float64)
     colors = np.asarray(rgb, dtype=np.int64)
     if points.ndim != 2 or points.shape[1] != 3 or not np.isfinite(points).all():
@@ -218,9 +243,9 @@ def align_scene(root, scene):
     alignment["preparation_id"] = preparation["id"]
     sources = {"poses": _fingerprint(pose_path, work)}
     alignment["pose_sha256"] = sources["poses"]["sha256"]
-    sparse = _safe_path(work, "colmap/sparse/txt/points3d.txt")
+    sparse = _safe_path(work, POINTS3D)
     if sparse.is_file():
-        points, colors = _read_sparse_points(sparse)
+        points, colors = _read_sparse_points(sparse, POINTS3D)
         destination = _safe_path(work, "survey/sparse_points.ply")
         _export_points(points, colors, alignment, destination)
         sources.update(sparse=_fingerprint(sparse, work), sparse_points=_fingerprint(destination, work))
@@ -244,20 +269,27 @@ def _current_alignment(work, preparation, full=False):
         return None
     sources = data.get("sources", {})
     for key, name, digest in (("poses", "keyframes_poses.jsonl", "pose_sha256"),
-                              ("sparse", "colmap/sparse/txt/points3D.txt", "sparse_sha256"),
-                              ("sparse_points", "survey/sparse_points.ply", None)):
+                              ("sparse", POINTS3D, "sparse_sha256"),
+                              ("sparse_points", "survey/sparse_points.ply", None),
+                              ("evidence_points", EVIDENCE_POINTS, None),
+                              ("evidence_summary", EVIDENCE_SUMMARY, None)):
         if key != "poses" and not data.get("sparse_sha256"):
+            continue
+        if key.startswith("evidence") and key not in sources:
             continue
         evidence = sources.get(key, {})
         if (not _matches(_safe_path(work, name), evidence, full)
                 or (digest and evidence.get("sha256") != data.get(digest))):
-            label = "Sparse model/export" if key.startswith("sparse") else "Registered camera poses"
+            label = ("Registered camera poses" if key == "poses"
+                     else "Evidence cloud/summary" if key.startswith("evidence")
+                     else "Sparse model/export")
             raise ValueError(label + " changed or lacks provenance; align again: " + name)
     return data
 
 
 RUN_FILES = ("georeference.json", "dense_points.ply", "keyframes_poses.jsonl",
-             "colmap/sparse/txt/points3D.txt", "dense/fused.ply")
+             POINTS3D, "dense/fused.ply",
+             "evidence/evidence_summary.json", "evidence/evidence_points.ply")
 
 
 def _latest_run(work, preparation, full=False):
@@ -285,8 +317,11 @@ def _latest_run(work, preparation, full=False):
             or record.get("inputs") != preparation["inputs"]):
         raise ValueError("Latest run identity, preparation, inputs or status mismatch.")
     if record["status"] == "complete":
-        for name in RUN_FILES:
-            if not _matches(_safe_path(run, name), record.get("files", {}).get(name), full):
+        # Validate exactly what the run recorded: evidence products are optional
+        # (they need a sparse model and depth maps), but anything present at
+        # publish time must still match.
+        for name in record.get("files", {}):
+            if not _matches(_safe_path(run, name), record["files"][name], full):
                 raise ValueError("Latest run evidence missing or changed (hash/stat): " + name)
         alignment = read_json(run / "georeference.json")
         if alignment.get("preparation_id") != preparation["id"] or alignment.get("run_id") != run_id:
@@ -318,21 +353,87 @@ def _evaluation_paths(work, context):
     return paths
 
 
+def _total_ram_bytes():
+    """Total physical RAM in bytes, read without a subprocess or a third-party dep."""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class MemoryStatusEx(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_uint32), ("dwMemoryLoad", ctypes.c_uint32),
+                            ("ullTotalPhys", ctypes.c_uint64), ("ullAvailPhys", ctypes.c_uint64),
+                            ("ullTotalPageFile", ctypes.c_uint64), ("ullAvailPageFile", ctypes.c_uint64),
+                            ("ullTotalVirtual", ctypes.c_uint64), ("ullAvailVirtual", ctypes.c_uint64),
+                            ("ullAvailExtendedVirtual", ctypes.c_uint64)]
+
+            status = MemoryStatusEx()
+            status.dwLength = ctypes.sizeof(MemoryStatusEx)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return int(status.ullTotalPhys)
+        except (AttributeError, OSError, ValueError):
+            return None
+        return None
+    try:
+        with open("/proc/meminfo", encoding="ascii") as stream:
+            for line in stream:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _hardware():
+    """Host identity for a run, taken from the CPU only.
+
+    No GPU is probed here: nvidia-smi and torch stay out of a CPU-only survey path,
+    so the GPU entry is a placeholder the caller may fill. Timing from a run with no
+    recorded hardware is never presented as an official benchmark.
+    """
+    import platform
+    cpu = (platform.processor() or platform.machine() or "").strip()
+    cores = os.cpu_count()
+    ram = _total_ram_bytes()
+    return {"status": "recorded" if cpu and cores else "not_recorded",
+            "cpu": cpu or None, "logical_cores": cores, "total_ram_bytes": ram,
+            "gpu": "not_recorded_gpu"}
+
+
+def _required_stages(record):
+    """Every stage the run's own published plan said it had to execute."""
+    return (["setup"] + [command["stage"] for command in record.get("commands", [])]
+            + ["georeferenced_export"])
+
+
 def _diagnostic_speed(report, duration, required_stages=None):
+    """Qualify timing from the evidence in the report, downgrading what is not it.
+
+    A run records its hardware at setup and takes its duration from the decoder, so
+    the official 600 s / <900 s gate can fire. Anything else - a legacy report.json
+    whose duration came from declared metadata, or a run whose host identity could
+    not be read - keeps the diagnostic label instead of a claimed pass.
+    """
     speed = _modules()[0].speed_metrics(report, duration, required_stages=required_stages)
-    speed.update(status="not_evaluated", official_status="not_evaluated", diagnostic_only=True,
-                 reason="Timing diagnostic only; hardware not recorded, no official benchmark or accuracy qualification.")
+    hardware = report.get("hardware") if isinstance(report, dict) else None
+    verified = bool(isinstance(report, dict)
+                    and report.get("duration_source") == "decoder_metadata"
+                    and isinstance(hardware, dict) and hardware.get("status") == "recorded")
+    speed["diagnostic_only"] = not verified
+    if not verified:
+        speed.update(status="not_evaluated", official_status="not_evaluated",
+                     reason="Timing diagnostic only; source duration or hardware identity not "
+                            "recorded with this run, so no official benchmark or accuracy qualification.")
     return speed
 
 
-def evaluate_scene(root, scene):
+def _evaluation_metrics(preparation, context, paths):
+    """Recompute every presented criterion from the evidence itself.
+
+    Both the evaluate action and the read path call this, so a stored evaluation can
+    never present a status its own inputs do not support.
+    """
     evaluation, _ = _modules()
-    work, preparation = _prepared(root, scene)
-    context = _evidence_context(work, preparation, full=True)
     alignment, latest = context["alignment"], context["latest"]
-    paths = _evaluation_paths(work, context)
-    # Capture provenance before computing metrics, then check again before publishing.
-    sources = {key: _fingerprint(path, work) if path else None for key, path in paths.items()}
     checkpoint_result = surface_result = None
     if paths["checkpoint"]:
         data = read_json(paths["checkpoint"])
@@ -365,12 +466,22 @@ def evaluate_scene(root, scene):
     speed = None
     if paths["report"]:
         if latest:
-            speed = _diagnostic_speed(latest, latest["video_duration_s"], [s["name"] for s in latest["steps"]])
+            speed = _diagnostic_speed(latest, latest["video_duration_s"], _required_stages(latest))
         else:
             speed = _diagnostic_speed(read_json(paths["report"]), preparation["metadata"]["video_duration_s"])
             speed["reason"] += " Historical source duration is declared, not independently verified."
-    result = evaluation.build_evaluation(checkpoints=checkpoint_result, surface=surface_result,
-                                         speed=speed, georeferenced=alignment is not None)
+    return evaluation.build_evaluation(checkpoints=checkpoint_result, surface=surface_result,
+                                       speed=speed, georeferenced=alignment is not None)
+
+
+def evaluate_scene(root, scene):
+    work, preparation = _prepared(root, scene)
+    context = _evidence_context(work, preparation, full=True)
+    latest = context["latest"]
+    paths = _evaluation_paths(work, context)
+    # Capture provenance before computing metrics, then check again before publishing.
+    sources = {key: _fingerprint(path, work) if path else None for key, path in paths.items()}
+    result = _evaluation_metrics(preparation, context, paths)
     result.update(preparation_id=preparation["id"], sources=sources,
                   source_run_id=latest["id"] if latest and latest["status"] == "complete" else None)
     for key, evidence in sources.items():
@@ -395,7 +506,8 @@ def _current_evaluation(work, preparation, context=None, full=False):
     run_id = latest["id"] if latest and latest["status"] == "complete" else None
     if data.get("source_run_id") != run_id:
         raise ValueError("Evaluation source run changed; evaluate again.")
-    for key, other in _evaluation_paths(work, context).items():
+    paths = _evaluation_paths(work, context)
+    for key, other in paths.items():
         evidence = data.get("sources", {}).get(key)
         if other is None and evidence is None and key in data.get("sources", {}):
             continue
@@ -403,6 +515,10 @@ def _current_evaluation(work, preparation, context=None, full=False):
                 or not _matches(other, evidence, full) or data.get(key + "_sha256") != evidence["sha256"]):
             name = other.name if other else (data.get(key + "_source") or key)
             raise ValueError("Evaluation source/hash changed or missing: " + name + "; evaluate again.")
+    # The stored criteria are a snapshot of a past action. What is presented is
+    # recomputed from these re-verified inputs, so a hand-edited or older
+    # evaluation.json cannot render accuracy or speed as a pass.
+    data["criteria"] = _evaluation_metrics(preparation, context, paths)["criteria"]
     return data
 
 
@@ -434,7 +550,8 @@ def scene_status(root, scene):
             if latest:
                 state["latest_run"] = {key: latest[key] for key in
                                        ("id", "status", "preparation_id", "secs", "error") if key in latest}
-                names.append((run / "run.json", "Run timing/provenance; diagnostic only"))
+                names.append((run / "run.json", "Run timing/provenance; the official gate needs a "
+                                                "decoder-verified duration and recorded hardware"))
                 if latest["status"] != "complete":
                     state["blockers"].append("Latest reconstruction " + latest["status"].upper() + ": "
                                              + latest.get("error", "not complete") + "; no current dense evidence.")
@@ -447,13 +564,27 @@ def scene_status(root, scene):
                 names.append((context["georeference"], "ENU transform; GPS fit is not accuracy"))
                 if latest and latest["status"] == "complete":
                     names.append((context["run"] / "dense_points.ply", "Current dense ENU cloud; not validated full-scene coverage"))
+                    # _latest_run already verified every entry in record["files"],
+                    # so these are provenance-backed rather than bare existence.
+                    for name, kind in (("evidence/evidence_points.ply",
+                                        "Sparse ENU cloud with view support, reprojection error and visibility"),
+                                       ("evidence/evidence_summary.json",
+                                        "Support and visibility summary; view counts are not measured accuracy")):
+                        if name in (latest.get("files") or {}):
+                            names.append((run / name, kind))
                 elif alignment.get("sparse_sha256"):
                     names.append((work / "survey/sparse_points.ply", "Sparse diagnostic cloud, not dense coverage"))
-                for name, kind in (("survey/evidence/evidence_points.ply",
-                                    "ENU cloud with per-point view support and reprojection error"),
-                                   ("survey/evidence/evidence_summary.json",
-                                    "Support summary; view counts are not measured accuracy")):
-                    if (work / name).is_file():
+                # Evidence products are listed only while the current alignment
+                # carries a matching fingerprint for them, exactly as the sparse
+                # cloud is gated on sparse_sha256. A re-align that lost the sparse
+                # model leaves stale ENU clouds on disk for a coordinate frame
+                # nothing current attests to, so they must not be offered.
+                sources = alignment.get("sources", {}) if alignment.get("sparse_sha256") else {}
+                for key, name, kind in (("evidence_points", EVIDENCE_POINTS,
+                                         "ENU cloud with per-point view support and reprojection error"),
+                                        ("evidence_summary", EVIDENCE_SUMMARY,
+                                         "Support summary; view counts are not measured accuracy")):
+                    if sources.get(key):
                         names.append((work / name, kind))
             try:
                 result = _current_evaluation(work, preparation, context)
@@ -493,6 +624,38 @@ def _publish_run(work, run, record):
     })
 
 
+def _depth_views(run, *, kind="geometric"):
+    """Camera views carrying COLMAP stereo depth maps, for occlusion checking.
+
+    Returns None when the dense stage or pycolmap is unavailable; the caller must
+    then say occlusion was not checked rather than assume the cloud is clean.
+    """
+    try:
+        import numpy as np
+        import pycolmap
+        import survey_visibility as visibility
+    except ImportError:
+        return None
+    sparse, depths = _safe_path(run, "dense/sparse"), _safe_path(run, "dense/stereo/depth_maps")
+    if not sparse.is_dir() or not depths.is_dir():
+        return None
+    views = []
+    try:
+        model = pycolmap.Reconstruction(str(sparse))
+        for image in model.images.values():
+            path = depths / (image.name + "." + kind + ".bin")
+            if not path.is_file():
+                continue
+            viewmat = np.eye(4)
+            viewmat[:3, :] = np.asarray(image.cam_from_world().matrix(), dtype=np.float64)
+            views.append({"K": np.asarray(image.camera.calibration_matrix(), dtype=np.float64),
+                          "viewmat": viewmat,
+                          "depth": visibility.read_depth_map(path)})
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
+        return None
+    return views or None
+
+
 def reconstruct_scene(root, scene, *, allow_gpu=False):
     if allow_gpu is not True:
         raise PermissionError("GPU reconstruction requires explicit approval and --allow-gpu. No work started.")
@@ -515,12 +678,13 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
         *dense_commands(root, run, run / "dense"),
     ]
     record = {"schema_version": 1, "id": run_id, "preparation_id": preparation["id"], "status": "running",
-              "inputs": preparation["inputs"], "steps": [], "hardware": {"status": "not_recorded"},
+              "inputs": preparation["inputs"], "steps": [], "hardware": _hardware(),
               "benchmark_qualified": False, "duration_source": "decoder_metadata",
               "timing_scope": "From approval gate through setup, decode metadata, all uncached stages, export, hashes and manifest writes; final manifest/pointer commit excluded.",
               "warnings": ["Post-hoc GPS similarity alignment; no joint GPS bundle adjustment.",
                            "No dynamic masking or independently validated completeness yet.",
-                           "Hardware not recorded; timing is diagnostic, not official benchmark or accuracy qualification."],
+                           "Recorded host identity is CPU and RAM only; the GPU model is not recorded, "
+                           "so this timing is not a benchmark on declared hardware and never an accuracy claim."],
               "versions": {"python": sys.version, "numpy": np.__version__, "opencv": cv2.__version__}, "commands": commands}
     try:
         _publish_run(work, run, record)
@@ -563,7 +727,15 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
         points = np.column_stack([cloud[k] for k in ("x", "y", "z")])
         colors = np.column_stack([cloud[k] for k in ("red", "green", "blue")])
         _export_points(points, colors, alignment, run / "dense_points.ply")
-        record["files"] = {name: _fingerprint(_safe_path(run, name), run) for name in RUN_FILES}
+        sparse_points = _safe_path(run, POINTS3D)
+        if sparse_points.is_file():
+            import survey_products as products
+            views = _depth_views(run)
+            evidence_cloud, evidence_report = products.evidence_for_sparse(
+                sparse_points, alignment, _safe_path(run, "evidence"), views=views)
+            record["evidence"] = read_json(evidence_report)
+        record["files"] = {name: _fingerprint(_safe_path(run, name), run) for name in RUN_FILES
+                           if _safe_path(run, name).is_file()}
         record["output"] = record["files"]["dense_points.ply"]
         if not _unchanged(root, preparation, full=True):
             raise ValueError("Survey inputs changed during reconstruction; prepare again.")
@@ -573,7 +745,7 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
         # small commit cannot include its own duration and is explicitly excluded.
         _publish_run(work, run, record)
         record.update(status="complete", secs=time.perf_counter() - started)
-        record["speed"] = _diagnostic_speed(record, duration, [s["name"] for s in record["steps"]])
+        record["speed"] = _diagnostic_speed(record, duration, _required_stages(record))
     except Exception as error:
         record.update(status="failed", error=str(error), secs=time.perf_counter() - started)
         raise

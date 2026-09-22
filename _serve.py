@@ -26,6 +26,9 @@ active_job_info = {"status": "idle", "scene": "", "step": "", "logs": []}
 process_lock = threading.Lock()
 port = 8137
 https_port = 8138
+# The server binds 0.0.0.0 so a phone can reach the capture page, which means a
+# survey write has to prove it came from this machine: only these peers may write.
+LOOPBACK_PEERS = ("127.0.0.1", "::1")
 
 
 def get_local_ip():
@@ -312,6 +315,57 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _survey_refused(self):
+        """Why this survey write must be refused, or None when it may proceed.
+
+        The previous guard read `if origin and origin != Host`, so a client that is
+        not a browser - which sends no Origin at all - walked straight past it, and
+        Host is whatever the caller typed. Both halves are required now: the TCP
+        peer has to be this machine, and a present Origin has to name it.
+        """
+        peer = self.client_address[0] if self.client_address else ""
+        if peer not in LOOPBACK_PEERS:
+            return "Survey writes are accepted only from this machine."
+        origin = self.headers.get("Origin")
+        if not origin:
+            return "Survey writes require a browser Origin header."
+        if urllib.parse.urlparse(origin).netloc != self.headers.get("Host", ""):
+            return "Cross-origin survey writes are not allowed."
+        return None
+
+    def _consume_request_body(self, cap=4 << 20):
+        """Read the declared body once, so no reply races still-unread bytes.
+
+        Writing a response while the body is in flight makes Winsock reset the
+        connection and the client never sees the refusal. The cap exists so a
+        forged Content-Length cannot make the handler hold gigabytes: a request
+        past it is refused as oversized.
+        """
+        try:
+            remaining = min(max(int(self.headers.get("Content-Length") or 0), 0), cap)
+        except ValueError:
+            remaining = 0
+        chunks = []
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 1 << 16))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
+    def _survey_failure(self, status, error):
+        """Client sees a fixed reason plus the class; the detail stays in the log.
+
+        Workflow errors carry absolute workspace paths - FileNotFoundError for a
+        missing artifact, the unsafe-path rejections - so str(error) cannot be
+        echoed into a body served to whoever is on the network.
+        """
+        print(f"[survey] {status} {type(error).__name__}: {error}", file=sys.stderr, flush=True)
+        message = ("Survey evidence already exists for this scene." if status == 409
+                   else "Survey request failed; the server log holds the detail.")
+        self._survey_json({"error": message, "error_class": type(error).__name__}, status)
+
     def _survey(self, action=None):
         sys.path.insert(0, str(ROOT / "scripts"))
         import survey_workflow as survey
@@ -320,21 +374,21 @@ class H(http.server.SimpleHTTPRequestHandler):
                 query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 result = survey.scene_status(Path(self.directory), query.get("scene", [""])[0])
             else:
+                raw = self._consume_request_body()
+                refused = self._survey_refused()
+                if refused:
+                    self._survey_json({"error": refused}, 403)
+                    return
                 actions = {"inputs": survey.save_inputs, "prepare": survey.prepare_scene,
                            "align": survey.align_scene, "evaluate": survey.evaluate_scene}
                 if action not in actions:
                     self._survey_json({"error": "Unknown survey action. GPU execution is available only through the explicit CLI gate."}, 404)
                     return
-                origin = self.headers.get("Origin")
-                if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host"):
-                    self._survey_json({"error": "Cross-origin survey writes are not allowed."}, 403)
-                    return
                 if self.headers.get_content_type() != "application/json":
                     raise ValueError("Expected application/json.")
-                length = int(self.headers.get("Content-Length", "0"))
-                if length <= 0 or length > survey.MAX_INPUT_BYTES:
+                if not raw or len(raw) > survey.MAX_INPUT_BYTES:
                     raise ValueError("Supply a JSON request below 2 MiB.")
-                request = json.loads(self.rfile.read(length).decode("utf-8"))
+                request = json.loads(raw.decode("utf-8"))
                 if not isinstance(request, dict):
                     raise ValueError("Request must be a JSON object.")
                 scene = request.get("scene", "")
@@ -348,12 +402,14 @@ class H(http.server.SimpleHTTPRequestHandler):
                     result = actions[action](*arguments)
             self._survey_json(result)
         except FileExistsError as error:
-            self._survey_json({"error": str(error)}, 409)
+            self._survey_failure(409, error)
         except (ValueError, KeyError, TypeError, OSError) as error:
-            self._survey_json({"error": str(error)}, 400)
+            self._survey_failure(400, error)
 
     def do_GET(self):
         if urllib.parse.urlparse(self.path).path == "/api/survey":
+            # Read-only status stays LAN-reachable because the dashboard iframe and
+            # the phone viewer both render it. Every write route passes the guard.
             self._survey()
             return
         if self.path.startswith("/api/info"):
