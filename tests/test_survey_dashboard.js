@@ -177,3 +177,136 @@ test("inactive View always resolves to blank, including after a model was open",
   assert.equal(Survey.viewFrameSource("view", null), "about:blank");
   assert.equal(Survey.viewFrameSource("view", model), model);
 });
+
+/* ---- console rendering: the instrument strip, ledger states, evidence ---- */
+
+test("instrument strip keeps GPS fit and held-out accuracy as two separate readouts", () => {
+  const html = Survey.renderInstrument({
+    alignment: { fit_rmse_m: 0.16, scale: 1, matched_count: 4, inlier_count: 4 },
+    evaluation: { criteria: [{ id: "accuracy", status: "measured", metrics: { rmse_3d_m: 0.42, p95_3d_m: 0.8 } }] }
+  }, "flight_01");
+  assert.match(html, /GPS fit RMSE/);
+  assert.match(html, /Held-out 3D accuracy/);
+  assert.match(html, /0\.16 m/);
+  assert.match(html, /0\.42 m/);
+  assert.match(html, /not independent accuracy/i);
+  assert.doesNotMatch(html, /accuracy passed|overall|composite|score/i);
+});
+
+test("instrument strip reads the CRS, vertical datum and checkpoint count the server sends", () => {
+  const html = Survey.renderInstrument({
+    evaluation: { crs: "EPSG:4979 ENU, origin 12.34N 100.98E", vertical_datum: "ellipsoidal",
+      counts: { checkpoints: 16 }, criteria: [{ id: "accuracy", status: "measured", metrics: { rmse_3d_m: 0.42 } }] }
+  }, "flight_01");
+  assert.match(html, /EPSG:4979 ENU, origin 12\.34N 100\.98E/);
+  assert.match(html, /ellipsoidal/);
+  assert.match(html, /Checkpoints<\/dt><dd>16<\/dd>/);
+  const sparse = Survey.renderInstrument({ alignment: { coordinate_frame: "ENU @ scene origin" } }, "flight_01");
+  assert.match(sparse, /ENU @ scene origin/);
+  assert.match(sparse, /Vertical datum<\/span><span class="survey-ro-v">not available/);
+});
+
+test("absent server fields read not available instead of a placeholder number", () => {  const html = Survey.renderInstrument({}, "");
+  for (const label of ["CRS / horizontal frame", "Vertical datum", "Position reference", "Run total"]) {
+    assert.match(html, new RegExp(label));
+  }
+  assert.match(html, /not available/);
+  assert.equal(Survey.readNumber(undefined, "m"), "not available");
+  assert.equal(Survey.readNumber(null, "m"), "not available");
+  assert.equal(Survey.readNumber("0.4", "m"), "not available");
+  assert.equal(Survey.readNumber(0, "m"), "0.00 m");
+  assert.equal(Survey.readNumber(-1, "m"), "not available");
+  assert.equal(Survey.formatMeasurement(undefined, "m"), "Unknown");
+});
+
+test("stage timings are never invented when the server publishes no breakdown", () => {
+  assert.match(Survey.renderStageTimings({}), /not available/i);
+  assert.match(Survey.renderStageTimings({ latest_run: { secs: 40 } }), /not available/i);
+  assert.match(Survey.renderStageTimings({ latest_run: { secs: 40, error: "boom" } }), /not available/i);
+  assert.doesNotMatch(Survey.renderStageTimings({ latest_run: { secs: 40 } }), /<table|width:/);
+  const html = Survey.renderStageTimings({ latest_run: { steps: [{ name: "colmap", status: "done", secs: 300.25 }, { name: "poses" }] } });
+  assert.match(html, /colmap/);
+  assert.match(html, /300\.3/);
+  assert.doesNotMatch(html, /poses/, "an untimed stage must not gain a number");
+});
+
+test("workflow stages come only from the server status and never imply a pass", () => {
+  const aligned = Survey.renderStages("aligned");
+  assert.equal((aligned.match(/survey-stage"/g) || []).length, 5);
+  assert.match(aligned, /data-state="current"/);
+  assert.match(aligned, /Evidence<\/span>\s*<span class="survey-stage-state">not reached/);
+  assert.match(Survey.renderStages(undefined), /not reached/);
+  assert.doesNotMatch(Survey.renderStages("evaluated"), /passed|approved/i);
+});
+
+test("formats checklist reports only extensions the artifacts list contains", () => {
+  const artifacts = [
+    { name: "evidence_points.ply", url: "/work/flight_01/survey/evidence_points.ply" },
+    { name: "scene.obj", url: "/work/flight_01/export/scene.obj" },
+    { name: "evaluation.json", url: "/work/flight_01/survey/evaluation.json" }
+  ];
+  const report = Survey.formatsReport(artifacts);
+  assert.deepEqual(report.map(f => f.label), ["OBJ", "PLY", "LAS", "GeoTIFF", "glTF", "FBX"]);
+  assert.equal(report.filter(f => f.files.length).map(f => f.label).join(","), "OBJ,PLY");
+  const html = Survey.renderFormats(artifacts);
+  assert.equal((html.match(/data-state="absent"/g) || []).length, 4);
+  assert.match(html, /not delivered/);
+  assert.match(html, /LAS/);
+  assert.doesNotMatch(html, /pending|scheduled/i);
+  assert.equal(Survey.formatsReport(undefined).filter(f => f.files.length).length, 0);
+});
+
+test("measurements section states the empty case and escapes returned rows", () => {
+  const empty = Survey.renderMeasurements({});
+  assert.match(empty, /No measurements exist yet/);
+  assert.doesNotMatch(empty, /<td|0\.0|n\/a/i);
+  const rows = Survey.renderMeasurements({
+    measurements: [
+      { label: "<img src=x>", value: 214.5, unit: "pts/m2", method: "<b>voxel</b>", source: "e.json" },
+      { label: "Surface residual", value: "0.31 m", method: "held-out pairs" },
+      { label: "Odd metric", value: null }
+    ]
+  });
+  assert.match(rows, /214\.50 pts\/m2/);
+  assert.match(rows, /0\.31 m/);
+  assert.match(rows, /not available/);
+  assert.doesNotMatch(rows, /<img |<b>/);
+});
+
+test("ledger separates measured, not evaluated, not demonstrated and outside target", () => {
+  const html = Survey.renderCriteria({ criteria: [
+    { id: "accuracy", status: "measured", metrics: { rmse_3d_m: 0.16 } },
+    { id: "completeness", status: "not_evaluated" },
+    { id: "innovation", status: "not_demonstrated" },
+    { id: "speed", status: "exceeds_target", metrics: { elapsed_s: 901, video_duration_s: 600 } }
+  ] });
+  assert.deepEqual([...html.matchAll(/class="survey-criterion" data-state="([a-z-]+)"/g)].map(m => m[1]),
+    ["measured", "not-evaluated", "over", "not-demonstrated", "unknown", "unknown"]);
+  assert.match(html, /Not demonstrated/);
+  assert.match(html, /Exceeds target/);
+  assert.match(html, /901\.0 s/);
+  assert.equal(Survey.stateCode("invented"), "unknown");
+  assert.equal(Survey.stateCode("measured"), "measured");
+});
+
+test("new console renderers escape every server string", () => {
+  const evil = '<img src=x onerror="alert(1)">';
+  const html = Survey.renderInstrument({
+    crs: evil, vertical_datum: evil, position_reference: evil,
+    alignment: { coordinate_frame: evil, fit_rmse_m: 0.1 },
+    latest_run: { id: evil, status: evil, secs: 5, steps: [{ name: evil, status: evil, secs: 1 }] }
+  }, "flight_01");
+  assert.doesNotMatch(html, /<img /);
+  assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
+  const timings = Survey.renderStageTimings({ latest_run: { steps: [{ name: evil, status: evil, secs: 1 }] } });
+  assert.doesNotMatch(timings, /<img /);
+  assert.match(Survey.renderStages("prepared"), /data-state="done"/);
+});
+
+test("console never renders an aggregate score or a percentage of total weight", () => {
+  const data = { alignment: { fit_rmse_m: 0.16 }, evaluation: { criteria: [{ id: "accuracy", status: "measured", metrics: { rmse_3d_m: 0.16 } }] }, latest_run: { secs: 10 } };
+  const all = Survey.renderInstrument(data, "flight_01") + Survey.renderCriteria(data.evaluation) +
+    Survey.renderStageTimings(data) + Survey.renderFormats(data.artifacts) + Survey.renderMeasurements(data);
+  assert.doesNotMatch(all, /100%|overall|aggregate|total score|weighted score/i);
+});
+

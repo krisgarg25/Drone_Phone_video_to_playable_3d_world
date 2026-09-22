@@ -6,7 +6,7 @@
 <title>Drone3D Studio — survey validation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg-main: #080c14;
@@ -41,10 +41,11 @@
   }
   .brand { display: flex; align-items: center; gap: 12px; }
   .brand-icon {
-    width: 38px; height: 38px; border-radius: 10px;
-    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    width: 34px; height: 34px; border-radius: 4px;
+    background: #16222f; border: 1px solid rgba(255, 255, 255, 0.16);
     display: flex; align-items: center; justify-content: center;
-    font-size: 20px; font-weight: 800; box-shadow: 0 0 16px var(--primary-glow);
+    font: 600 12.5px/1 'JetBrains Mono', monospace; letter-spacing: .02em;
+    color: #cfe3f2;
   }
   .brand-title { font-size: 17.5px; font-weight: 700; letter-spacing: -0.02em; }
   .nav-btns { display: flex; gap: 10px; align-items: center; }
@@ -221,131 +222,394 @@
   }
   .muted { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 
-  /* Survey lane: evidence-first operator workspace, using the Studio tokens. */
+  /* ============================================================
+     SURVEY LANE — evaluation console.
+     Palette: plot paper, drawing ink, contour ochre. Structure carries
+     meaning through 1px rules and aligned numeric columns; no cards,
+     no blur, no glow, no shadows.
+     Type: Archivo (section identity, expanded) / IBM Plex Sans (body)
+     / JetBrains Mono tabular figures for every number.
+     ============================================================ */
   :root {
-    --survey-blue: #93c5fd;
-    --survey-green: #6ee7b7;
-    --survey-amber: #fcd34d;
-    --survey-red: #fca5a5;
-    --survey-surface: #0c1424;
-    --survey-line: #29374d;
+    --sv-paper: #e9ecee; --sv-paper-2: #dde3e7; --sv-paper-3: #f4f6f7;
+    --sv-band: #16232e; --sv-band-2: #223341;
+    --sv-ink: #131e26; --sv-ink-2: #3a4b57; --sv-ink-3: #526470;
+    --sv-rule: #c3ccd2; --sv-rule-2: #9dacb5; --sv-rule-3: #6d7f8b;
+    --sv-contour: #c9a35a;
+    --sv-pass: #0f6244; --sv-pass-wash: #dbe9e1;
+    --sv-info: #175c7a; --sv-info-wash: #dbe8ee;
+    --sv-warn: #7d5310; --sv-warn-wash: #f0e5cd;
+    --sv-fail: #9c2a1c; --sv-fail-wash: #f3ddd8;
+    --sv-focus: #0b7ea8;
+    --sv-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+    --sv-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --sv-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --sv-hatch: repeating-linear-gradient(135deg, rgba(19,30,38,.055) 0 1px, transparent 1px 7px);
+    --sv-cols: 86px minmax(0, 1.5fr) minmax(0, 1.05fr) 148px minmax(0, 1.1fr);
   }
   [hidden] { display: none !important; }
   :where(button, a, select, input, summary):focus-visible {
-    outline: 3px solid var(--survey-blue); outline-offset: 4px;
+    outline: 3px solid var(--sv-focus); outline-offset: 3px;
   }
-  button:disabled { cursor: not-allowed; opacity: .48; }
+  button:disabled { cursor: not-allowed; opacity: .5; }
   .lane-btn.on { box-shadow: none; }
-  .survey-heading, .survey-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  .survey-eyebrow { color: var(--survey-blue); font: 500 11px 'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
-  .survey-heading h1 { font-size: clamp(25px, 3vw, 34px); font-weight: 600; letter-spacing: -.035em; line-height: 1.15; }
-  .survey-heading p { color: var(--text-muted); font-size: 14px; margin-top: 8px; line-height: 1.5; }
-  .survey-badge { display: inline-flex; align-items: center; border: 1px solid var(--survey-line); border-radius: 5px; padding: 5px 8px; font: 500 11px 'JetBrains Mono', monospace; color: #cbd5e1; background: var(--survey-surface); line-height: 1.5; }
-  .survey-badge.info { color: var(--survey-blue); border-color: #31568b; }
-  .survey-badge.good { color: var(--survey-green); border-color: #226650; }
-  .survey-badge.warn { color: var(--survey-amber); border-color: #765d21; }
-  .survey-badge.bad { color: var(--survey-red); border-color: #81444a; }
-  .survey-flow { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--survey-line); border: 1px solid var(--survey-line); border-radius: 10px; overflow: hidden; }
-  .survey-flow li { background: var(--survey-surface); padding: 13px 16px; font-size: 12px; line-height: 1.45; }
-  .survey-flow span { color: var(--survey-blue); font: 500 11px 'JetBrains Mono', monospace; display: block; margin-bottom: 5px; }
-  .survey-grid { display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1.65fr); gap: 18px; align-items: start; }
-  .survey-stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-  #lane-survey .panel { gap: 16px; box-shadow: none; background: var(--survey-surface); backdrop-filter: none; border-color: var(--survey-line); padding: 22px; border-radius: 12px; min-width: 0; }
-  #lane-survey h2 { font-size: 17px; font-weight: 600; letter-spacing: -.015em; }
-  #lane-survey h3 { font-size: 15px; font-weight: 600; line-height: 1.35; }
-  #lane-survey label { font-size: 11px; line-height: 1.6; }
-  #lane-survey .btn-primary { box-shadow: none; background: #2563eb; }
-  #lane-survey .btn-primary:hover:not(:disabled) { background: #1d4ed8; transform: none; }
-  #lane-survey :is(.btn-ghost, .btn-primary) { min-height: 42px; }
-  .survey-note, .survey-no-evidence { color: var(--text-muted); font-size: 12px; line-height: 1.65; }
-  #lane-survey code { font: 11px 'JetBrains Mono', monospace; color: #cbd5e1; overflow-wrap: anywhere; }
-  #lane-survey pre { font: 11px/1.7 'JetBrains Mono', monospace; color: #cbd5e1; background: var(--bg-main); border: 1px solid var(--survey-line); padding: 12px; border-radius: 7px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
-  #lane-survey details { border-top: 1px solid var(--survey-line); padding-top: 10px; }
-  #lane-survey summary { color: var(--survey-blue); line-height: 1.6; }
-  #lane-survey details > :not(summary) { margin-top: 10px; }
-  .survey-select-row { display: flex; gap: 8px; }
-  .survey-select-row select { flex: 1; min-width: 0; }
-  .survey-readiness, .survey-artifacts { list-style: none; }
-  .survey-readiness li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 5px 12px; padding: 12px 0; border-bottom: 1px solid var(--survey-line); }
-  .survey-readiness strong { font-size: 13px; font-weight: 500; }
-  .survey-readiness p { grid-column: 1 / -1; color: var(--text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-  .survey-list { padding-left: 17px; color: #cbd5e1; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
-  .survey-list li + li { margin-top: 5px; }
-  #survey-input-form { display: flex; flex-direction: column; gap: 14px; }
-  .survey-file { width: 100%; font: 12px 'Outfit', sans-serif; padding: 10px; background: var(--bg-main); border: 1px dashed #50627f; color: #cbd5e1; border-radius: 8px; }
-  .survey-file::file-selector-button { border: 1px solid var(--survey-line); background: #1c2c46; color: var(--text-main); padding: 8px 10px; margin-right: 10px; border-radius: 5px; cursor: pointer; }
-  .survey-template-row { display: flex; flex-wrap: wrap; gap: 8px; }
-  .survey-template-row .btn-ghost { padding: 9px 11px; font-size: 12px; }
-  .survey-actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  .survey-actions > div { display: flex; flex-direction: column; gap: 5px; }
-  .survey-actions button { width: 100%; text-align: left; justify-content: flex-start; }
-  .survey-targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--survey-line); border-radius: 8px; overflow: hidden; }
-  .survey-targets > div { padding: 16px; }
-  .survey-targets > div + div { border-left: 1px solid var(--survey-line); }
-  .survey-targets dt { font-size: 11px; color: var(--text-muted); margin-bottom: 7px; }
-  .survey-targets dd { font: 500 clamp(18px, 2.4vw, 24px) 'JetBrains Mono', monospace; color: var(--text-main); }
-  .survey-targets p { margin-top: 6px; }
-  .survey-criteria { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .survey-criterion { padding: 16px; border: 1px solid var(--survey-line); border-radius: 9px; background: rgba(8, 12, 20, .45); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-  .survey-criterion-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
-  .survey-weight { font: 500 24px/1 'JetBrains Mono', monospace; color: var(--survey-blue); text-align: right; }
-  .survey-weight small { display: block; color: var(--text-muted); font: 10px/1.4 'JetBrains Mono', monospace; white-space: nowrap; margin-top: 5px; }
-  .survey-criterion-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .survey-criterion-status > span:last-child:not(:first-child) { font-size: 11px; color: #cbd5e1; }
-  .survey-criterion p { color: var(--text-muted); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
-  .survey-criterion details, .survey-no-evidence { margin-top: auto; }
-  .survey-metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-  .survey-metric-grid dt { font-size: 11px; color: var(--text-muted); margin-bottom: 7px; }
-  .survey-metric-grid dd { font: 500 16px 'JetBrains Mono', monospace; color: #e2e8f0; overflow-wrap: anywhere; }
-  .survey-evidence-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .survey-evidence-metrics dt { color: var(--text-muted); font-size: 10px; line-height: 1.6; }
-  .survey-evidence-metrics dd { color: #e2e8f0; font: 500 13px/1.8 'JetBrains Mono', monospace; }
-  .survey-artifacts li { display: flex; flex-direction: column; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--survey-line); overflow-wrap: anywhere; }
-  .survey-artifacts a { color: var(--survey-blue); text-underline-offset: 4px; font-size: 13px; }
-  .survey-command { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--survey-line); }
-  .survey-command pre, .survey-command details { width: 100%; }
-  .survey-command strong { font-size: 13px; }
-  .survey-notice { padding: 12px 14px; border-left: 3px solid var(--survey-blue); background: rgba(59, 130, 246, .08); font-size: 12px; line-height: 1.7; color: #cbd5e1; }
-  .survey-notice.warning { border-color: var(--survey-amber); background: rgba(245, 158, 11, .05); }
-  .survey-error { padding: 14px 16px; border: 1px solid #81444a; background: #321c29; color: #fecaca; border-radius: 8px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-  #survey-message { min-height: 20px; font-size: 12px; color: var(--survey-blue); line-height: 1.6; }
-  @media (max-width: 1000px) {
-    .survey-grid { grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr); }
-    .survey-criteria { grid-template-columns: 1fr; }
-    .survey-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* ---- sheet shell ---------------------------------------------------- */
+  #lane-survey {
+    font-family: var(--sv-body); color: var(--sv-ink); background: var(--sv-paper);
+    border: 1px solid var(--sv-ink); font-size: 13px; line-height: 1.6;
+    font-variant-numeric: tabular-nums;
   }
-  @media (max-width: 720px) {
-    header { padding: 12px 16px; gap: 12px; flex-wrap: wrap; position: static; }
-    main { padding: 16px 12px 30px; }
-    .lanes { display: grid; grid-template-columns: 1fr 1fr; }
-    .survey-grid { grid-template-columns: 1fr; }
-    .survey-heading { align-items: flex-start; flex-direction: column; }
-    .survey-flow { grid-template-columns: 1fr; }
-    .survey-flow li { display: flex; align-items: center; gap: 12px; padding: 9px 14px; }
-    .survey-flow span { margin: 0; }
-    #lane-survey .panel { padding: 18px; }
-    .survey-section-heading { flex-wrap: wrap; }
-    .survey-targets dd { font-size: 20px; }
-    .survey-targets > div { padding: 12px; }
+  #lane-survey :is(h1, h2, h3) { font-family: var(--sv-display); font-weight: 700; margin: 0; }
+  #lane-survey p { margin: 0; }
+  #lane-survey ul, #lane-survey ol { list-style: none; margin: 0; padding: 0; }
+  .survey-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .survey-mono { font-family: var(--sv-mono); }
+  .survey-k { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    font: 600 9.5px/1.4 var(--sv-display); letter-spacing: .13em; text-transform: uppercase; color: var(--sv-ink-3); }
+  .survey-note { color: var(--sv-ink-3); font-size: 11.5px; line-height: 1.6; overflow-wrap: anywhere; }
+  .survey-empty { color: var(--sv-ink-2); font-size: 12.5px; line-height: 1.65; overflow-wrap: anywhere; }
+  #lane-survey code, #lane-survey pre { font-family: var(--sv-mono); }
+  #lane-survey code { font-size: 11px; background: var(--sv-paper-2); padding: 1px 4px; overflow-wrap: anywhere; }
+  #lane-survey pre {
+    font-size: 11px; line-height: 1.65; margin: 0; background: var(--sv-paper-3);
+    border: 1px solid var(--sv-rule); padding: 10px 12px; white-space: pre-wrap;
+    overflow-wrap: anywhere; max-height: 260px; overflow: auto; color: var(--sv-ink);
+  }
+
+  /* ---- title block: the drawing sheet's identity band ----------------- */
+  .survey-titleblock {
+    background: var(--sv-band); color: var(--sv-paper-3); padding: 18px 22px 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='90'%3E%3Cg fill='none' stroke='%23c9a35a' stroke-opacity='.15' stroke-width='1'%3E%3Cpath d='M-10 74c26 0 32-16 52-16s30 16 52 16 32-14 52-14 30 10 48 10'/%3E%3Cpath d='M-10 52c26 0 32-16 52-16s30 16 52 16 32-14 52-14 30 10 48 10'/%3E%3Cpath d='M-10 30c26 0 32-16 52-16s30 16 52 16 32-14 52-14 30 10 48 10'/%3E%3Cpath d='M-10 8c26 0 32-16 52-16s30 16 52 16 32-14 52-14 30 10 48 10'/%3E%3C/g%3E%3C/svg%3E");
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 24px; align-items: start;
+  }
+  .survey-eyebrow { font: 600 9.5px/1.5 var(--sv-display); letter-spacing: .18em; text-transform: uppercase; color: var(--sv-contour); }
+  #survey-title { font-size: clamp(21px, 2.6vw, 29px); font-stretch: 112%; letter-spacing: .045em; text-transform: uppercase; line-height: 1.1; margin-top: 3px; }
+  .survey-tb-scene { margin-top: 6px; font-size: 12px; color: #9fb2be; }
+  .survey-tb-scene span { color: var(--sv-paper-3); font-size: 13px; letter-spacing: .01em; }
+  .survey-tb-state { text-align: right; display: grid; gap: 7px; justify-items: end; }
+  .survey-tb-note { font: 500 10.5px/1.5 var(--sv-mono); color: #9fb2be; letter-spacing: .02em; }
+  .survey-stages { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; margin-top: 15px; background: var(--sv-band-2); }
+  .survey-stage { background: var(--sv-band); padding: 9px 12px 11px; display: grid; gap: 2px; border-top: 2px solid var(--sv-band-2); }
+  .survey-stage-code { font: 600 10px/1.4 var(--sv-mono); color: #7e93a1; letter-spacing: .1em; }
+  .survey-stage-name { font: 700 11.5px/1.3 var(--sv-display); letter-spacing: .1em; text-transform: uppercase; color: #b6c5cf; }
+  .survey-stage-state { font: 500 9.5px/1.4 var(--sv-mono); color: #8aa0ae; text-transform: uppercase; letter-spacing: .06em; }
+  .survey-stage[data-state="done"] { border-top-color: var(--sv-pass); }
+  .survey-stage[data-state="done"] .survey-stage-state { color: #6ec49b; }
+  .survey-stage[data-state="current"] { border-top-color: var(--sv-contour); background: var(--sv-band-2); }
+  .survey-stage[data-state="current"] .survey-stage-name { color: var(--sv-paper-3); }
+  .survey-stage[data-state="current"] .survey-stage-state { color: var(--sv-contour); }
+
+  /* ---- status chips: square, mono, never glowing ---------------------- */
+  .survey-badge {
+    display: inline-block; border: 1px solid var(--sv-rule-3); background: var(--sv-paper-2);
+    color: var(--sv-ink-2); padding: 3px 7px; font: 600 10px/1.5 var(--sv-mono);
+    letter-spacing: .09em; text-transform: uppercase; white-space: nowrap;
+  }
+  .survey-badge.info { color: var(--sv-info); border-color: var(--sv-info); background: var(--sv-info-wash); }
+  .survey-badge.good { color: var(--sv-pass); border-color: var(--sv-pass); background: var(--sv-pass-wash); }
+  .survey-badge.warn { color: var(--sv-warn); border-color: var(--sv-warn); background: var(--sv-warn-wash); }
+  .survey-badge.bad { color: var(--sv-fail); border-color: var(--sv-fail); background: var(--sv-fail-wash); }
+  .survey-badge.neutral { color: var(--sv-ink-3); }
+  .survey-titleblock .survey-badge { background: transparent; }
+  .survey-titleblock .survey-badge.neutral { color: #c3d2dc; border-color: #5d7285; }
+  .survey-titleblock .survey-badge.info { color: #8fd0ea; border-color: #3d8fad; }
+  .survey-titleblock .survey-badge.good { color: #7fd7ac; border-color: #2f7f5e; }
+  .survey-titleblock .survey-badge.warn { color: #f0c77a; border-color: #94702c; }
+  .survey-titleblock .survey-badge.bad { color: #f0a99e; border-color: #9c4436; }
+
+  /* ---- one-shot refresh indication; no layout change ---------------- */
+  .survey-scan { height: 2px; background: var(--sv-rule-2); overflow: hidden; }
+  #lane-survey.survey-updated .survey-scan { animation: sv-scan 900ms ease-out 1; }
+  @keyframes sv-scan { from { background: var(--sv-contour); } to { background: var(--sv-rule-2); } }
+
+  /* ---- message + error ---------------------------------------------- */
+  .survey-ticker { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; padding: 9px 22px; border-bottom: 1px solid var(--sv-rule); background: var(--sv-paper-3); }
+  #survey-message { font: 500 11.5px/1.6 var(--sv-mono); color: var(--sv-ink-2); min-height: 18px; overflow-wrap: anywhere; }
+  .survey-error {
+    margin: 12px 22px; padding: 11px 14px; border: 1px solid var(--sv-fail);
+    border-left-width: 4px; background: var(--sv-fail-wash); color: #6d1d12;
+    font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere;
+  }
+
+  /* ---- section frame ------------------------------------------------- */
+  .survey-main { min-width: 0; }
+  .survey-section { padding: 20px 22px 22px; border-bottom: 1px solid var(--sv-rule); }
+  .survey-section + .survey-section { border-top: 1px solid var(--sv-rule); }
+  .survey-section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid var(--sv-ink); }
+  .survey-section-head h2 { font-size: 13px; letter-spacing: .16em; text-transform: uppercase; }
+  .survey-section-head .survey-note { flex: 1 1 260px; text-align: right; }
+  .survey-subhead { font: 700 10px/1.5 var(--sv-display); letter-spacing: .14em; text-transform: uppercase; color: var(--sv-ink-3); margin: 0 0 8px; }
+  .survey-readiness { border-top: 1px solid var(--sv-rule); margin-bottom: 14px; }
+
+  /* ---- instrument strip --------------------------------------------- */
+  .survey-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--sv-rule-2); background: var(--sv-paper-3); }
+  .survey-readouts { padding: 14px 16px 16px; display: grid; gap: 11px; align-content: start; border-left: 1px solid var(--sv-rule); min-width: 0; }
+  .survey-readouts:first-child { border-left: 0; }
+  .survey-readouts[data-group="identity"] { grid-template-columns: 1fr; }
+  .survey-readouts[data-group="fit"], .survey-readouts[data-group="held"] { border-left: 2px solid var(--sv-ink); }
+  .survey-readout { display: grid; gap: 3px; min-width: 0; }
+  .survey-ro-k { font: 600 9.5px/1.4 var(--sv-display); letter-spacing: .13em; text-transform: uppercase; color: var(--sv-ink-3); }
+  .survey-ro-v { font: 500 12px/1.5 var(--sv-mono); color: var(--sv-ink); overflow-wrap: anywhere; }
+  .survey-big { font: 600 clamp(20px, 2.1vw, 27px)/1.05 var(--sv-mono); letter-spacing: -.02em; text-align: right; color: var(--sv-ink); overflow-wrap: anywhere; }
+  .survey-sub { font: 500 10px/1.5 var(--sv-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--sv-ink-3); text-align: right; }
+  .survey-readouts[data-group="fit"] .survey-big { color: var(--sv-info); }
+  .survey-readouts[data-group="held"] .survey-big { color: var(--sv-pass); }
+  .survey-readouts[data-group="held"] .survey-readout[data-tone="gap"] { background: var(--sv-hatch); padding: 6px 8px; }
+  .survey-readouts[data-group="held"] .survey-readout[data-tone="gap"] .survey-big { color: var(--sv-ink-3); }
+  .survey-inline-readouts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 9px 1px; border-top: 1px solid var(--sv-rule); padding-top: 9px; }
+  .survey-inline-readouts > div { min-width: 0; display: grid; gap: 2px; }
+  .survey-inline-readouts dt { font: 600 9px/1.4 var(--sv-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sv-ink-3); }
+  .survey-inline-readouts dd { margin: 0; font: 500 12.5px/1.4 var(--sv-mono); text-align: right; color: var(--sv-ink); overflow-wrap: anywhere; }
+  .survey-readouts .survey-note { border-top: 1px dotted var(--sv-rule-2); padding-top: 8px; font-size: 11px; }
+  .survey-timings { margin-top: 12px; }
+
+  /* ---- tables: aligned numeric columns, hairline rules -------------- */
+  .survey-table, .survey-timetable { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .survey-table th, .survey-timetable th {
+    text-align: left; font: 600 9px/1.4 var(--sv-display); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--sv-ink-3); padding: 0 10px 6px 0; border-bottom: 1px solid var(--sv-ink);
+  }
+  .survey-table td, .survey-timetable td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--sv-rule); vertical-align: top; overflow-wrap: anywhere; }
+  .survey-num { text-align: right; font-family: var(--sv-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th.survey-num { text-align: right; }
+  .survey-timetable td:first-child, .survey-table td:first-child { font-weight: 600; color: var(--sv-ink); }
+  .survey-share { width: 112px; }
+  .survey-share-bar { display: block; width: 100px; height: 7px; background: var(--sv-paper-2); border: 1px solid var(--sv-rule-2); }
+  .survey-share-bar i { display: block; height: 100%; background: var(--sv-info); }
+
+  /* ---- official targets --------------------------------------------- */
+  .survey-targets { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); border-top: 1px solid var(--sv-rule); border-bottom: 1px solid var(--sv-rule); }
+  .survey-targets > div { padding: 15px 18px; border-left: 1px solid var(--sv-rule); display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .survey-targets > div:first-child { border-left: 0; }
+  .survey-targets dt { font: 600 9.5px/1.4 var(--sv-display); letter-spacing: .13em; text-transform: uppercase; color: var(--sv-ink-3); }
+  .survey-targets dd { margin: 0; font: 600 clamp(22px, 2.6vw, 30px)/1.05 var(--sv-mono); letter-spacing: -.02em; text-align: right; color: var(--sv-ink); }
+  .survey-targets .survey-target-note { font-size: 11px; text-align: right; color: var(--sv-ink-3); }
+
+  /* ---- SIX-CRITERIA LEDGER (signature element) ---------------------- */
+  .survey-ledger { border: 1px solid var(--sv-ink); background: var(--sv-paper-3); }
+  .survey-criterion, .survey-ledger-head { display: grid; grid-template-columns: var(--sv-cols); }
+  .survey-ledger-head { background: var(--sv-band); color: #c3d2dc; }
+  .survey-ledger-head > span { padding: 8px 12px; font: 600 9px/1.4 var(--sv-display); letter-spacing: .14em; text-transform: uppercase; }
+  .survey-ledger-head > span:last-child { text-align: right; }
+  .survey-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: center; margin-bottom: 12px; font: 500 10.5px/1.6 var(--sv-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--sv-ink-3); }
+  .survey-legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .survey-legend .survey-mark { background: var(--sv-hatch); }
+  .survey-legend [data-legend="measured"] { background: var(--sv-pass); border-color: var(--sv-pass); }
+  .survey-legend [data-legend="not-demonstrated"] { background: repeating-linear-gradient(135deg, var(--sv-warn) 0 1.5px, transparent 1.5px 4px); border-color: var(--sv-warn); }
+  .survey-legend [data-legend="over"] { background: repeating-linear-gradient(45deg, var(--sv-fail) 0 2px, transparent 2px 4px); border-color: var(--sv-fail); }
+  .survey-criterion {
+    border-top: 1px solid var(--sv-rule); position: relative; align-items: start;
+    padding: 13px 0; transition: background-color 160ms linear;
+  }
+  .survey-criterion:first-child { border-top: 0; }
+  .survey-criterion::before { content: ""; position: absolute; left: 0; top: -1px; bottom: -1px; width: 4px; background: var(--sv-rule-2); }
+  .survey-criterion > div { min-width: 0; padding: 0 12px; }
+  .survey-cell-weight { display: grid; gap: 4px; justify-items: start; }
+  .survey-weight { font: 600 26px/1 var(--sv-mono); letter-spacing: -.03em; color: var(--sv-ink); }
+  .survey-weight::after { content: "%"; font-size: 12px; color: var(--sv-ink-3); margin-left: 1px; }
+  .survey-ticks { display: grid; gap: 2px; width: 34px; margin-top: 2px; }
+  .survey-ticks i { display: block; height: 3px; background: var(--sv-rule-2); }
+  .survey-ticks[data-ticks="1"] i:nth-child(-n+1), .survey-ticks[data-ticks="2"] i:nth-child(-n+2),
+  .survey-ticks[data-ticks="3"] i:nth-child(-n+3), .survey-ticks[data-ticks="4"] i:nth-child(-n+4),
+  .survey-ticks[data-ticks="5"] i:nth-child(-n+5), .survey-ticks[data-ticks="6"] i:nth-child(-n+6) { background: var(--sv-ink); }
+  .survey-cell-name h3 { font-size: 14px; font-weight: 600; letter-spacing: .005em; line-height: 1.3; }
+  .survey-row-detail { margin-top: 4px; font-size: 11.5px; line-height: 1.6; color: var(--sv-ink-3); overflow-wrap: anywhere; }
+  .survey-cell-target, .survey-cell-value { display: grid; gap: 4px; align-content: start; }
+  .survey-t { font: 500 12px/1.5 var(--sv-mono); color: var(--sv-ink-2); overflow-wrap: anywhere; }
+  .survey-cell-status { display: grid; gap: 6px; align-content: start; }
+  .survey-state { font: 600 10.5px/1.4 var(--sv-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--sv-ink-2); }
+  .survey-mark { width: 14px; height: 14px; border: 1px solid var(--sv-ink-2); background: transparent; }
+  .survey-cell-value { text-align: right; justify-items: end; }
+  .survey-val { font: 600 19px/1.15 var(--sv-mono); letter-spacing: -.02em; color: var(--sv-ink); }
+  .survey-val-sub { font: 500 10px/1.5 var(--sv-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--sv-ink-3); }
+  .survey-val-none { font: 500 11px/1.5 var(--sv-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--sv-ink-3); }
+  /* Measured, not evaluated, not demonstrated and over target are four
+     different marks: fill, hollow, hatch and cross-hatch, plus the word. */
+  .survey-criterion[data-state="measured"], .survey-criterion[data-state="meets"] { background: var(--sv-pass-wash); }
+  .survey-criterion[data-state="measured"]::before, .survey-criterion[data-state="meets"]::before { background: var(--sv-pass); }
+  .survey-criterion[data-state="measured"] .survey-mark, .survey-criterion[data-state="meets"] .survey-mark { background: var(--sv-pass); border-color: var(--sv-pass); }
+  .survey-criterion[data-state="measured"] .survey-val, .survey-criterion[data-state="meets"] .survey-val { color: var(--sv-pass); }
+  .survey-criterion[data-state="over"], .survey-criterion[data-state="failed"] { background: var(--sv-fail-wash); }
+  .survey-criterion[data-state="over"]::before, .survey-criterion[data-state="failed"]::before { background: var(--sv-fail); }
+  .survey-criterion[data-state="over"] .survey-mark, .survey-criterion[data-state="failed"] .survey-mark {
+    background: repeating-linear-gradient(45deg, var(--sv-fail) 0 2px, transparent 2px 4px); border-color: var(--sv-fail);
+  }
+  .survey-criterion[data-state="over"] .survey-state, .survey-criterion[data-state="failed"] .survey-state { color: var(--sv-fail); }
+  .survey-criterion[data-state="not-evaluated"], .survey-criterion[data-state="unknown"] { background: var(--sv-hatch); }
+  .survey-criterion[data-state="not-evaluated"]::before, .survey-criterion[data-state="unknown"]::before { background: var(--sv-rule-3); }
+  .survey-criterion[data-state="not-demonstrated"] { background: repeating-linear-gradient(135deg, rgba(19,30,38,.11) 0 1.5px, transparent 1.5px 6px); }
+  .survey-criterion[data-state="not-demonstrated"]::before { background: var(--sv-warn); }
+  .survey-criterion[data-state="not-demonstrated"] .survey-mark { background: repeating-linear-gradient(135deg, var(--sv-warn) 0 1.5px, transparent 1.5px 4px); border-color: var(--sv-warn); }
+  .survey-criterion[data-state="missing"], .survey-criterion[data-state="pending"] { background: var(--sv-warn-wash); }
+  .survey-criterion[data-state="missing"]::before, .survey-criterion[data-state="pending"]::before { background: var(--sv-warn); }
+  .survey-criterion[data-state="missing"] .survey-mark, .survey-criterion[data-state="pending"] .survey-mark { background: var(--sv-warn); border-color: var(--sv-warn); }
+  .survey-row-audit { grid-column: 1 / -1; margin-top: 10px; padding: 0 12px; }
+  .survey-row-audit.survey-no-evidence { font-size: 11.5px; color: var(--sv-ink-3); font-style: italic; }
+  #lane-survey details { border: 0; padding: 0; }
+  .survey-rail details { margin-top: 14px; border-top: 1px solid var(--sv-rule-2); padding-top: 12px; }
+  #lane-survey summary { font: 600 10.5px/1.6 var(--sv-display); letter-spacing: .1em; text-transform: uppercase; color: var(--sv-info); cursor: pointer; }
+  #lane-survey details > :not(summary) { margin-top: 8px; }
+  #lane-survey summary:hover { color: var(--sv-ink); }
+
+  /* ---- evidence chain, formats, readiness --------------------------- */
+  .survey-split { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+  .survey-evidence-list { border-top: 1px solid var(--sv-rule); }
+  .survey-evidence-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-bottom: 1px solid var(--sv-rule); }
+  .survey-evidence-row a { color: var(--sv-info); font: 600 12.5px/1.5 var(--sv-mono); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+  .survey-evidence-row a:hover { color: var(--sv-ink); }
+  .survey-evidence-row > span:first-child { font: 600 12.5px/1.5 var(--sv-mono); color: var(--sv-ink-2); }
+  .survey-evidence-row .survey-note { grid-column: 1 / -1; }
+  .survey-evidence-path { grid-column: 1 / -1; font: 400 10.5px/1.5 var(--sv-mono); color: var(--sv-ink-3); overflow-wrap: anywhere; }
+  .survey-checks { border: 1px solid var(--sv-rule-2); background: var(--sv-paper-3); }
+  .survey-check { display: grid; grid-template-columns: 16px minmax(0, auto) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--sv-rule); font-size: 12px; }
+  .survey-check:last-child { border-bottom: 0; }
+  .survey-check-box { width: 13px; height: 13px; border: 1px solid var(--sv-ink-3); background: var(--sv-paper); }
+  .survey-check[data-state="delivered"] .survey-check-box { background: var(--sv-pass); border-color: var(--sv-pass); }
+  .survey-check[data-state="delivered"] { border-left: 3px solid var(--sv-pass); }
+  .survey-check[data-state="absent"] { border-left: 3px solid var(--sv-rule-3); background: var(--sv-hatch); }
+  .survey-check-name { font: 600 12px/1.4 var(--sv-mono); color: var(--sv-ink); }
+  .survey-check-hint { font-size: 10.5px; color: var(--sv-ink-3); overflow-wrap: anywhere; }
+  .survey-check-state { font: 600 9.5px/1.4 var(--sv-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--sv-ink-3); text-align: right; }
+  .survey-check[data-state="delivered"] .survey-check-state { color: var(--sv-pass); }
+  .survey-ready-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding: 9px 0; border-bottom: 1px solid var(--sv-rule); position: relative; }
+  .survey-ready-row strong { font-size: 12.5px; font-weight: 600; }
+  .survey-ready-row p { grid-column: 1 / -1; color: var(--sv-ink-3); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+  .survey-list { border-top: 1px solid var(--sv-rule); }
+  .survey-list li { padding: 9px 0 9px 16px; border-bottom: 1px solid var(--sv-rule); font-size: 12px; line-height: 1.6; position: relative; overflow-wrap: anywhere; }
+  .survey-list li::before { content: ""; position: absolute; left: 0; top: 15px; width: 7px; height: 1px; background: var(--sv-ink-3); }
+  .survey-list li.survey-note { color: var(--sv-ink-3); font-style: italic; }
+  .survey-blockers-panel:not(.is-clear) #survey-blockers li { border-bottom-color: #d8b4ad; padding-left: 20px; }
+  .survey-blockers-panel:not(.is-clear) #survey-blockers li::before { content: "!"; top: 7px; left: 3px; width: auto; height: auto; background: none; color: var(--sv-fail); font: 700 14px/1.3 var(--sv-mono); }
+  .survey-blockers-panel:not(.is-clear) #survey-blockers li.survey-note { color: var(--sv-ink-3); }
+  .survey-blockers-panel:not(.is-clear) #survey-blockers li.survey-note::before { content: ""; top: 15px; left: 0; width: 7px; height: 1px; background: var(--sv-ink-3); }
+  .survey-blockers-panel { border: 1px solid var(--sv-fail); border-left-width: 4px; background: var(--sv-fail-wash); }
+  .survey-blockers-panel .survey-section-head { border-bottom-color: var(--sv-fail); }
+  .survey-blockers-panel.is-clear { border-color: var(--sv-rule-2); border-left-width: 1px; background: var(--sv-paper-3); }
+  .survey-blockers-panel.is-clear .survey-section-head { border-bottom-color: var(--sv-ink); }
+
+  /* ---- operator rail ------------------------------------------------ */
+  .survey-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .survey-rail { border-left: 1px solid var(--sv-rule-2); background: var(--sv-paper-2); }
+  .survey-rail .survey-section { padding: 18px; border-bottom: 1px solid var(--sv-rule-2); }
+  .survey-rail .survey-section:last-child { border-bottom: 0; }
+  .survey-rail .survey-section-head { margin-bottom: 12px; }
+  .survey-field { display: grid; gap: 5px; margin-bottom: 13px; }
+  #lane-survey label { font: 600 9.5px/1.5 var(--sv-display); letter-spacing: .12em; text-transform: uppercase; color: var(--sv-ink-3); }
+  #lane-survey select, #lane-survey input[type="file"] {
+    font: 400 12.5px/1.4 var(--sv-body); color: var(--sv-ink); background: var(--sv-paper-3);
+    border: 1px solid var(--sv-rule-3); border-radius: 0; padding: 9px 10px; width: 100%;
+  }
+  #lane-survey select:focus, #lane-survey input:focus { border-color: var(--sv-info); outline-offset: 1px; }
+  .survey-file::file-selector-button {
+    font: 600 10.5px/1.4 var(--sv-display); letter-spacing: .1em; text-transform: uppercase;
+    border: 1px solid var(--sv-rule-3); background: var(--sv-paper-2); color: var(--sv-ink);
+    padding: 7px 9px; margin-right: 10px; cursor: pointer; border-radius: 0;
+  }
+  .survey-file::file-selector-button:hover { background: var(--sv-paper-3); }
+  .survey-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .survey-row select { flex: 1 1 140px; min-width: 0; }
+  .survey-row .btn-ghost { flex: 0 0 auto; }
+  .survey-actions { display: grid; gap: 8px; margin-top: 4px; }
+  .survey-actions > div { display: grid; gap: 4px; }
+  .survey-actions button { justify-content: flex-start; text-align: left; }
+  #lane-survey :is(.btn-primary, .btn-ghost) {
+    font: 700 11.5px/1.3 var(--sv-display); letter-spacing: .09em; text-transform: uppercase;
+    border-radius: 0; min-height: 40px; padding: 10px 12px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: var(--sv-display); transition: background-color 120ms linear, color 120ms linear;
+  }
+  #lane-survey .btn-primary { background: var(--sv-ink); color: var(--sv-paper-3); border: 1px solid var(--sv-ink); box-shadow: none; }
+  #lane-survey .btn-primary:hover:not(:disabled) { background: var(--sv-band-2); transform: none; box-shadow: none; }
+  #lane-survey .btn-ghost { background: transparent; color: var(--sv-ink); border: 1px solid var(--sv-rule-3); }
+  #lane-survey .btn-ghost:hover:not(:disabled) { background: var(--sv-paper-3); border-color: var(--sv-ink); }
+  #lane-survey .btn-primary:disabled, #lane-survey .btn-ghost:disabled { color: var(--sv-ink-3); border-color: var(--sv-rule-2); background: transparent; }
+  .survey-constraint { border: 1px solid var(--sv-warn); border-left-width: 4px; background: var(--sv-warn-wash); padding: 10px 12px; font-size: 11.5px; line-height: 1.6; color: #5c3d09; }
+  .survey-constraint strong { font: 600 11px/1.6 var(--sv-mono); letter-spacing: .04em; text-transform: uppercase; }
+  .survey-command { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--sv-rule); }
+  .survey-command strong { font-size: 12.5px; }
+  .survey-command .btn-ghost { min-height: 32px; font-size: 10px; justify-self: start; }
+  .survey-provenance { border-left: 4px solid var(--sv-info); background: var(--sv-info-wash); padding: 11px 13px; font-size: 11.5px; line-height: 1.65; color: #10405a; }
+
+  /* ---- responsive: reflow, never overflow --------------------------- */
+  @media (max-width: 1280px) {
+    :root { --sv-cols: 74px minmax(0, 1.4fr) minmax(0, 1fr) 128px minmax(0, 1fr); }
+    .survey-body { grid-template-columns: minmax(0, 1fr) 306px; }
+  }
+  @media (max-width: 1100px) {
+    .survey-body { grid-template-columns: minmax(0, 1fr); }
+    .survey-rail { border-left: 0; border-top: 2px solid var(--sv-ink); }
+    .survey-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .survey-readouts:nth-child(3) { border-left: 0; }
+    .survey-readouts:nth-child(n + 3) { border-top: 1px solid var(--sv-rule); }
+    .survey-ledger-head { display: none; }
+    .survey-criterion { grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "weight name status" ". target value"; row-gap: 10px; }
+    .survey-cell-weight { grid-area: weight; } .survey-cell-name { grid-area: name; }
+    .survey-cell-target { grid-area: target; } .survey-cell-status { grid-area: status; }
+    .survey-cell-value { grid-area: value; }
+    .survey-k { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
+    .survey-split { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 700px) {
+    .survey-titleblock { grid-template-columns: minmax(0, 1fr); padding: 16px 14px 0; }
+    .survey-tb-state { text-align: left; justify-items: start; }
+    .survey-tb-state .survey-big, .survey-tb-note { text-align: left; }
+    .survey-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .survey-section, .survey-rail .survey-section { padding: 16px 14px 18px; }
+    .survey-strip { grid-template-columns: minmax(0, 1fr); }
+    .survey-readouts { border-left: 0; border-top: 1px solid var(--sv-rule); }
+    .survey-readouts:first-child { border-top: 0; }
+    .survey-readouts[data-group="fit"], .survey-readouts[data-group="held"] { border-left: 0; }
+    .survey-criterion { grid-template-columns: 58px minmax(0, 1fr); grid-template-areas: "weight name" "status status" "target target" "value value"; row-gap: 9px; }
+    .survey-weight { font-size: 22px; }
+    .survey-cell-status { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+    .survey-cell-value { text-align: left; justify-items: start; }
+    .survey-big { text-align: left; }
+    .survey-sub { text-align: left; }
+    .survey-inline-readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .survey-share, .survey-timetable td.survey-share { display: none; }
+    /* Stack the measurements table instead of forcing a wide numeric column. */
+    .survey-table, .survey-table tbody { display: block; width: 100%; }
+    .survey-table thead { display: none; }
+    .survey-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid var(--sv-rule); }
+    .survey-table td { border-bottom: 0; padding: 0; }
+    .survey-table td:nth-child(2) { text-align: right; }
+    .survey-table td:nth-child(n + 3) { grid-column: 1 / -1; font-size: 11px; color: var(--sv-ink-3); }
+    .survey-table td:nth-child(3)::before { content: "Method · "; font-weight: 600; }
+    .survey-table td:nth-child(4)::before { content: "Source · "; font-weight: 600; }
+    .survey-num { white-space: normal; }
+    .survey-section-head .survey-note { text-align: left; }
+    .survey-evidence-row { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 420px) {
+    #lane-survey { font-size: 12.5px; }
+    .survey-weight { font-size: 21px; }
+    .survey-big { font-size: 21px; }
+    .survey-inline-readouts { grid-template-columns: minmax(0, 1fr); }
+    .survey-inline-readouts dd { text-align: left; }
+    .survey-check { grid-template-columns: 16px minmax(0, 1fr); gap: 6px 10px; }
+    .survey-check-hint { grid-column: 2; }
+    .survey-check-state { grid-column: 2; text-align: left; }
   }
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+    *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
   }
+
 </style>
 </head>
 <body>
 
 <header>
   <div class="brand">
-    <div class="brand-icon">⚡</div>
+    <div class="brand-icon" aria-hidden="true">D3</div>
     <div>
       <div class="brand-title">Drone3D Studio</div>
-      <div style="font-size: 11px; color: var(--text-muted);">run the pipeline · view the model · capture on the phone</div>
+      <div style="font-size: 11px; color: var(--text-muted);">single-pass reconstruction · metric evidence</div>
     </div>
   </div>
   <div class="nav-btns">
     <span id="hdr-status">IDLE</span>
-    <a href="/viewer/capture.html" class="nav-link">📱 Phone page</a>
+    <a href="/viewer/capture.html" class="nav-link">Capture device</a>
   </div>
 </header>
 
@@ -357,103 +621,170 @@
     <button class="lane-btn" id="lane-btn-capture" aria-controls="lane-capture" aria-pressed="false" onclick="setLane('capture')">Capture</button>
   </nav>
 
-  <!-- Survey mutations validate and process existing data on the CPU only. -->
+  <!-- Survey lane: metrology evidence console. CPU only; it never starts a reconstruction. -->
   <section class="lane wide on" id="lane-survey" aria-labelledby="survey-title">
-    <div class="survey-heading">
-      <div><div class="survey-eyebrow">SIH26158 / evidence workspace</div>
-        <h1 id="survey-title">Survey validation</h1>
-        <p>Prepare flight inputs. Align existing geometry. Evaluate the evidence.</p>
+    <header class="survey-titleblock">
+      <div>
+        <p class="survey-eyebrow">SIH26158 · aerial reconstruction metrology</p>
+        <h1 id="survey-title">Survey evaluation console</h1>
+        <p class="survey-tb-scene">Scene <span id="survey-scene-name" class="survey-mono">no scene selected</span></p>
       </div>
-      <span id="survey-status" class="survey-badge neutral">Awaiting scene</span>
+      <div class="survey-tb-state">
+        <span id="survey-status" class="survey-badge neutral">Awaiting scene</span>
+        <p class="survey-tb-note">CPU only · no GPU execution · no aggregate score</p>
+      </div>
+      <ol class="survey-stages" id="survey-stages" aria-label="Workflow stages reached for this scene"></ol>
+    </header>
+    <div class="survey-scan" aria-hidden="true"></div>
+    <div class="survey-ticker">
+      <p id="survey-message" role="status" aria-live="polite" aria-atomic="true">Select a scene to read its survey evidence.</p>
     </div>
-    <ol class="survey-flow" aria-label="Survey workflow">
-      <li><span>01 / INPUTS</span>Select scene & load files</li>
-      <li><span>02 / PREPARE</span>Validate & synchronize</li>
-      <li><span>03 / ALIGN</span>Use existing reconstruction</li>
-      <li><span>04 / EVALUATE</span>Read measured evidence</li>
-      <li><span>05 / EXPORT</span>Download evidence</li>
-    </ol>
-    <p id="survey-message" role="status" aria-live="polite" aria-atomic="true">Select a scene to begin. No GPU execution in this lane.</p>
     <div id="survey-error" class="survey-error" role="alert" hidden></div>
-    <div class="survey-grid">
-      <div class="survey-stack">
-        <section class="panel" aria-labelledby="survey-input-title">
-          <h2 id="survey-input-title">Scene & flight inputs</h2>
-          <div class="field-group">
+
+    <section class="survey-section" aria-labelledby="survey-instrument-title">
+      <div class="survey-section-head">
+        <h2 id="survey-instrument-title">Instrument readout</h2>
+        <p class="survey-note">Every value comes from this scene's survey API response. A field the server did not return reads <strong>not available</strong>.</p>
+      </div>
+      <div class="survey-strip" id="survey-strip"></div>
+      <div class="survey-timings" id="survey-timings"></div>
+    </section>
+
+    <div class="survey-body">
+      <div class="survey-main">
+        <section class="survey-section" aria-labelledby="survey-targets-title">
+          <div class="survey-section-head">
+            <h2 id="survey-targets-title">Official targets</h2>
+            <p class="survey-note">Two gates the brief sets. Clearing one says nothing about the other.</p>
+          </div>
+          <dl class="survey-targets" id="survey-targets">
+            <div><dt>Independent accuracy</dt><dd>≤ 1 m</dd><dd class="survey-target-note">held-out reference error</dd></div>
+            <div><dt>Processing</dt><dd>&lt; 15 min</dd><dd class="survey-target-note">for a genuine 10 min video</dd></div>
+            <div><dt>Weighting</dt><dd>30·20·20·15·10·5</dd><dd class="survey-target-note">six criteria, never summed</dd></div>
+          </dl>
+        </section>
+
+        <section class="survey-section" aria-labelledby="survey-ledger-title">
+          <div class="survey-section-head">
+            <h2 id="survey-ledger-title">Criteria ledger</h2>
+            <p class="survey-note">Weight, official target, status and measured value for each criterion. Prepared, aligned and evaluated are workflow states, not passes.</p>
+          </div>
+          <div class="survey-legend">
+            <span><span class="survey-mark" data-legend="measured" aria-hidden="true"></span>measured</span>
+            <span><span class="survey-mark" data-legend="not-evaluated" aria-hidden="true"></span>no evidence supplied</span>
+            <span><span class="survey-mark" data-legend="not-demonstrated" aria-hidden="true"></span>not demonstrated</span>
+            <span><span class="survey-mark" data-legend="over" aria-hidden="true"></span>outside target</span>
+          </div>
+          <div class="survey-ledger">
+            <div class="survey-ledger-head" aria-hidden="true">
+              <span>Weight</span><span>Criterion</span><span>Official target</span><span>Status</span><span>Measured value</span>
+            </div>
+            <div id="survey-criteria"></div>
+          </div>
+        </section>
+
+        <section class="survey-section" aria-labelledby="survey-evidence-title">
+          <div class="survey-section-head">
+            <h2 id="survey-evidence-title">Evidence chain</h2>
+            <p class="survey-note">Only files the server reports under this scene's own <code>/work/</code> path are linked. No fabricated report.</p>
+          </div>
+          <div class="survey-split">
+            <div>
+              <h3 class="survey-subhead" id="survey-artifacts-title">Artifacts reported for this scene</h3>
+              <ul id="survey-artifacts" class="survey-evidence-list" aria-labelledby="survey-artifacts-title"></ul>
+            </div>
+            <div>
+              <h3 class="survey-subhead" id="survey-formats-title">Delivery formats</h3>
+              <ul id="survey-formats" class="survey-checks" aria-labelledby="survey-formats-title"></ul>
+              <p class="survey-note">A format reads <strong>delivered</strong> only when this scene's artifact list contains a file with that extension. Absent formats are not delivered, not pending.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="survey-section" aria-labelledby="survey-measurements-title">
+          <div class="survey-section-head">
+            <h2 id="survey-measurements-title">Measurements &amp; analysis</h2>
+            <p class="survey-note">Rendered only from measurements the survey API returns for this scene.</p>
+          </div>
+          <div id="survey-measurements"></div>
+        </section>
+
+        <section class="survey-section survey-blockers-panel" id="survey-blockers-panel" aria-labelledby="survey-blockers-title">
+          <div class="survey-section-head">
+            <h2 id="survey-blockers-title">Blockers</h2>
+            <p class="survey-note">What stops this scene from being evaluated, as stated by the API.</p>
+          </div>
+          <ul id="survey-blockers" class="survey-list"></ul>
+        </section>
+      </div>
+
+      <aside class="survey-rail" aria-label="Operator controls">
+        <section class="survey-section" aria-labelledby="survey-input-title">
+          <div class="survey-section-head"><h2 id="survey-input-title">Scene &amp; flight inputs</h2></div>
+          <div class="survey-field">
             <label for="survey-scene">Survey scene</label>
-            <div class="survey-select-row">
+            <div class="survey-row">
               <select id="survey-scene" aria-describedby="survey-video-help"><option value="">Loading scenes…</option></select>
               <button type="button" id="survey-refresh" class="btn-ghost">Refresh</button>
             </div>
           </div>
           <p class="survey-note" id="survey-video-help">Exactly one source video must already be in <code id="survey-scene-path">videos/&lt;scene&gt;/</code>. This form uploads telemetry and metadata only.</p>
-          <ul id="survey-readiness" class="survey-readiness" aria-label="Input readiness"></ul>
+          <h3 class="survey-subhead">Input readiness</h3>
+          <ul id="survey-readiness" class="survey-readiness"></ul>
           <form id="survey-input-form">
-            <div class="field-group"><label for="survey-csv">GPS telemetry · CSV</label><input class="survey-file" id="survey-csv" type="file" accept=".csv,text/csv" required aria-describedby="survey-upload-help"></div>
-            <div class="field-group"><label for="survey-metadata">Flight metadata · JSON</label><input class="survey-file" id="survey-metadata" type="file" accept=".json,application/json" required aria-describedby="survey-upload-help"></div>
+            <div class="survey-field"><label for="survey-csv">GPS telemetry · CSV</label>
+              <input class="survey-file" id="survey-csv" type="file" accept=".csv,text/csv" required aria-describedby="survey-upload-help"></div>
+            <div class="survey-field"><label for="survey-metadata">Flight metadata · JSON</label>
+              <input class="survey-file" id="survey-metadata" type="file" accept=".json,application/json" required aria-describedby="survey-upload-help"></div>
             <p id="survey-upload-help" class="survey-note">Combined JSON request: max 2 MB. The server saves only validated inputs. Existing files are never overwritten (409 conflict).</p>
-            <button class="btn-primary" id="survey-save" type="submit" disabled>Validate & save inputs</button>
+            <button class="btn-primary" id="survey-save" type="submit" disabled>Validate &amp; save inputs</button>
           </form>
           <details>
-            <summary>Required schema & downloadable templates</summary>
-            <p class="survey-note">CSV requires exactly six columns. <code>t_sec</code> must strictly increase; <code>t_sec + time_offset_s</code> must be within the video duration. Latitude/longitude are WGS84 degrees; camera-center altitude is ellipsoidal metres. <code>horizontal_std_m</code> and <code>vertical_std_m</code> are strictly positive GPS standard deviations in metres. Supply real measured uncertainty, not guessed precision.</p>
+            <summary>Required schema and templates</summary>
+            <p class="survey-note">CSV requires exactly six columns. <code>t_sec</code> must strictly increase; <code>t_sec + time_offset_s</code> must be within the video duration. Latitude and longitude are WGS84 degrees; camera-centre altitude is ellipsoidal metres. <code>horizontal_std_m</code> and <code>vertical_std_m</code> are strictly positive GPS standard deviations in metres. Supply measured uncertainty, not assumed precision.</p>
             <p class="survey-note">Header only below: add real observations, not example coordinates.</p>
             <pre id="survey-csv-header"></pre>
-            <p class="survey-note">Metadata template: replace or verify every value against this flight. In particular, 600 seconds is a template value, not a measured video duration. Verify time alignment, altitude datum, camera reference and single-pass declaration.</p>
+            <p class="survey-note">Metadata template: replace or verify every value against this flight. In particular 600 seconds is a template value, not a measured video duration. Verify time alignment, altitude datum, position reference and the single-pass declaration.</p>
             <pre id="survey-metadata-example"></pre>
-            <div class="survey-template-row">
+            <div class="survey-row">
               <button type="button" class="btn-ghost" id="survey-csv-template">Download CSV header</button>
               <button type="button" class="btn-ghost" id="survey-metadata-template">Download metadata JSON</button>
             </div>
           </details>
         </section>
-        <section class="panel" aria-labelledby="survey-operations-title">
-          <div class="survey-section-heading"><h2 id="survey-operations-title">Validation actions</h2><span class="survey-badge info">CPU only</span></div>
+
+        <section class="survey-section" aria-labelledby="survey-operations-title">
+          <div class="survey-section-head"><h2 id="survey-operations-title">Validation actions</h2></div>
           <div class="survey-actions">
-            <div><button type="button" id="survey-prepare" class="btn-primary" disabled>02 · Prepare survey</button><p class="survey-note">Validate source inputs and prepare survey data.</p></div>
-            <div><button type="button" id="survey-align" class="btn-ghost" disabled>03 · Align existing reconstruction</button><p class="survey-note">Fit GPS to an existing reconstruction. Does not reconstruct or train.</p></div>
-            <div><button type="button" id="survey-evaluate" class="btn-ghost" disabled>04 · Evaluate evidence</button><p class="survey-note">Read available results. Missing measurements stay unknown.</p></div>
+            <div><button type="button" id="survey-prepare" class="btn-primary" disabled>02 · Prepare survey</button>
+              <p class="survey-note">Validate the source inputs and prepare survey data on the CPU.</p></div>
+            <div><button type="button" id="survey-align" class="btn-ghost" disabled>03 · Align existing reconstruction</button>
+              <p class="survey-note">Fit GPS to a reconstruction that already exists. Does not reconstruct or train.</p></div>
+            <div><button type="button" id="survey-evaluate" class="btn-ghost" disabled>04 · Evaluate evidence</button>
+              <p class="survey-note">Read the available results. Missing measurements stay unknown.</p></div>
           </div>
-          <h3>Blockers</h3><ul id="survey-blockers" class="survey-list"></ul>
-          <div class="survey-notice warning"><strong id="survey-gpu-state">GPU permission pending · execution disabled</strong><br>Suggested reconstruction commands are text/copy only. Nothing here invokes Run or starts a GPU workload.</div>
+          <p class="survey-constraint"><strong id="survey-gpu-state">GPU permission pending · execution disabled</strong><br>
+            Suggested reconstruction commands below are text for you to review and copy. Nothing here invokes the Run lane or starts a GPU workload.</p>
         </section>
-        <section class="panel" aria-labelledby="survey-download-title">
-          <h2 id="survey-download-title">05 · Download evidence</h2>
-          <ul id="survey-artifacts" class="survey-artifacts"></ul>
-          <p class="survey-note">Only server-reported files under this scene’s <code>/work/</code> directory are linked. No fabricated report or aggregate score.</p>
-        </section>
-      </div>
-      <div class="survey-stack">
-        <section class="panel" aria-labelledby="survey-ledger-title">
-          <div class="survey-section-heading"><h2 id="survey-ledger-title">Six criteria. Separate evidence.</h2><span class="survey-eyebrow" style="margin:0">Weights, not scores</span></div>
-          <dl class="survey-targets">
-            <div><dt>Independent accuracy target</dt><dd>≤ 1 m</dd><p class="survey-note">Measured against held-out reference</p></div>
-            <div><dt>End-to-end processing target</dt><dd>&lt; 15 min</dd><p class="survey-note">For a genuine 10 min input video</p></div>
-          </dl>
-          <p class="survey-note">Unknown means evidence has not been supplied or verified. Prepared, aligned and evaluated are workflow states, not passes. There is no overall score.</p>
-          <div id="survey-criteria" class="survey-criteria"></div>
-        </section>
-        <section class="panel" aria-labelledby="survey-alignment-title">
-          <h2 id="survey-alignment-title">GPS fit ≠ independent accuracy</h2>
-          <div id="survey-alignment"></div>
+
+        <section class="survey-section" aria-labelledby="survey-provenance-title">
+          <div class="survey-section-head"><h2 id="survey-provenance-title">Provenance &amp; limits</h2></div>
+          <h3 class="survey-subhead">Warnings from the server</h3>
+          <ul id="survey-warnings" class="survey-list"></ul>
+          <div class="survey-provenance">Source: this scene's survey API response and the linked on-disk artifacts. Runtime inherited from existing logs is unverified unless a complete, declared-hardware benchmark is supplied.</div>
           <details>
             <summary>Independent checkpoints: what Evaluate reads</summary>
-            <p class="survey-note">Evaluate optionally reads <code id="survey-checkpoint-path">work/&lt;scene&gt;/survey/checkpoints.json</code>. Checkpoints must be held out of alignment and pair independently surveyed references with corresponding reconstructed points, in the coordinate frames required by the evaluator.</p>
-            <p class="survey-note">Required JSON fields: <code>independent: true</code>, <code>alignment: "none"</code>, and <code>coordinate_frame</code> copied exactly from this scene’s <code>georeference.json</code>, including its origin. <code>checkpoints</code> must contain 1–10,000 objects, each with <code>reconstructed</code> and <code>reference</code> three-number coordinate arrays in that shared ENU metre frame. No best-fit alignment is performed on these pairs.</p>
-            <p class="survey-note">GPS samples or alignment inliers are not independent checkpoints. Without a validated checkpoint file, accuracy remains unknown. This UI does not create reference measurements.</p>
+            <p class="survey-note">Evaluate optionally reads <code id="survey-checkpoint-path">work/&lt;scene&gt;/survey/checkpoints.json</code>. Checkpoints must be held out of alignment and pair independently surveyed references with corresponding reconstructed points, in the frames the evaluator requires.</p>
+            <p class="survey-note">Required JSON fields: <code>independent: true</code>, <code>alignment: "none"</code>, and <code>coordinate_frame</code> copied exactly from this scene's <code>georeference.json</code>, including its origin. <code>checkpoints</code> must hold 1–10,000 objects, each with <code>reconstructed</code> and <code>reference</code> three-number arrays in that shared ENU metre frame. No best-fit alignment is performed on these pairs.</p>
+            <p class="survey-note">GPS samples and alignment inliers are not independent checkpoints. Without a validated checkpoint file, accuracy stays unknown. This console never creates reference measurements.</p>
           </details>
-        </section>
-        <section class="panel" aria-labelledby="survey-provenance-title">
-          <h2 id="survey-provenance-title">Evidence sources & limitations</h2>
-          <ul id="survey-warnings" class="survey-list"></ul>
-          <div class="survey-notice">Source: the scene’s survey API response and linked on-disk artifacts. Expand each criterion for the server’s measurements, sources and warnings. Runtime inherited from existing logs is unverified unless a complete, declared-hardware benchmark is supplied.</div>
           <details>
             <summary>Suggested commands · review and copy only</summary>
-            <p class="survey-note">Commands below are never executed here. GPU work needs explicit permission. Shell quoting shown is POSIX-style; check the exact arguments for your terminal.</p>
+            <p class="survey-note">Commands are never executed here. GPU work needs explicit permission. Quoting shown is POSIX style; check the exact arguments for your own terminal.</p>
             <div id="survey-commands" class="survey-note"></div>
           </details>
         </section>
-      </div>
+      </aside>
     </div>
   </section>
 
@@ -461,13 +792,13 @@
   <section class="lane" id="lane-run">
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">⚙️ Reconstruction settings</div>
+        <div class="panel-title">Reconstruction settings</div>
       </div>
 
       <div id="uploaded-banner" style="display:none; background:rgba(52,211,153,0.12);
            border:1px solid rgba(52,211,153,0.45); border-radius:10px; padding:11px 13px;
            font-size:12px; line-height:1.5;">
-        <b style="color:#6ee7b7;">📥 Phone transfer complete — <span id="uploaded-scene"></span></b><br>
+        <b style="color:#6ee7b7;">Phone transfer complete — <span id="uploaded-scene"></span></b><br>
         <span style="color:var(--text-muted);">Footage is in videos/. Pick a preset and quality, then Start.</span>
       </div>
 
@@ -491,7 +822,7 @@
       </div>
 
       <details>
-        <summary>🔧 Advanced (mapper, cull, overrides)</summary>
+        <summary>Advanced (mapper, cull, overrides)</summary>
         <div class="adv-grid">
           <div class="field-group">
             <label>Mapper mode</label>
@@ -539,14 +870,14 @@
       </details>
 
       <div class="btn-bar">
-        <button class="btn-primary" id="btn-start" onclick="launchPipeline()">🚀 Start reconstruction</button>
-        <button class="btn-kill" id="btn-kill" onclick="killPipeline()" style="display:none;">⏹ Abort</button>
+        <button class="btn-primary" id="btn-start" onclick="launchPipeline()">Start reconstruction</button>
+        <button class="btn-kill" id="btn-kill" onclick="killPipeline()" style="display:none;">Abort</button>
       </div>
     </div>
 
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">📈 Training telemetry</div>
+        <div class="panel-title">Run telemetry</div>
         <span class="muted" id="run-owner">no run attached</span>
       </div>
       <div class="stats-strip">
@@ -565,7 +896,7 @@
   <section class="lane wide" id="lane-view">
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">🌐 Walkable model</div>
+        <div class="panel-title">Walkable model</div>
         <div style="display:flex; gap:14px; align-items:center;">
           <label style="display:flex; align-items:center; gap:6px; cursor:pointer; text-transform:none; font-size:12px;">
             <input type="checkbox" id="view-auto" onchange="updateViewFrame()"> autopilot
@@ -594,14 +925,14 @@
   <section class="lane wide" id="lane-capture">
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">📱 Capture on the phone</div>
+        <div class="panel-title">Capture on the phone</div>
       </div>
       <div class="field-group">
         <label>Open this on the phone (same Wi-Fi, HTTPS for camera + sensors)</label>
         <div class="cap-url" id="cap-url">https://…:8138/viewer/capture.html</div>
       </div>
       <div class="btn-bar" style="margin-top:0;">
-        <button class="btn-ghost" id="cap-copy" onclick="copyCapUrl()">⧉ Copy link</button>
+        <button class="btn-ghost" id="cap-copy" onclick="copyCapUrl()">Copy link</button>
         <a class="btn-ghost" href="/viewer/capture.html" target="_blank" style="text-decoration:none;">Open on this machine</a>
       </div>
       <div class="muted">Hold and lens are chosen on the phone's own start screen
@@ -612,7 +943,7 @@
         <select id="cap-take"></select>
       </div>
       <div class="btn-bar" style="margin-top:0;">
-        <button class="btn-primary" id="cap-run" onclick="runOnTake()">🚀 Run the pipeline on this take</button>
+        <button class="btn-primary" id="cap-run" onclick="runOnTake()">Run the pipeline on this take</button>
       </div>
     </div>
   </section>
@@ -620,7 +951,7 @@
   <!-- ================= MONITOR ================= -->
   <section class="panel" id="run-monitor" hidden>
     <div class="panel-header">
-      <div class="panel-title">🖥️ Run monitor — <span id="mon-scene" style="color:#93c5fd;">no scene selected</span></div>
+      <div class="panel-title">Run monitor — <span id="mon-scene" style="color:#93c5fd;">no scene selected</span></div>
       <span class="muted">reads work/&lt;scene&gt;/logs, so runs started in a terminal show up here too</span>
     </div>
     <div class="stats-strip">
@@ -745,12 +1076,12 @@
 
     let html = "";
     if (unproc.length) {
-      html += `<optgroup label="📹 Unprocessed Videos (videos/)">`;
+      html += `<optgroup label="Unprocessed footage (videos/)">`;
       html += unproc.map(s => `<option value="${s.name}">${s.name} [new / ready to run]</option>`).join("");
       html += `</optgroup>`;
     }
     if (withWork.length) {
-      html += `<optgroup label="⚡ Reconstructions (work/)">`;
+      html += `<optgroup label="Reconstructions (work/)">`;
       html += withWork.map(s => {
         let tag = s.running ? " (running)" : (s.viewable ? " (viewable)" : (s.trained ? " (trained)" : ""));
         return `<option value="${s.name}">${s.name}${tag}</option>`;
@@ -814,8 +1145,8 @@
 
     if (!rows.length && !sc.has_work) {
       body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:22px 12px; color:var(--text-muted);">
-        📹 <b>Raw footage in videos/ folder</b> — no reconstruction started yet.<br>
-        <span style="font-size:11.5px; margin-top:4px; display:inline-block;">Pick capture preset & quality above, then click <b>🚀 Start reconstruction</b> to begin.</span>
+        <b>Raw footage in videos/ folder</b> — no reconstruction started yet.<br>
+        <span style="font-size:11.5px; margin-top:4px; display:inline-block;">Pick capture preset & quality above, then click <b>Start reconstruction</b> to begin.</span>
       </td></tr>`;
       document.getElementById("m-total").textContent = "--";
       document.getElementById("m-slow").textContent = "--";
@@ -989,8 +1320,8 @@
     const txt = document.getElementById("cap-url").textContent;
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt);
     const btn = document.getElementById("cap-copy");
-    btn.textContent = "✓ copied";
-    setTimeout(() => { btn.textContent = "⧉ Copy link"; }, 1500);
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = "Copy link"; }, 1500);
   }
 
   function runOnTake() {
@@ -1012,9 +1343,9 @@
     const cont = document.getElementById("quality-container");
     if (!qualitiesData || !Object.keys(qualitiesData).length) return;
     const labels = {
-      standard: { title: "⚡ Standard (640p)", vram: "~1.0 GB VRAM" },
-      high: { title: "✨ High (1280p)", vram: "~3.8 GB VRAM" },
-      ultra: { title: "💎 Ultra (1440p)", vram: "~5.5 GB VRAM" }
+      standard: { title: "Standard · 640p", vram: "~1.0 GB VRAM" },
+      high: { title: "High · 1280p", vram: "~3.8 GB VRAM" },
+      ultra: { title: "Ultra · 1440p", vram: "~5.5 GB VRAM" }
     };
     cont.replaceChildren();
     for (const [k, v] of Object.entries(qualitiesData)) {
