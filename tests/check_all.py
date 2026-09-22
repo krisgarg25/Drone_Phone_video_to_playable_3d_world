@@ -56,6 +56,8 @@ SUITES = [
     ("survey-occlusion", "test_survey_occlusion.py", 5),
     ("survey-frame-quality", "test_survey_frame_quality.py", 5),
     ("survey-photometry", "test_survey_photometry.py", 5),
+    ("survey-measure", "test_survey_measure.py", 5),
+    ("survey-inputs", "test_survey_inputs.py", 5),
     ("survey-workflow", "test_survey_workflow.py", 5),
     ("survey-api", "test_survey_api.py", 5),
     ("survey-cli", "test_survey_cli.py", 5),
