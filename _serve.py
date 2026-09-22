@@ -354,16 +354,25 @@ class H(http.server.SimpleHTTPRequestHandler):
             remaining -= len(chunk)
         return b"".join(chunks)
 
-    def _survey_failure(self, status, error):
-        """Client sees a fixed reason plus the class; the detail stays in the log.
+    _ABSOLUTE_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|\\\\|(?<![\w.])/(?:\w+/?)+)")
 
-        Workflow errors carry absolute workspace paths - FileNotFoundError for a
-        missing artifact, the unsafe-path rejections - so str(error) cannot be
-        echoed into a body served to whoever is on the network.
+    def _survey_failure(self, status, error):
+        """Client sees an actionable reason with no local paths; log keeps detail.
+
+        ValueError text is authored by the survey workflow and names relative
+        artifacts ("keyframes_poses.jsonl is missing"), which the operator needs
+        to fix the request. Anything else (OSError from a stat, a stray KeyError)
+        can carry an absolute path, so it collapses to the generic reason.
         """
         print(f"[survey] {status} {type(error).__name__}: {error}", file=sys.stderr, flush=True)
-        message = ("Survey evidence already exists for this scene." if status == 409
-                   else "Survey request failed; the server log holds the detail.")
+        if status == 409:
+            message = "Survey evidence already exists for this scene."
+        elif isinstance(error, ValueError):
+            message = str(error)[:300]
+            if self._ABSOLUTE_PATH.search(message):
+                message = "Survey request failed; the server log holds the detail."
+        else:
+            message = "Survey request failed; the server log holds the detail."
         self._survey_json({"error": message, "error_class": type(error).__name__}, status)
 
     def _survey(self, action=None):

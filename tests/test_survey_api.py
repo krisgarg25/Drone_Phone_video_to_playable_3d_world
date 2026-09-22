@@ -155,8 +155,25 @@ class SurveyApiTests(unittest.TestCase):
             status, body = self.request("POST", "/api/survey/prepare", {"scene": "flight"})
         self.assertEqual(status, 400)
         self.assertEqual(body["error_class"], "ValueError")
-        self.assertNotIn(detail, json.dumps(body))
+        self.assertIn(detail, json.dumps(body))
         self.assertIn(detail, log.getvalue())
+
+    def test_value_error_carrying_an_absolute_path_is_sanitized(self):
+        detail = "cannot read " + str(self.root / "work" / "flight" / "georeference.json")
+        with patch.object(survey_workflow, "prepare_scene", side_effect=ValueError(detail)), \
+                contextlib.redirect_stderr(io.StringIO()) as log:
+            status, body = self.request("POST", "/api/survey/prepare", {"scene": "flight"})
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "Survey request failed; the server log holds the detail.")
+        self.assert_no_workspace_leak(body)
+        self.assertIn(detail, log.getvalue())
+
+    def test_align_before_prepare_names_the_missing_step(self):
+        status, body = self.request("POST", "/api/survey/align", {"scene": "flight"})
+        self.assertEqual(status, 400)
+        self.assertIn("prepare", body["error"].lower())
+        self.assertNotEqual(body["error"], "Survey request failed; the server log holds the detail.")
+        self.assert_no_workspace_leak(body)
 
     def test_conflict_reports_only_a_class_and_a_fixed_message(self):
         status, body = self.request("POST", "/api/survey/inputs", self.inputs_payload())
