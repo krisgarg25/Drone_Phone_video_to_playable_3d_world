@@ -476,6 +476,38 @@ out of reach" to "the target is plausibly reachable with these three settings,
 and here is the single experiment that would prove it": one real 1080p flight of
 ~10 minutes with its GPS log, run once at `survey` and once at `fast`.
 
+### 9.7 Compression proxy validated against known encoder settings
+
+Challenge (ii) names motion blur *and* compression artifacts together, so a metric
+that cannot tell them apart is not usable. The cheapest honest test was to
+re-encode one frame of a real clip at five known x264 CRF values and measure what
+the proxies actually do (`scratch/compression_proof.py`, reproducible):
+
+| CRF | Block-boundary ratio | Blocking suspect | Quality score | Laplacian variance |
+|---|---|---|---|---|
+| 0 (lossless) | 1.004 | False | 1.000 | 149.5 |
+| 15 | 1.131 | False | 1.000 | 139.5 |
+| 23 | 1.062 | False | 1.000 | 93.6 |
+| 30 | 1.189 | False | 1.000 | 42.2 |
+| 38 | **1.779** | **True** | **0.562** | 13.4 |
+
+Two conclusions, one of them a limitation worth stating out loud:
+
+1. **The blocking gate works where it matters.** The ratio rises 77% from lossless
+   to CRF 38 and `blocking_suspect` fires only on the heavily compressed frame. As
+   a reject threshold for badly compressed footage, the proxy is measured, not
+   assumed.
+2. **It is not a monotone quality meter.** CRF 15 scores a higher ratio than CRF
+   23, so the metric cannot rank moderate compression levels. It must be used as a
+   pass/fail gate, never as a graded weight.
+
+The more important finding is the last column: Laplacian variance falls **91%**
+from CRF 0 to CRF 38. Compression destroys the very detail that a sharpness metric
+measures, so a blur-only gate silently discards heavily compressed but geometrically
+sharp frames, and a sharpness number alone cannot distinguish "the drone moved"
+from "the encoder mangled it". That is precisely why blur and compression need
+separate signals, and it is now demonstrated on real footage rather than asserted.
+
 ## 10. Sources and evidence policy
 
 
