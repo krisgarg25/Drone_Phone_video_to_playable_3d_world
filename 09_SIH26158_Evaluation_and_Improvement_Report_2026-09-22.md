@@ -341,7 +341,108 @@ All runtime numbers here are **author-reported under the stated conditions**, no
 
 Use both a geometry benchmark and a real telemetry integration benchmark. Neither alone verifies all six weighted criteria, and no fetched source establishes a turnkey, already-validated SIH solution for the current machine.
 
-## 9. Sources and evidence policy
+## 9. Night-run measurements, 23 September 2026
+
+Everything below was executed on this machine (RTX 3050 6 GB Laptop GPU, driver
+616.56) against real recordings, in isolated `scratch/` directories so no
+existing `work/` artefact was modified. Benchmark settings were 300 keyframes at
+1000 px — chosen to fit the card, not a quality target.
+
+### 9.1 Geometry-first runtime, measured
+
+| Clip | Source | Keyframes | Keyframes | Sparse | Undistort | Dense | Fusion | Total | Ratio |
+|---|---|---|---|---|---|---|---|---|---|
+| `rocks` | 12.05 s | 72 | 5.6 s | 216.4 s | 5.8 s | 566.3 s | 12.3 s | 806.4 s | 66.9× |
+| `room_w_jsonl` | 139.47 s | 291 | 21.5 s | 946.9 s | 16.3 s | 2951.8 s | 64.9 s | 4001.4 s | 28.7× |
+
+Peak GPU memory observed while sampling every 0.4 s: 1405 MiB during sparse
+mapping, 443 MiB during dense. Sampling can miss short peaks, so treat these as
+lower bounds, not headroom.
+
+**The speed criterion is the real risk, and the dense stage is the reason.** At
+10.1 s per image (291 images) or 7.9 s per image (72 images) with geometric
+consistency enabled, a 600-second flight cannot finish inside 900 seconds at this
+frame budget. The official gate itself remains **not measured**: the longest
+recording on this machine is 151 s, and no 600-second single-pass video exists
+here yet.
+
+### 9.2 Frame selection, measured on a real trajectory
+
+Using the 288 registered cameras of `room_w_jsonl` and the sparse-cloud centroid
+as the scene target, comparing even-index sampling against the new baseline-aware
+selector at equal budgets (`scripts/survey_selection.py`, 8 CPU tests):
+
+| Budget | Strategy | Frames chosen | Max gap (units) | Path covered | Mean parallax | Est. dense time |
+|---|---|---|---|---|---|---|
+| 120 | uniform | 120 | 2.63 | 0.973 | 12.8° | 944 s |
+| 120 | **baseline-aware** | **69** | 7.77 | 0.896 | **20.1°** | **543 s** |
+| 288 | uniform | 288 | 2.36 | 0.998 | 5.5° | 2267 s |
+| 288 | **baseline-aware** | **68** | 7.77 | 0.895 | **20.8°** | **535 s** |
+
+Reading this honestly: at the same budget the selector keeps roughly a quarter of
+the frames while *increasing* mean parallax by 3.8×, cutting estimated dense time
+by 4.2×, and giving up about 10% of path coverage. Fewer, better-separated frames
+is the only lever here that attacks speed and geometry quality at once. Parallax
+and path coverage are camera-geometry proxies, not measured surface completeness.
+
+### 9.3 Metric scale against an independent sensor — a real failure
+
+`room_w_jsonl` also carries a phone VIO/AR pose log, which is metric. Repeating
+the reconstruction **without** any pose priors, fitting Sim3 on 60% of the 287
+matched cameras and evaluating the held-out 40%:
+
+| Fitted scale | Holdout RMSE | Median | P95 | Max | Reference path |
+|---|---|---|---|---|---|
+| 0.835 m/unit | **2.76 m** | 2.69 m | 3.62 m | 3.88 m | 38.06 m |
+
+So on this clip, visual-only geometry disagrees with an independent metric sensor
+by ~7% of the trajectory length — nowhere near ≤1 m. That is expected for this
+footage: the capture is rotation-dominant with little translational baseline, the
+exact condition the selector above is designed to detect and reject. Two honest
+conclusions follow: this clip is a bad candidate for the accuracy claim, and
+**sub-metre accuracy still has no supporting evidence at all** — the reference is
+self-drifting VIO, not surveyed control, and no GPS-georeferenced outdoor scene
+has been measured yet.
+
+### 9.4 Regression protection
+
+- Trainer with the corrected camera model: 300 steps on the benchmark model,
+  103 041 Gaussians, 20.1 it/s, 2.11 GiB, `splat.ply` written — the existing
+  walkable/viewer path still works after the intrinsics fix.
+- Full CPU suite: **11/11 suites clean**, including 151 survey tests
+  (georeferencing, evaluation, calibration, workflow, API, CLI, evidence,
+  visibility, selection, products) plus the pre-existing 107 unit checks.
+- Headless Chrome QA on the survey lane with GPU and WebGL disabled: six checks
+  pass, zero page errors, zero `/api/run` requests and zero model loads while the
+  survey lane is active.
+
+### 9.5 What the night changed in the code, and what it did not
+
+Added: `survey_georef` (WGS84→ENU, RANSAC Sim3, degeneracy rejection),
+`survey_evaluation` (unaligned checkpoint RMSE/percentiles, bounded bidirectional
+coverage, strict `<900 s` on a 600 s full run), `survey_evidence` (per-point view
+support and reprojection), `survey_visibility` (occlusion check against COLMAP
+depth maps, compared along the unit ray), `survey_selection`, `survey_products`,
+a CPU-only `survey.py` CLI and `/api/survey*` routes, and a dashboard lane that
+shows all six criteria with weights and never an aggregate score. Fixed: OPENCV
+cameras were being read with the `SIMPLE_RADIAL` parameter layout; the
+undistortion cache ignored calibration and pixels; the step digest ignored
+sibling imports.
+
+An independent review of the first cut found the arithmetic was honest but the
+*display* was not — a stale or hand-edited `evaluation.json` could render as a
+green pass, and any LAN peer could overwrite evidence because the write guard
+only applied when an `Origin` header happened to exist. Those are fixed and
+covered by tests.
+
+**Not achieved:** no measured ≤1 m accuracy, no measured completeness against
+reference surfaces, no run of the official 10-minute gate, no georeferenced
+outdoor UAV scene, no LAS/GeoTIFF/FBX export (a hand-rolled LAS writer was
+rejected as unverifiable without PDAL/laspy installed), no dynamic-object
+masking, and no live incremental streaming reconstruction.
+
+## 10. Sources and evidence policy
+
 
 The supplied PDF is the authority for the target tables. Repository paths above are direct local evidence at the current working tree, which already contained uncommitted changes. Historical reports are observations about those artifacts, not measurements repeated in this session.
 
