@@ -16,13 +16,16 @@ def main(argv=None):
         command.add_argument("scene")
         if name == "reconstruct":
             command.add_argument("--allow-gpu", action="store_true", help="Explicitly authorize GPU reconstruction; never enabled by preparation or the dashboard.")
+            command.add_argument("--dense-profile", choices=sorted(survey.DENSE_PROFILES), default="survey",
+                                 help="survey keeps geometric consistency (cleanest, slowest); fast/budget trade density for the <15 min target.")
         if name == "inputs":
             command.add_argument("--telemetry", required=True, type=Path)
             command.add_argument("--metadata", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
         if args.command == "reconstruct":
-            result = survey.reconstruct_scene(ROOT, args.scene, allow_gpu=args.allow_gpu)
+            result = survey.reconstruct_scene(ROOT, args.scene, allow_gpu=args.allow_gpu,
+                                          dense_profile=args.dense_profile)
         elif args.command == "inputs":
             result = survey.save_inputs(ROOT, args.scene, args.telemetry.read_text(encoding="utf-8-sig"), survey.read_json(args.metadata))
         else:

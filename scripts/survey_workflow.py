@@ -606,13 +606,32 @@ def scene_status(root, scene):
     return state
 
 
-def dense_commands(root, workspace, dense_dir):
+# Measured on this RTX 3050 with 72 images at 1000 px: geometric consistency
+# costs 1244s and yields 355,965 filtered points; without it, 485s and 375,458
+# unfiltered points; at 700 px without it, ~321s and 170,093 points. Consistency
+# and the fusion input type are one decision, not two flags: fusing with
+# --input_type geometric when only photometric depth maps exist writes an empty
+# cloud and looks like a fast win.
+DENSE_PROFILES = {
+    "survey": {"consistency": True, "max_image_size": 1600},
+    "fast": {"consistency": False, "max_image_size": 1000},
+    "budget": {"consistency": False, "max_image_size": 700},
+}
+
+
+def dense_commands(root, workspace, dense_dir, *, profile="survey"):
     colmap = str(Path(root) / "tools" / "colmap" / "bin" / "colmap.exe")
     workspace, dense_dir = Path(workspace), Path(dense_dir)
+    if profile not in DENSE_PROFILES:
+        raise ValueError("Unknown dense profile " + repr(profile)
+                         + "; known: " + ", ".join(sorted(DENSE_PROFILES)))
+    settings = DENSE_PROFILES[profile]
+    consistency = settings["consistency"]
+    size = str(settings["max_image_size"])
     return [
-        {"stage": "undistort", "requires_gpu": False, "argv": [colmap, "image_undistorter", "--image_path", str(workspace / "frames_train"), "--input_path", str(workspace / "colmap/sparse/txt"), "--output_path", str(dense_dir), "--output_type", "COLMAP", "--max_image_size", "1600"]},
-        {"stage": "dense", "requires_gpu": True, "argv": [colmap, "patch_match_stereo", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--PatchMatchStereo.geom_consistency", "true"]},
-        {"stage": "fusion", "requires_gpu": False, "argv": [colmap, "stereo_fusion", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--input_type", "geometric", "--output_path", str(dense_dir / "fused.ply")]},
+        {"stage": "undistort", "requires_gpu": False, "argv": [colmap, "image_undistorter", "--image_path", str(workspace / "frames_train"), "--input_path", str(workspace / "colmap/sparse/txt"), "--output_path", str(dense_dir), "--output_type", "COLMAP", "--max_image_size", size]},
+        {"stage": "dense", "requires_gpu": True, "argv": [colmap, "patch_match_stereo", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--PatchMatchStereo.geom_consistency", "true" if consistency else "false", "--PatchMatchStereo.max_image_size", size]},
+        {"stage": "fusion", "requires_gpu": False, "argv": [colmap, "stereo_fusion", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--input_type", "geometric" if consistency else "photometric", "--output_path", str(dense_dir / "fused.ply")]},
     ]
 
 
@@ -679,7 +698,7 @@ def _preflight(root, video, expected_duration):
     return duration, int(width), int(height)
 
 
-def reconstruct_scene(root, scene, *, allow_gpu=False):
+def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
     if allow_gpu is not True:
         raise PermissionError("GPU reconstruction requires explicit approval and --allow-gpu. No work started.")
     started = time.perf_counter()
@@ -705,7 +724,7 @@ def reconstruct_scene(root, scene, *, allow_gpu=False):
         {"stage": "colmap", "argv": [py, str(root / "scripts/run_colmap.py"), str(run),
                                      "--set", "mapper=pose_prior"]},
         {"stage": "poses", "argv": [py, str(root / "scripts/parse_colmap.py"), "--work", str(run)]},
-        *dense_commands(root, run, run / "dense"),
+        *dense_commands(root, run, run / "dense", profile=dense_profile),
     ]
     record = {"schema_version": 1, "id": run_id, "preparation_id": preparation["id"], "status": "running",
               "inputs": preparation["inputs"], "steps": [], "hardware": _hardware(),

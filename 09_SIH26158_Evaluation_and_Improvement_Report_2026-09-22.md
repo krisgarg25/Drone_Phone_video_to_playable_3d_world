@@ -441,6 +441,41 @@ outdoor UAV scene, no LAS/GeoTIFF/FBX export (a hand-rolled LAS writer was
 rejected as unverifiable without PDAL/laspy installed), no dynamic-object
 masking, and no live incremental streaming reconstruction.
 
+### 9.6 Dense quality/speed profiles, after correcting a false result
+
+The first ablation reported that turning geometric consistency off produced **zero
+fused points**. That was my own bug, not a physics result: with
+`--PatchMatchStereo.geom_consistency false` COLMAP writes only photometric depth
+maps, and the fusion step was still being told `--input_type geometric`, so it
+faithfully fused nothing. Re-fusing the same depth maps as photometric gives a
+real cloud:
+
+| Profile | Images | Dense | Fusion | Total | Fused points |
+|---|---|---|---|---|---|
+| `survey` — 1000 px, consistency on | 72 | 1230.3 s | 13.4 s | 1243.7 s | 355,965 |
+| `fast` — 1000 px, consistency off | 72 | 473.4 s | 11.6 s | 485.0 s | 375,458 |
+| `budget` — 700 px, consistency off | 72 | 316.2 s | ~5 s | ~321 s | 170,093 |
+
+Point count is not quality: consistency exists to suppress floaters, so the
+`fast` cloud has ~5% more points of unknown cleanliness, and the `budget` cloud
+has roughly half the density. What the table does establish is that **dense cost
+is dominated by resolution and by the consistency pass, not by the GPU being
+slow**. These three profiles are now a single `--dense-profile` choice in the
+reconstruct path, with the consistency flag and fusion input type derived from one
+source so they cannot disagree again.
+
+**What this changes about the speed verdict.** Combining the two measured levers —
+sequential-only matching (239.7 s instead of 946.9 s for 291 frames) and
+baseline-aware selection (68 frames instead of 288) — with the `fast` dense
+profile gives a rough projection for a 600-second flight: keyframes ~30 s, sparse
+~60–90 s at 68 frames, dense ~68 × 6.6 s ≈ 450 s, fusion ~15 s, export and hashing
+~60 s ≈ **615–650 s against the 900 s target**. That is a projection from
+measured per-image rates, **not a measured end-to-end run**, and it has not been
+validated for accuracy loss. But it moves the honest answer from "the target is
+out of reach" to "the target is plausibly reachable with these three settings,
+and here is the single experiment that would prove it": one real 1080p flight of
+~10 minutes with its GPS log, run once at `survey` and once at `fast`.
+
 ## 10. Sources and evidence policy
 
 

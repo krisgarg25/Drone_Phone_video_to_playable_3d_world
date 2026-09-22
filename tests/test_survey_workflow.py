@@ -654,6 +654,22 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertIs(record["evidence"]["occlusion_checked"], True)
         self.assertGreaterEqual(record["evidence"]["visibility"]["views_after"], 0)
 
+    def test_dense_profile_keeps_consistency_and_fusion_in_agreement(self):
+        work = self.root / "work/flight"
+        commands = survey.dense_commands(self.root, work, work / "dense")
+        consistency = "--PatchMatchStereo.geom_consistency"
+        self.assertEqual(commands[1]["argv"][commands[1]["argv"].index(consistency) + 1], "true")
+        self.assertEqual(commands[2]["argv"][commands[2]["argv"].index("--input_type") + 1],
+                         "geometric")
+        fast = survey.dense_commands(self.root, work, work / "dense", profile="fast")
+        self.assertEqual(fast[1]["argv"][fast[1]["argv"].index(consistency) + 1], "false")
+        self.assertEqual(fast[2]["argv"][fast[2]["argv"].index("--input_type") + 1], "photometric")
+        self.assertLess(
+            int(fast[1]["argv"][fast[1]["argv"].index("--PatchMatchStereo.max_image_size") + 1]),
+            int(commands[1]["argv"][commands[1]["argv"].index("--PatchMatchStereo.max_image_size") + 1]))
+        with self.assertRaises(ValueError):
+            survey.dense_commands(self.root, work, work / "d", profile="instant")
+
     def test_refused_preflight_leaves_no_run_directory(self):
         import cv2
         self.prepared_geometry()
