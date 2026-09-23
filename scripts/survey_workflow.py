@@ -320,8 +320,9 @@ def _latest_run(work, preparation, full=False):
         # Validate exactly what the run recorded: evidence products are optional
         # (they need a sparse model and depth maps), but anything present at
         # publish time must still match.
-        for name in record.get("files", {}):
-            if not _matches(_safe_path(run, name), record["files"][name], full):
+        for name, stamp in list(record.get("files", {}).items()) + list(
+                record.get("product_files", {}).items()):
+            if not _matches(_safe_path(run, name), stamp, full):
                 raise ValueError("Latest run evidence missing or changed (hash/stat): " + name)
         alignment = read_json(run / "georeference.json")
         if alignment.get("preparation_id") != preparation["id"] or alignment.get("run_id") != run_id:
@@ -596,6 +597,13 @@ def scene_status(root, scene):
                     names.append((context["run"] / "dense_points.ply", "Current dense ENU cloud; not validated full-scene coverage"))
                     # _latest_run already verified every entry in record["files"],
                     # so these are provenance-backed rather than bare existence.
+                    # _latest_run already hashed every entry below, so a tampered
+                    # deliverable reaches this listing only as an invalidated scene.
+                    for name in sorted(latest.get("product_files") or {}):
+                        kind = ("Georeferenced deliverable; see products/export_manifest.json"
+                                if not name.endswith("export_manifest.json")
+                                else "Format manifest: what was written, what was not, and why")
+                        names.append((run / name, kind))
                     for name, kind in (("evidence/evidence_points.ply",
                                         "Sparse ENU cloud with view support, reprojection error and visibility"),
                                        ("evidence/evidence_summary.json",
@@ -793,6 +801,10 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
         points = np.column_stack([cloud[k] for k in ("x", "y", "z")])
         colors = np.column_stack([cloud[k] for k in ("red", "green", "blue")])
         _export_points(points, colors, alignment, run / "dense_points.ply")
+        import survey_export as exporter
+        product_manifest = exporter.export_products(points, colors, alignment,
+                                                    _safe_path(run, "products"))
+        record["products"] = product_manifest
         sparse_points = _safe_path(run, POINTS3D)
         if sparse_points.is_file():
             import survey_products as products
@@ -800,6 +812,9 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
             evidence_cloud, evidence_report = products.evidence_for_sparse(
                 sparse_points, alignment, _safe_path(run, "evidence"), views=views)
             record["evidence"] = read_json(evidence_report)
+        record["product_files"] = {"products/" + entry["path"]:
+                                    _fingerprint(_safe_path(run, "products/" + entry["path"]), run)
+                                    for entry in product_manifest["files"]}
         record["files"] = {name: _fingerprint(_safe_path(run, name), run) for name in RUN_FILES
                            if _safe_path(run, name).is_file()}
         record["output"] = record["files"]["dense_points.ply"]

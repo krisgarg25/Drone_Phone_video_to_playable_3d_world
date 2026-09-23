@@ -672,6 +672,26 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertEqual(stale["status"], "invalid")
         self.assertIn("different preparation", " ".join(stale["blockers"]))
 
+    def test_complete_run_publishes_the_format_deliverables(self):
+        self.prepared_geometry()
+        self.fake_reconstruction()
+        record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        run = self.work / "survey/runs" / record["id"]
+        manifest = json.loads((run / "products" / "export_manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["claims_textured_mesh"], False)
+        written = {entry["format"] for entry in manifest["files"]}
+        self.assertIn("las", written)
+        self.assertIn("gltf", written)
+        self.assertEqual({e["format"] for e in manifest["not_delivered"]} - {"obj", "geotiff"}, set())
+        state = survey.scene_status(self.root, "flight")
+        self.assertIn("cloud.las", [a["name"] for a in state["artifacts"]])
+        # Tampering with a deliverable must invalidate the scene, not just the file.
+        target = run / "products" / "cloud.las"
+        target.write_bytes(target.read_bytes() + b"x")
+        tampered = survey.scene_status(self.root, "flight")
+        self.assertEqual(tampered["status"], "invalid")
+        self.assertIn("cloud.las", " ".join(tampered["blockers"]))
+
     def test_dense_profile_keeps_consistency_and_fusion_in_agreement(self):
         work = self.root / "work/flight"
         commands = survey.dense_commands(self.root, work, work / "dense")
