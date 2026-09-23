@@ -437,9 +437,48 @@ covered by tests.
 
 **Not achieved:** no measured ≤1 m accuracy, no measured completeness against
 reference surfaces, no run of the official 10-minute gate, no georeferenced
-outdoor UAV scene, no LAS/GeoTIFF/FBX export (a hand-rolled LAS writer was
-rejected as unverifiable without PDAL/laspy installed), no dynamic-object
+outdoor UAV scene, no dynamic-object
 masking, and no live incremental streaming reconstruction.
+
+### 9.8 Challenge coverage after the second build pass, and what is still unwired
+
+Eight work packages were built against the brief's eight key challenges, the
+mandatory/optional inputs, and the "visualization, measurement and analysis"
+deliverable. **28/28 CPU suites and 605 tests pass.** The distinction that matters
+for judging progress is between *implemented and tested* and *running inside the
+pipeline*:
+
+| Capability | Module | Tests | In the run path? |
+|---|---|---|---|
+| GPS into bundle adjustment | `survey_priors` | 6 | **Yes** — a run writes priors and maps with `pose_prior` |
+| Georeferenced alignment + provenance | `survey_georef`, `survey_workflow` | 35 | **Yes** |
+| Format deliverables (PLY/LAS/XYZ/glTF/FBX) | `survey_export`, `survey_formats` | 27 + 8 | **Yes** — published as hashed artifacts |
+| Occlusion-checked evidence | `survey_visibility`, `survey_products`, `survey_occlusion` | 36 + 36 | **Yes** for sparse evidence in a run |
+| Dynamic-object veto | `survey_dynamics` | 39 | **No** — module only |
+| Blur / compression / illumination weighting | `survey_frame_quality`, `survey_photometry` | 37 + 39 | **No** — module only |
+| Viewing-angle observability | `survey_observability` | 25 | **No** — analysis tool |
+| Speed budget model | `survey_streaming` | 24 | **No** — planning tool |
+| GNSS quality / accuracy protocol | `survey_gnss`, `survey_accuracy` | 38 + 36 | **No** — protocol not yet enforced by `evaluate_scene` |
+| Measurement / analysis | `survey_measure` | 83 | **No** — server renders measurements, nothing produces them yet |
+
+Wiring the "No" rows into the pipeline is the next unit of work and is mechanical;
+none of it needs new research. What no amount of wiring can fix is the missing
+data, restated below.
+
+**Two corrections to earlier claims in this report.** The dense ablation first
+appeared to produce zero points without geometric consistency; that was a flag bug
+(`--input_type geometric` with photometric-only depth maps), and §9.6 now carries
+the real numbers. And a "weak texture" explanation for false dynamic flags was
+disproved: with the obstacle deleted from the identical scene, 0 of 319 tracks were
+flagged while the fitted essential matrix matched the analytic one to 0.125 px, so
+the cause was tracker reach, not texture. Both were caught by measurement rather
+than argument, which is the standard this project should hold itself to.
+
+**Still impossible without real data:** any non-synthetic accuracy number, the
+official 10-minute gate, bare-earth terrain under vegetation, genuinely unseen
+facades, and semantic separation of roads / buildings / vegetation. A 1080p-or-
+better single-pass flight with its GPS log is the one input that unblocks most of
+them.
 
 ### 9.6 Dense quality/speed profiles, after correcting a false result
 
