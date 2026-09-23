@@ -33,7 +33,8 @@ class SurveyCliTests(unittest.TestCase):
                     "test_survey_accuracy.py", "test_survey_observability.py",
                     "test_survey_streaming.py", "test_survey_occlusion.py",
                     "test_survey_frame_quality.py", "test_survey_photometry.py",
-                    "test_survey_measure.py", "test_survey_inputs.py"}
+                    "test_survey_measure.py", "test_survey_inputs.py",
+                    "test_survey_formats.py"}
         self.assertTrue(expected.issubset(scripts), sorted(expected - scripts))
 
     def test_training_cache_depends_on_its_sibling_imports(self):
