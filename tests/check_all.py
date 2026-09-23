@@ -59,6 +59,8 @@ SUITES = [
     ("survey-measure", "test_survey_measure.py", 5),
     ("survey-inputs", "test_survey_inputs.py", 5),
     ("survey-formats", "test_survey_formats.py", 5),
+    ("survey-export", "test_survey_export.py", 5),
+    ("survey-dynamics", "test_survey_dynamics.py", 5),
     ("survey-workflow", "test_survey_workflow.py", 5),
     ("survey-api", "test_survey_api.py", 5),
     ("survey-cli", "test_survey_cli.py", 5),
