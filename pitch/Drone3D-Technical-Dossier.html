@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Walkable Reconstruction from Casual Video · Technical Dossier · September 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================================
+   BIENNALE YELLOW · literary-editorial system
+   Parchment ground, one indigo ink, solar-yellow atmosphere.
+   Fixed 1920x1080 stage. Self-contained: no framework, no build.
+   ========================================================================== */
+:root{
+  --paper:#E9E5DB; --paper-deep:#DCD6C4;
+  --sun:#F1EE2E; --sun-soft:#F8F39B; --haze:#F0DA7C;
+  --ink:#1B2566; --ember:#E26B4A;
+  --soft:rgba(27,37,102,.18); --softer:rgba(27,37,102,.10);
+  --stage:#C9C3B2;
+  --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --sans:"Archivo",system-ui,"Helvetica Neue",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--stage);
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+*,*::before,*::after{box-sizing:border-box;}
+.deck-viewport{position:fixed;inset:0;overflow:hidden;background:var(--stage);}
+.deck-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;
+  transform-origin:0 0;background:var(--paper);}
+.slide{position:absolute !important;inset:0;width:1920px;height:1080px;overflow:hidden;
+  display:block;visibility:hidden;opacity:0;pointer-events:none;background:var(--paper);}
+.slide.active,.slide.visible{visibility:visible;opacity:1;pointer-events:auto;z-index:1;}
+img,video,canvas,svg{max-width:100%;max-height:100%;}
+.deck-controls{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:1000;}
+@media print{
+  html,body{width:1920px;height:auto;overflow:visible;background:#fff;}
+  .deck-viewport{position:static;overflow:visible;background:#fff;}
+  .deck-stage{position:static;width:auto;height:auto;transform:none !important;background:none;}
+  .slide{position:relative !important;display:block !important;visibility:visible !important;
+    opacity:1 !important;pointer-events:auto !important;width:1920px;height:1080px;
+    break-after:page;page-break-after:always;}
+  .slide:last-child{break-after:auto;page-break-after:auto;}
+  .deck-controls{display:none !important;}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;transition-duration:.2s !important;}}
+
+.bloom,.ember,.tiles{position:absolute;inset:0;pointer-events:none;z-index:0;}
+.bloom{background:radial-gradient(58% 74% at 78% 22%,rgba(241,238,46,.62) 0%,rgba(248,243,155,.42) 38%,rgba(240,218,124,.18) 62%,rgba(233,229,219,0) 82%);}
+.bloom.bl{background:radial-gradient(52% 70% at 16% 30%,rgba(241,238,46,.58) 0%,rgba(248,243,155,.38) 40%,rgba(240,218,124,.16) 64%,rgba(233,229,219,0) 84%);}
+.bloom.br{background:radial-gradient(46% 62% at 84% 82%,rgba(241,238,46,.52) 0%,rgba(248,243,155,.32) 42%,rgba(233,229,219,0) 78%);}
+.ember{background:radial-gradient(30% 34% at 8% 92%,rgba(226,107,74,.20) 0%,rgba(226,107,74,0) 70%);}
+.ember.er{background:radial-gradient(26% 30% at 94% 10%,rgba(226,107,74,.17) 0%,rgba(226,107,74,0) 72%);}
+.tiles{background-image:
+  linear-gradient(to right,rgba(241,238,46,.50) 0 25%,transparent 25% 100%),
+  linear-gradient(to right,rgba(241,238,46,.28) 0 25%,transparent 25% 100%),
+  linear-gradient(to right,transparent 0 75%,rgba(241,238,46,.42) 75% 100%);
+  background-size:100% 13.5%;background-repeat:no-repeat;background-position:0 62%,0 75.5%,0 89%;}
+.slide > *{position:relative;z-index:1;}
+
+.slide{display:grid;grid-template-rows:auto 1fr auto;padding:52px 76px 60px;color:var(--ink);}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:32px;
+  padding-bottom:14px;border-bottom:1px solid var(--ink);}
+.foot{display:flex;align-items:flex-start;justify-content:space-between;gap:44px;
+  padding-top:14px;border-top:1px solid var(--soft);}
+.body{display:flex;flex-direction:column;min-height:0;padding:26px 0 20px;}
+.pagenum{position:absolute;right:46px;bottom:24px;font-family:var(--mono);font-size:15px;
+  letter-spacing:.08em;opacity:.75;z-index:3;}
+
+.display{font-family:var(--serif);font-weight:400;font-size:186px;line-height:.86;letter-spacing:-.018em;}
+.headline{font-family:var(--serif);font-weight:400;font-size:66px;line-height:1.06;letter-spacing:-.005em;}
+.headline-sm{font-family:var(--serif);font-weight:400;font-size:48px;line-height:1.04;letter-spacing:-.005em;}
+.headline-xs{font-family:var(--serif);font-weight:400;font-size:36px;line-height:1.08;letter-spacing:-.004em;}
+.ital{font-family:var(--serif);font-style:italic;font-weight:400;}
+.strand-title{font-family:var(--serif);font-weight:400;font-size:29px;line-height:1.1;}
+.ledger-title{font-family:var(--serif);font-weight:400;font-size:26px;line-height:1.15;}
+.numeral{font-family:var(--serif);font-weight:400;letter-spacing:-.04em;line-height:.9;}
+.n-jumbo{font-size:230px;line-height:.84;} .n-lg{font-size:120px;} .n-md{font-size:82px;}
+.n-sm{font-size:46px;} .n-xs{font-size:34px;line-height:1;}
+.lede{font-family:var(--sans);font-weight:400;font-size:18px;line-height:1.58;}
+.sm{font-family:var(--sans);font-weight:400;font-size:15px;line-height:1.52;}
+.xs{font-family:var(--sans);font-weight:400;font-size:13px;line-height:1.5;}
+.label{font-family:var(--sans);font-weight:600;font-size:14px;line-height:1.2;letter-spacing:.18em;text-transform:uppercase;}
+.label-t{font-family:var(--sans);font-weight:600;font-size:12px;line-height:1.2;letter-spacing:.16em;text-transform:uppercase;}
+.rail{font-family:var(--sans);font-weight:600;font-size:13px;letter-spacing:.32em;text-transform:uppercase;}
+.mono{font-family:var(--mono);font-weight:400;font-size:14px;line-height:1.45;letter-spacing:.02em;}
+.faded{opacity:.62;} .faded2{opacity:.4;}
+strong,b{font-weight:600;}
+.cite{font-family:var(--mono);font-size:12px;letter-spacing:.02em;opacity:.6;}
+
+/* ---- opt-in type scale: fills a sparse page without stretching boxes ---- */
+.big .sm{font-size:18px;line-height:1.56;}
+.big .xs{font-size:15px;line-height:1.5;}
+.big .lede{font-size:21px;line-height:1.55;}
+.big .label-t{font-size:13px;}
+.big .mono{font-size:16px;line-height:1.5;}
+.big .headline-xs{font-size:44px;}
+.big .headline-sm{font-size:56px;}
+.big .headline{font-size:72px;}
+.big .strand-title{font-size:34px;}
+.big .strand-num{font-size:38px;}
+.big .panel-sun,.big .panel-deep{padding:28px 32px;}
+.big .lhead span{font-size:12px;}
+.xl .sm{font-size:19.5px;line-height:1.56;}
+.xl .xs{font-size:16px;line-height:1.5;}
+.xl .lede{font-size:23px;line-height:1.54;}
+.xl .label-t{font-size:13.5px;}
+.xl .mono{font-size:16px;line-height:1.5;}
+.xl .headline-xs{font-size:50px;line-height:1.06;}
+.xl .headline-sm{font-size:60px;}
+.xl .headline{font-size:76px;}
+.xl .strand-title{font-size:36px;}
+.xl .strand-num{font-size:42px;}
+.xl .panel-sun,.xl .panel-deep{padding:30px 34px;}
+.xl .lhead span{font-size:12px;}
+
+.rule{height:1px;background:var(--ink);border:0;}
+.rule-soft{height:1px;background:var(--soft);border:0;}
+.panel-sun{background:var(--sun);padding:24px 28px;}
+.panel-deep{background:var(--paper-deep);padding:24px 28px;}
+.railwrap{position:absolute;left:20px;top:50%;height:0;z-index:2;}
+.railwrap span{display:block;transform:translateY(-50%) rotate(-90deg);transform-origin:left top;white-space:nowrap;}
+
+.g{display:grid;gap:0;}
+.c2{grid-template-columns:repeat(2,1fr);} .c3{grid-template-columns:repeat(3,1fr);}
+.c4{grid-template-columns:repeat(4,1fr);} .c5{grid-template-columns:repeat(5,1fr);}
+.split > * + *{border-left:1px solid var(--soft);padding-left:34px;}
+.split > *{padding-right:34px;} .split > *:last-child{padding-right:0;}
+
+.strand{display:grid;grid-template-columns:50px 1fr;gap:20px;
+  border-bottom:1px solid var(--soft);padding-bottom:14px;margin-bottom:14px;}
+.strand:last-child{border-bottom:0;margin-bottom:0;}
+.strand-num{font-family:var(--serif);font-weight:400;font-size:32px;line-height:1;}
+
+.lg{display:grid;grid-template-columns:1.5fr 1.15fr .95fr 78px;gap:24px;
+  border-bottom:1px solid var(--soft);padding:9px 0;align-items:baseline;}
+.lg:last-child{border-bottom:0;}
+.lhead{display:grid;grid-template-columns:1.5fr 1.15fr .95fr 78px;gap:24px;
+  border-bottom:1px solid var(--ink);padding:0 0 8px;margin-bottom:2px;}
+.lhead span{font-family:var(--sans);font-weight:600;font-size:11px;letter-spacing:.16em;text-transform:uppercase;}
+
+.ref{display:grid;grid-template-columns:40px 1fr;gap:14px;border-bottom:1px solid var(--softer);
+  padding:3px 0;align-items:baseline;}
+.ref:last-child{border-bottom:0;}
+.ref p{font-size:12.5px;line-height:1.38;}
+.ref-id{font-family:var(--mono);font-size:12px;opacity:.6;}
+
+.bar-track{height:14px;background:var(--softer);position:relative;}
+.bar-track > i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);display:block;}
+.bar-track > i.lit{background:var(--sun);border:1px solid var(--ink);}
+
+.plate{border:1px solid var(--ink);overflow:hidden;background:var(--paper-deep);}
+.plate img{display:block;width:100%;height:100%;object-fit:cover;
+  filter:sepia(.15) saturate(.84) contrast(1.03) brightness(1.02);}
+
+.reveal{opacity:0;transform:translateY(18px);
+  transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1);}
+.slide.visible .reveal{opacity:1;transform:none;}
+.slide.visible .reveal:nth-child(2){transition-delay:.07s}
+.slide.visible .reveal:nth-child(3){transition-delay:.14s}
+.slide.visible .reveal:nth-child(4){transition-delay:.21s}
+.slide.visible .reveal:nth-child(5){transition-delay:.28s}
+.bloomin{animation:bloomin 2.2s cubic-bezier(.16,1,.3,1) both;}
+@keyframes bloomin{from{opacity:0;transform:scale(1.14)}to{opacity:1;transform:scale(1)}}
+@media print{.reveal{opacity:1 !important;transform:none !important}.bloomin{animation:none}}
+
+.deck-controls{display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:12px;
+  letter-spacing:.08em;color:var(--ink);}
+.deck-controls button{font:inherit;color:inherit;background:transparent;border:1px solid var(--ink);
+  padding:5px 11px;cursor:pointer;}
+.deck-controls button:hover{background:var(--sun);}
+</style>
+</head>
+<body>
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- ============ 01 COVER ============ -->
+<section class="slide active">
+  <div class="bloom bloomin"></div><div class="ember"></div><div class="tiles"></div>
+  <div class="pagenum">01 / 20</div>
+  <div class="head"><span class="label">Drone3D Studio</span><span class="label">Technical dossier · September 2026</span></div>
+  <div class="body" style="justify-content:center;padding-top:6px">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:56px;align-items:end">
+      <div>
+        <div class="label" style="margin-bottom:22px">Approach · feasibility · viability · impact</div>
+        <h1 class="display" style="font-size:168px;line-height:.87">Making casual video<br>into <span class="ital">space you<br>can inhabit.</span></h1>
+      </div>
+      <div style="text-align:right;padding-bottom:12px">
+        <div class="numeral n-lg">2026</div>
+        <div class="mono" style="margin-top:8px">September<br>&mdash;<br>rev 6</div>
+      </div>
+    </div>
+    <p class="lede" style="margin-top:34px;max-width:1280px">
+      Radiance-field reconstruction can now draw a room from a phone clip at sixty frames a second in an ordinary browser.
+      It still cannot tell you which way is down, how large the room is, or whether a person could cross it. This dossier
+      sets out a method that recovers those three properties automatically, verifies the result by driving a body through
+      it, and examines whether the approach is feasible, viable, and worth doing.
+    </p>
+  </div>
+  <div class="g c4" style="border-top:1px solid var(--ink)">
+    <div style="border-right:1px solid var(--soft);padding:14px 28px 0 0"><div class="label-t">Domain</div>
+      <div class="sm" style="margin-top:6px">Reconstruction, spatial computing,<br>embodied simulation</div></div>
+    <div style="border-right:1px solid var(--soft);padding:14px 28px 0 0"><div class="label-t">Contribution</div>
+      <div class="sm" style="margin-top:6px">Automatic frame, surface and<br>verification for splat scenes</div></div>
+    <div style="border-right:1px solid var(--soft);padding:14px 28px 0 0"><div class="label-t">Status</div>
+      <div class="sm" style="margin-top:6px">Working implementation,<br>public and reproducible</div></div>
+    <div style="padding:14px 0 0 0"><div class="label-t">Author</div>
+      <div class="sm" style="margin-top:6px">Kris Garg</div></div>
+  </div>
+</section>
+
+<!-- ============ 02 THE QUESTION ============ -->
+<section class="slide">
+  <div class="bloom bl bloomin" style="opacity:.7"></div>
+  <div class="pagenum">02 / 20</div>
+  <div class="railwrap"><span class="rail">The question</span></div>
+  <div class="head"><span class="label">The question being asked</span><span class="mono faded">Problem statement</span></div>
+  <div class="body" style="padding-left:30px;justify-content:center">
+    <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:60px;align-items:start">
+      <div>
+        <h2 class="headline" style="font-size:60px">Given one uncontrolled video of a real place, can a system recover a
+          <span class="ital">physically consistent space</span> without a human deciding anything?</h2>
+        <p class="lede" style="margin-top:22px;max-width:760px">Uncontrolled means filmed by an untrained person, on a
+          phone or a cheap drone, with no markers, no depth sensor, no survey equipment and no knowledge of the room's
+          true size. Without a human deciding anything means no per-scene settings, no manual ground selection and no
+          operator who has learned which knobs to turn.</p>
+        <p class="lede" style="margin-top:16px;max-width:760px">Physically consistent is the part worth defining
+          carefully, because it is the part the literature does not deliver. It has four conditions.</p>
+        <div class="g c2" style="gap:14px 30px;margin-top:22px;max-width:800px">
+          <div class="panel-sun" style="padding:16px 24px"><div class="label-t">Condition one</div>
+            <div class="strand-title" style="margin-top:6px">A known gravity vector</div>
+            <p class="sm" style="margin-top:5px">One axis is down, and the scene is oriented so that it is.</p></div>
+          <div class="panel-sun" style="padding:16px 24px"><div class="label-t">Condition two</div>
+            <div class="strand-title" style="margin-top:6px">A known metric scale</div>
+            <p class="sm" style="margin-top:5px">A metre is a metre, so distances mean something.</p></div>
+          <div class="panel-sun" style="padding:16px 24px"><div class="label-t">Condition three</div>
+            <div class="strand-title" style="margin-top:6px">A traversable surface</div>
+            <p class="sm" style="margin-top:5px">Something with an inside and an underside that stops a body.</p></div>
+          <div class="panel-sun" style="padding:16px 24px"><div class="label-t">Condition four</div>
+            <div class="strand-title" style="margin-top:6px">An independent check</div>
+            <p class="sm" style="margin-top:5px">The claim of walkability is measured, not asserted.</p></div>
+        </div>
+      </div>
+      <div>
+        <div class="plate" style="height:300px"><img src="img/shot-hall-shell.jpg" alt="Wireframe collision shell of a rebuilt hall with a character standing inside"></div>
+        <p class="sm faded" style="margin-top:9px">The object that satisfies conditions one to three. It is not a rendering
+          of the hall; it is the surface a body would stand on, derived from the reconstruction.</p>
+        <div class="rule" style="margin:26px 0 18px"></div>
+        <div class="label-t">Why this is a research question and not an engineering one</div>
+        <p class="sm" style="margin-top:10px">Conditions one and two are provably undecidable from images alone.
+          Structure from motion recovers geometry only up to an unknown similarity transform, and a scene has no intrinsic
+          up. Any solution must import information from outside the pixels. The interesting question is what weak, cheap
+          outside signal is sufficient.</p>
+        <p class="sm" style="margin-top:12px">Conditions three and four are a different problem: appearance representations
+          that interpolate well do not carry geometry, and geometry that carries no semantics of support cannot be checked
+          for walkability. The interesting question there is what you can construct between the two without asking a human
+          to label it.</p>
+        <div class="panel-deep" style="margin-top:22px"><div class="label-t">Answer proposed here</div>
+          <p class="sm" style="margin-top:8px">Motion statistics and device pose logs for one and two. A voxelised support
+            shell with the walker's own body dimensions as the constraint for three. A headless simulation of the actual
+            viewer for four.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">The similarity-transform ambiguity is the classical result of projective
+    reconstruction; see [2] and [14] for the modern treatment.</span></div>
+</section>
+
+<!-- ============ 03 PRIOR ART ============ -->
+<section class="slide big">
+  <div class="pagenum">03 / 20</div>
+  <div class="head"><span class="label">Prior art · where the field arrived</span><span class="mono faded">And what each line of work left open</span></div>
+  <div class="body" style="padding-top:20px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;flex:1;align-items:start">
+      <div>
+        <div class="label-t">Appearance, then geometry, then speed</div>
+        <div class="strand" style="margin-top:14px"><div class="strand-num">1</div><div>
+          <div class="strand-title">Radiance fields give photoreal appearance, slowly</div>
+          <p class="sm faded" style="margin-top:6px">NeRF [3] established that a continuous volumetric representation can be
+            optimised from unposed images. Mip-NeRF 360 [4] extended it to unbounded, full-surround scenes, which is the
+            regime casual video actually produces. Both are per-scene optimisations with no geometry output and no
+            interactive frame rate.</p></div></div>
+        <div class="strand"><div class="strand-num">2</div><div>
+          <div class="strand-title">Gaussian splatting makes it real time, and explicit</div>
+          <p class="sm faded" style="margin-top:6px">Kerbl et al. [1] replaced the implicit field with anisotropic Gaussians
+            rasterised directly, reaching interactive rates and making the representation editable and inspectable. This is
+            the representation used throughout this work. The two standard surveys [5][6] document the explosion of follow-up
+            work and, notably, that almost all of it optimises image quality metrics.</p></div></div>
+        <div class="strand"><div class="strand-num">3</div><div>
+          <div class="strand-title">Camera geometry is a solved commodity</div>
+          <p class="sm faded" style="margin-top:6px">Incremental structure from motion [2] gives poses and sparse structure
+            from ordinary images, and remains the backbone of every serious pipeline. Recent work injects learned monocular
+            surface priors to make it robust on sparse or planar scenes [14], which is the same failure mode casual video
+            produces.</p></div></div>
+        <div class="strand"><div class="strand-num">4</div><div>
+          <div class="strand-title">Surface extraction from splats is now active</div>
+          <p class="sm faded" style="margin-top:6px">SuGaR [7] and 2D Gaussian Splatting [8] constrain Gaussians to lie on a
+            surface so a mesh can be pulled out. This is the closest prior art to condition three, and the difference is
+            instructive: they optimise for a mesh that <em class="ital">looks</em> right. A mesh that <em class="ital">stops
+            a body</em> has different requirements entirely, discussed on page 8.</p></div></div>
+      </div>
+      <div>
+        <div class="label-t">Adjacent work that already needs what we are building</div>
+        <div class="strand" style="margin-top:14px"><div class="strand-num">5</div><div>
+          <div class="strand-title">Robotics has started converting splats into traversability</div>
+          <p class="sm faded" style="margin-top:6px">Splatblox [9] builds a traversability-aware voxel map from Gaussian
+            splats for outdoor navigation. This is strong evidence the need is real and current. It also assumes a robot with
+            its own sensors on site, and it plans motion rather than certifying a reconstructed space for someone who is not
+            there.</p></div></div>
+        <div class="strand"><div class="strand-num">6</div><div>
+          <div class="strand-title">Embodied AI is short of real, walkable scenes</div>
+          <p class="sm faded" style="margin-top:6px">Habitat [10] and AI2-THOR [11] built the research platforms this field
+            runs on, and both are hand-authored or artist-modelled environments. The bottleneck for embodied research has
+            become scene supply, not scene rendering. Photographed real space is the obvious unexploited source.</p></div></div>
+        <div class="strand"><div class="strand-num">7</div><div>
+          <div class="strand-title">Volumetric fusion is decades old and still the right primitive</div>
+          <p class="sm faded" style="margin-top:6px">Truncated signed distance fusion [12] and real-time fusion on mobile
+            hardware [13] established that a voxel grid with a signed distance field gives you a surface with a consistent
+            inside and outside. That property, not the rendering quality, is what a walker requires.</p></div></div>
+        <div class="rule" style="margin:22px 0 16px"></div>
+        <div class="label-t">The consistent omission</div>
+        <p class="sm" style="margin-top:10px">Across all seven lines, the output is an artefact to be looked at. Gravity,
+          scale and support are supplied by a human either during capture, during processing, or when the result is used.
+          Nobody has made them properties of the reconstruction itself, because no benchmark scores them.</p>
+        <div class="panel-deep" style="margin-top:6px;padding:16px 24px"><div class="label-t">Our positioning</div>
+          <p class="sm" style="margin-top:8px;font-size:17px;line-height:1.5">No new representation and no new learning. The contribution is a
+            composition: recovering the missing physical properties from signals already present in casual footage, and
+            making verification part of the pipeline rather than a human review step.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Bracketed numbers refer to the bibliography on page 19.</span></div>
+</section>
+
+<!-- ============ 04 THE GAP ============ -->
+<section class="slide">
+  <div class="bloom br bloomin" style="opacity:.6"></div>
+  <div class="pagenum">04 / 20</div>
+  <div class="head"><span class="label">Why the four conditions are hard</span><span class="mono faded">The technical obstacles, individually</span></div>
+  <div class="body" style="padding-top:22px">
+    <div class="g c2" style="gap:34px 56px;flex:1;align-items:start">
+      <div>
+        <div class="rule" style="margin-bottom:16px"></div>
+        <div style="display:flex;gap:20px;align-items:flex-start">
+          <span class="numeral n-sm" style="width:44px;flex:0 0 auto">i</span>
+          <div><div class="headline-xs">The up direction is a coin flip</div>
+            <p class="sm" style="margin-top:10px">A plane fitted to candidate floors has two normals of equal validity. A
+              naive implementation picks one and is right half the time, which in this domain means exporting entire scenes
+              upside down at a rate indistinguishable from success. The failure is silent because the render still looks
+              plausible from most viewpoints.</p>
+            <p class="sm faded" style="margin-top:10px"><b>What makes it tractable:</b> cameras are above the ground they
+              film, essentially always. That asymmetry is a statistical signal, and it survives even in footage with no
+              visible floor in most frames.</p></div></div>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:16px"></div>
+        <div style="display:flex;gap:20px;align-items:flex-start">
+          <span class="numeral n-sm" style="width:44px;flex:0 0 auto">ii</span>
+          <div><div class="headline-xs">Monocular reconstruction has no scale</div>
+            <p class="sm" style="margin-top:10px">This is not an implementation weakness, it is a property of the geometry.
+              Images are invariant under scaling the world and the camera rig together. Any pipeline that reports metres has
+              imported that information from somewhere, and most pipelines quietly import it from a human.</p>
+            <p class="sm faded" style="margin-top:10px"><b>What makes it tractable:</b> two independent, cheap, physically
+              grounded anchors exist in ordinary footage: typical handheld camera height, and typical drone cruise
+              speed. Device pose logs supply a third and best one directly.</p></div></div>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:16px"></div>
+        <div style="display:flex;gap:20px;align-items:flex-start">
+          <span class="numeral n-sm" style="width:44px;flex:0 0 auto">iii</span>
+          <div><div class="headline-xs">An appearance representation has no surface</div>
+            <p class="sm" style="margin-top:10px">Gaussians are a distribution, not a boundary. They have opacity, not
+              solidity. Extracting a mesh by fitting to them produces a surface that approximates what the viewer sees, which
+              is not the same as a surface that blocks a body: it can be watertight and still let a walker through a table,
+              or it can be thick enough to stand on and still float above the actual floor.</p>
+            <p class="sm faded" style="margin-top:10px"><b>What makes it tractable:</b> stop asking the surface to be
+              faithful to the image. Ask it to be faithful to <em class="ital">support</em>, and make the walker's own
+              dimensions the definition of a step.</p></div></div>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:16px"></div>
+        <div style="display:flex;gap:20px;align-items:flex-start">
+          <span class="numeral n-sm" style="width:44px;flex:0 0 auto">iv</span>
+          <div><div class="headline-xs">Every quality metric is a picture metric</div>
+            <p class="sm" style="margin-top:10px">Reconstruction error against held-out views is the field's standard
+              measure and it is genuinely informative about appearance. It says nothing about whether the scene is usable. A
+              world can score well and be unnavigable, and the pipeline will report success with a straight face.</p>
+            <p class="sm faded" style="margin-top:10px"><b>What makes it tractable:</b> the property you care about is
+              behavioural. Simulate it. The measurement is then cheap, automatic, and capable of contradicting the
+              system's own optimistic summary.</p></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Obstacle iv is the one that changes how the other three are engineered: a
+    measurement that can say no forces the rest of the system to be honest.</span></div>
+</section>
+
+<!-- ============ 05 APPROACH OVERVIEW ============ -->
+<section class="slide xl">
+  <div class="pagenum">05 / 20</div>
+  <div class="head"><span class="label">Solution approach · the method in one view</span><span class="mono faded">Five ideas, in the order they are applied</span></div>
+  <div class="body" style="padding-top:20px">
+    <h2 class="headline-sm" style="margin-bottom:26px">Recover the physics from what the footage already knows, then
+      believe nothing you have not <span class="ital">simulated.</span></h2>
+    <div class="g c5 split" style="flex:1;align-items:start">
+      <div>
+        <div class="label-t">Idea one</div>
+        <div class="headline-xs" style="margin:10px 0 12px">Read the<br>footage before<br>processing it</div>
+        <p class="sm">Motion profile, blur distribution and rotation dominance are measured before any solver runs. They
+          select a capture regime and set solver parameters. The system diagnoses rather than defaults, so a walked living
+          room is never routed through an aerial pipeline.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">Addresses the settings problem at its root: the settings are an output.</p>
+      </div>
+      <div>
+        <div class="label-t">Idea two</div>
+        <div class="headline-xs" style="margin:10px 0 12px">Import scale<br>from physics,<br>not from a human</div>
+        <p class="sm">Camera height and camera speed are physical quantities the footage contains. Either fixes the metric
+          scale of the reconstruction. Where a device supplies its own pose log, that supersedes both and becomes a prior
+          inside the solver rather than a post-hoc multiplier.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">Conditions one and two, resolved from signals already present.</p>
+      </div>
+      <div>
+        <div class="label-t">Idea three</div>
+        <div class="headline-xs" style="margin:10px 0 12px">Build support,<br>not a mesh</div>
+        <p class="sm">A voxelised shell derived from the cloud, in which any change in height becomes a vertical face. The
+          walker's own capsule dimensions decide what counts as climbable, so traversability is a property of a body rather
+          than an opinion about a surface.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">Condition three, deliberately not solved by mesh extraction.</p>
+      </div>
+      <div>
+        <div class="label-t">Idea four</div>
+        <div class="headline-xs" style="margin:10px 0 12px">Choose by<br>measurement,<br>not by rule</div>
+        <p class="sm">Where two plausible answers exist, build both and test them. Two candidate floors are constructed,
+          routed, and raced; the one the walker travels further on is the one that ships. Where a budget is needed, it is
+          read from the machine at run time rather than configured.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">Removes the judgement calls that make a pipeline bespoke.</p>
+      </div>
+      <div>
+        <div class="label-t">Idea five</div>
+        <div class="headline-xs" style="margin:10px 0 12px">Verify by<br>simulation, and<br>allow a no</div>
+        <p class="sm">A rule set grades the finished world, then a character is driven through it unattended with its
+          trajectory logged. The reported outcome is cross-checked against the trajectory, because a summary statistic can be
+          arithmetically correct and still describe something that did not happen.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">Condition four, and the mechanism that keeps the other four honest.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">The method is classical in its parts and unusual in its composition: none of the
+    five ideas requires a learned model, which is what makes the whole thing inspectable and cheap to run.</span></div>
+</section>
+
+<!-- ============ 06 APPROACH: CAMERA GEOMETRY ============ -->
+<section class="slide">
+  <div class="bloom bl bloomin" style="opacity:.55"></div>
+  <div class="pagenum">06 / 20</div>
+  <div class="head"><span class="label">Approach detail · camera geometry from unusable footage</span><span class="mono faded">Idea one and part of idea two</span></div>
+  <div class="body" style="padding-top:20px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;flex:1;align-items:start">
+      <div>
+        <h2 class="headline-sm">Casual video is the worst possible input for structure from motion, and it is the only input
+          people have.</h2>
+        <p class="lede" style="margin-top:20px">Handheld footage is blurry, has motion blur concentrated in the frames that
+          turn rather than translate, repeats the same wall at slightly different times, and often contains long stretches
+          with almost no parallax. A solver fed that directly either fails or registers a fraction of the frames and
+          silently produces a warped model.</p>
+        <div class="rule" style="margin:24px 0 18px"></div>
+        <div class="label-t" style="margin-bottom:14px">Four interventions</div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><div class="sm">
+          <b>Select frames by information, not by interval.</b> Frames are binned across the clip's timeline so coverage is
+          even, then a sharpness floor is derived from the footage's own blur distribution rather than fixed, and near
+          duplicates are rejected. This removes exactly the turning-in-place frames that most damage a solve.</div></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><div class="sm">
+          <b>Supply the true focal length.</b> A solver's default guess of 1.2 times sensor width can be wrong by roughly
+          45% on a phone lens, and a wrong focal length corrupts depth in proportion to distance. The capture surface
+          exports a real calibration alongside the video, and the pipeline consumes it automatically when it is present.</div></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><div class="sm">
+          <b>Inject device poses as priors.</b> Where a phone records its own trajectory, those positions enter the
+          reconstruction as metric priors. This is the difference between inferring scale after the fact and having scale
+          constrain the solve throughout, and it is measurably the strongest single input in the system.</div></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><div class="sm">
+          <b>Refuse to fail on the first attempt.</b> The solver binary is probed for which options it actually supports, so
+          an unsupported flag is dropped rather than fatal. A failing solve then descends a ladder of alternatives: a
+          different feature matcher, a different mapper, relaxed thresholds. Known-bad legacy assets are classified as
+          unsupported input rather than surfacing as a crash.</div></div>
+      </div>
+      <div>
+        <div class="plate" style="height:290px"><img src="img/ab-real.jpg" alt="Aerial photograph of a rock outcrop, the kind of casual drone footage the system consumes"></div>
+        <p class="sm faded" style="margin-top:9px">A frame from an ordinary consumer drone clip. Nothing on the ground, no
+          markers, no survey control. This is the input class, not a curated one.</p>
+        <div class="rule-soft" style="margin:22px 0 16px"></div>
+        <div class="label-t">Why this is the right place to spend effort</div>
+        <p class="sm" style="margin-top:8px">Everything downstream inherits the camera solution. A solve that registers
+          two thirds of frames does not produce a two-thirds-quality world; it produces holes in the floor, a warped
+          perimeter, and a route that stops for no visible reason. Robustness here is worth more than fidelity later.</p>
+        <div class="panel-deep" style="margin-top:18px"><div class="label-t">Relation to the literature</div>
+          <p class="sm" style="margin-top:8px">The approach is deliberately non-learning. Recent work reaches the same
+            robustness by fusing learned monocular surface priors into the solver [14], which is more powerful and also
+            harder to explain, harder to audit, and dependent on a model whose failure modes are not visible in the output.
+            Blur-aware selection, real calibration and device priors get most of the way there with nothing to trust but
+            arithmetic.</p>
+          <p class="sm faded" style="margin-top:10px">A learned prior remains the obvious upgrade path and is on the
+            research agenda on page 17.</p></div>
+        <div class="rule-soft" style="margin:22px 0 16px"></div>
+        <div class="label-t">Multi-clip fusion</div>
+        <p class="sm" style="margin-top:8px">Separate clips of the same place are matched into one space rather than
+          reconstructed separately and aligned afterwards, because alignment after the fact inherits each clip's own scale
+          error. This is the least robust capability in the system and is treated as an open problem, not a finished one.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Reference numbers in brackets refer to the bibliography on page 19.</span></div>
+</section>
+
+<!-- ============ 07 APPROACH: FRAME ============ -->
+<section class="slide">
+  <div class="pagenum">07 / 20</div>
+  <div class="head"><span class="label">Approach detail · establishing a frame</span><span class="mono faded">Gravity and metric scale</span></div>
+  <div class="body" style="padding-top:20px">
+    <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:56px;flex:1;align-items:start">
+      <div>
+        <h2 class="headline-sm">Two physical facts, weak on their own, sufficient together.</h2>
+        <p class="lede" style="margin-top:18px">The reconstruction is a similarity class, not a metric object. To collapse
+          that class to a single world you need one number. Three candidate sources exist, and the method uses whichever the
+          footage supplies, in a fixed order of preference.</p>
+        <div class="rule" style="margin:22px 0 16px"></div>
+        <div class="strand"><div class="strand-num">a</div><div>
+          <div class="strand-title">Device-recorded positions</div>
+          <p class="sm faded" style="margin-top:6px">Strongest. A phone that logged its own trajectory in metres gives both
+            scale and up directly, and gives them before the solve rather than after. Available on any modern handset with
+            the capture surface, and on either major mobile augmented-reality stack.</p></div></div>
+        <div class="strand"><div class="strand-num">b</div><div>
+          <div class="strand-title">Handheld camera height</div>
+          <p class="sm faded" style="margin-top:6px">Weak but almost always available. A person walking and filming holds a
+            phone at a fairly stable height above the floor they are filming. One declared constant converts the camera
+            solution's own statistics into a metric scale, and simultaneously resolves the up direction because the cameras
+            must sit above the surface they see.</p></div></div>
+        <div class="strand"><div class="strand-num">c</div><div>
+          <div class="strand-title">Aerial cruise speed</div>
+          <p class="sm faded" style="margin-top:6px">The aerial counterpart. A consumer drone holding position in light wind
+            and flying a steady orbit moves at a characteristic speed, which fixes scale from the camera path's own
+            geometry.</p></div></div>
+        <div class="panel-sun" style="margin-top:8px;padding:18px 24px"><div class="label-t">The honest caveat</div>
+          <p class="sm" style="margin-top:8px">These are priors, not measurements. A phone held at the waist, a drone in a
+            gust, or a clip filmed from a vehicle all shift the answer. The method therefore reports which anchor it used and
+            what it assumed, so the scale is a stated input rather than a hidden constant. For survey-accurate work the
+            device log or a known dimension in frame is required.</p></div>
+      </div>
+      <div>
+        <div class="label-t">How up is decided</div>
+        <p class="sm" style="margin-top:10px">Candidate orientations are scored against a single asymmetry: the cameras are
+          above the ground they film. The approach that puts the majority of camera height above the fitted surface wins.
+          This is robust precisely because it does not require identifying the floor as an object; it only requires that
+          whatever the ground is, it is below the lenses.</p>
+        <div class="rule-soft" style="margin:20px 0 16px"></div>
+        <div class="label-t">What the frame then unlocks</div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Distances</div><div class="mono">metres, not pixels</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Clearances</div><div class="mono">against a body height</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Slopes</div><div class="mono">against a climb angle</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Fall risk</div><div class="mono">against a real drop</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0;border-bottom:0"><div class="sm">Physics timestep</div><div class="mono">a stable integration</div></div>
+        <p class="sm faded" style="margin-top:14px">Without a frame, none of these are well-formed questions. This is why
+          framing is placed before the surface stage rather than as a display-time transform.</p>
+        <div class="rule" style="margin:22px 0 16px"></div>
+        <div class="label-t">A consequence that shaped the whole codebase</div>
+        <p class="sm" style="margin-top:10px">Because scale is inferred per scene, every threshold downstream must be
+          expressed relative to it. Any check written in bare metres will pass in a large world and fail in a small one for
+          reasons that look like randomness. The system therefore forbids absolute distances and absolute element counts after
+          this stage, and that single constraint removed most of its historical instability.</p>
+        <div class="panel-deep" style="margin-top:18px"><div class="label-t">Failure mode we hit</div>
+          <p class="sm" style="margin-top:8px">An earlier version fitted a plane and took its normal. Half the time the sign
+            was wrong and the scene exported inverted. A walker's ground check then searched a band that began below the
+            floor of a small room, so grounding never registered and a zero-fall result was reported for a character that was
+            airborne throughout. Both are documented rather than removed from the record.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Classical treatment of the ambiguity in [2]; the modern learned alternative in
+    [14]. Our approach is deliberately the non-learned one.</span></div>
+</section>
+
+<!-- ============ 08 APPROACH: SURFACE ============ -->
+<section class="slide">
+  <div class="bloom br bloomin" style="opacity:.55"></div>
+  <div class="pagenum">08 / 20</div>
+  <div class="head"><span class="label">Approach detail · from appearance to support</span><span class="mono faded">The central technical choice</span></div>
+  <div class="body" style="padding-top:18px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:52px;flex:1;align-items:start">
+      <div>
+        <h2 class="headline-sm">We did not extract a mesh. That was the decision.</h2>
+        <p class="lede" style="margin-top:16px">The obvious route is SuGaR [7] or 2DGS [8]: constrain the Gaussians to a
+          surface, pull out a triangle mesh, hand it to a physics engine. It produces a beautiful object and a bad floor.
+          A visually faithful mesh is watertight in the wrong places and paper-thin in the right ones; a table top is a
+          surface, but the space under the table is not a hole in the world.</p>
+        <p class="lede" style="margin-top:14px">What a walker needs is not a boundary. It is a <b>support field</b>: for
+          every column of the world, what height will hold a body up.</p>
+        <div class="rule" style="margin:22px 0 16px"></div>
+        <div class="label-t">The construction</div>
+        <p class="sm" style="margin-top:10px">The cloud is voxelised. Within that grid, occupied cells become solid and the
+          boundary between occupied and empty becomes a face. Crucially, every change in height across a cell becomes a
+          vertical wall rather than a ramp, so the resulting surface cannot be walked up at an angle that the underlying
+          geometry does not actually support.</p>
+        <p class="sm" style="margin-top:12px">Traversability is then decided by the body, not by the surface. A capsule of a
+          stated width and height cannot ascend a riser taller than its own step allowance. A 0.34&nbsp;m capsule cannot climb
+          a 0.35&nbsp;m step at all. That converts an unanswerable question, <em class="ital">is this floor walkable</em>,
+          into a routable one, <em class="ital">is there a path for this body</em>.</p>
+        <div class="rule-soft" style="margin:20px 0 14px"></div>
+        <div class="label-t">Two candidate grounds, raced</div>
+        <p class="sm" style="margin-top:10px">A clipped shell and a measured height field disagree about where the floor is,
+          and neither reliably wins. Rather than pick by heuristic, both are built, both are routed, and the walker is sent
+          across each. The one that supports a longer traverse ships. The race costs under a second and it removed a class of
+          decisions that previously required a human.</p>
+        <p class="sm faded" style="margin-top:12px">Across the corpus the winner inverts between scenes, and no local
+          roughness statistic predicts it. That negative result is the whole justification for measuring instead of
+          choosing.</p>
+      </div>
+      <div>
+        <div class="plate" style="height:300px"><img src="img/shot-hall-collider.jpg" alt="A rebuilt hall with its support surface overlaid as a wire mesh, a character standing in the aisle"></div>
+        <p class="sm faded" style="margin-top:9px">Reconstruction and support field together. The mesh is not an
+          approximation of the photograph; it is a separate object answering a different question.</p>
+        <div class="rule" style="margin:22px 0 16px"></div>
+        <div class="label-t">Why this is not just a collision proxy</div>
+        <p class="sm" style="margin-top:10px">The same field answers the questions an actual user asks: where can someone
+          stand, how far is the nearest way out, what blocks sight of the thing being inspected, what is the vertical drop at
+          this edge. Those become measurements over a structure with a defined inside and outside, rather than judgements
+          made by whoever is looking at the scan.</p>
+        <div class="rule-soft" style="margin:20px 0 14px"></div>
+        <div class="label-t">The consistency constraint</div>
+        <p class="sm" style="margin-top:10px">Three derived objects must agree or the product is a lie: the physics surface,
+          the planned route, and the painted ground the browser shows beneath the splats. A rule measures the median
+          separation between them and refuses the world if they have drifted. Without this, a viewer can walk convincingly
+          on a floor that is visibly somewhere else.</p>
+        <div class="panel-sun" style="margin-top:18px"><div class="label-t">Trade-off accepted</div>
+          <p class="sm" style="margin-top:8px">The support field is coarse. It will not satisfy a drafting office and it is
+          not the deliverable a construction workflow expects. A clean mesh out of the same evidence is listed as required
+          future work, not as something we already have.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">The signed-distance intuition is long established [12][13]; the novelty is
+    applying it to a radiance-field cloud with the walker's body as the traversability definition.</span></div>
+</section>
+
+<!-- ============ 09 APPROACH: AUTONOMY ============ -->
+<section class="slide">
+  <div class="pagenum">09 / 20</div>
+  <div class="head"><span class="label">Approach detail · removing the operator</span><span class="mono faded">Making the pipeline unattended</span></div>
+  <div class="body" style="padding-top:18px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;flex:1;align-items:start">
+      <div>
+        <h2 class="headline-sm">Every number the pipeline needs is read from the scene or from the machine. Nothing is
+          configured.</h2>
+        <p class="lede" style="margin-top:18px">This sounds like an operational nicety and it is actually a technical
+          requirement, because a per-scene setting is a hidden human in the loop. It also makes the system's behaviour
+          depend on the hardware it happens to run on, which has to be handled explicitly rather than wished away.</p>
+        <div class="rule" style="margin:22px 0 16px"></div>
+        <div class="label-t">The three budgets, in dependency order</div>
+        <div class="strand"><div class="strand-num">1</div><div><div class="strand-title">Image detail</div>
+          <p class="sm faded" style="margin-top:5px">Decided first, from memory free at the moment the run starts. Getting
+            the order wrong is the classic cause of an opaque failure, because the element cap is then set for a memory
+            profile the frames do not fit inside.</p></div></div>
+        <div class="strand"><div class="strand-num">2</div><div><div class="strand-title">Model capacity</div>
+          <p class="sm faded" style="margin-top:5px">Follows from what is left after rendering cost. A fixed overhead, a
+            cost per megapixel of render and a cost per million elements, with a safety fraction. The coefficients were
+            fitted against this system's own crashes on one reference card and are honest about that.</p></div></div>
+        <div class="strand"><div class="strand-num">3</div><div><div class="strand-title">Surface resolution</div>
+          <p class="sm faded" style="margin-top:5px">Coarsened until the scene's own footprint fits the memory ceiling of the
+            mesh builder. A hard tool limit, discovered from a real crash, encoded as a budget instead of a failure.</p></div></div>
+        <div class="panel-deep" style="margin-top:20px"><div class="label-t">The rule that enforces it</div>
+          <p class="sm" style="margin-top:8px">A new fixed constant must be argued for in writing, with a reason it cannot be
+            measured. This is a code-review constraint and it is the single most effective reliability mechanism in the
+            project.</p></div>
+      </div>
+      <div>
+        <div class="label-t">The consequence, and how it is contained</div>
+        <p class="sm" style="margin-top:10px">Because capacity follows free memory, the same clip legitimately produces
+          different-sized models on different days. That is not a bug to be eliminated; it is the price of running on
+          hardware nobody has reserved. It has one hard implication:</p>
+        <p class="lede" style="margin-top:14px"><b>nothing downstream may count anything.</b></p>
+        <p class="sm" style="margin-top:12px">No absolute element count, no absolute cell count, no absolute distance. Every
+          check is a share of the cloud, a spread across the camera path, or a fraction of the scene's own footprint. An
+          absolute threshold on a machine-dependent quantity is a nondeterministic test, and nondeterministic tests are what
+          produced this project's earlier reputation for random failure.</p>
+        <div class="rule-soft" style="margin:22px 0 16px"></div>
+        <div class="label-t">Degradation is designed, not improvised</div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Thin evidence.</b> Where
+          geometry is too sparse to bound a room confidently, the region is bounded by the flight path and the ground below
+          it, and the world ships with a stated warning rather than a crash.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Killed mid-training.</b>
+          Training checkpoints continuously, so an operating-system kill that no exception handler can observe still leaves a
+          rescuable model.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Evidence that cannot be
+          produced.</b> Comparison renders are advisory. A locked output file must not destroy an otherwise valid
+          world.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Anything that would be a
+          traceback.</b> Failures are classified into a fixed taxonomy and each class maps to a repair, which is recorded in
+          the run report so the repair is auditable after the fact.</p></div>
+        <div class="rule-soft" style="margin:18px 0 14px"></div>
+        <p class="sm faded">Incrementality is part of the same argument: each stage's completion marker hashes the source of
+          the script that ran, so editing a stage invalidates exactly it and everything downstream. A cached pass cannot
+          conceal an unfixed bug.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">This is the least publishable part of the work and the most load-bearing. It is
+    also the reason the system can be operated by someone who did not build it.</span></div>
+</section>
+
+<!-- ============ 10 APPROACH: VERIFICATION ============ -->
+<section class="slide">
+  <div class="bloom bl bloomin" style="opacity:.5"></div>
+  <div class="pagenum">10 / 20</div>
+  <div class="head"><span class="label">Approach detail · verification as a pipeline stage</span><span class="mono faded">The part that can say no</span></div>
+  <div class="body" style="padding-top:18px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:52px;flex:1;align-items:start">
+      <div>
+        <h2 class="headline-sm">A reconstruction is a claim. This is the part of the system that tries to falsify it.</h2>
+        <p class="lede" style="margin-top:16px">Two mechanisms, deliberately different in kind.</p>
+        <div class="rule" style="margin:20px 0 16px"></div>
+        <div class="label-t">Mechanism one · a rule set over the finished world</div>
+        <p class="sm" style="margin-top:10px">Thirteen checks at two severities. The strict ones are conditions for
+          shipping: does measured ground exist at all, is the terrain a floor rather than a ceiling, does the walker begin on
+          something that supports it, does the collision shell actually exist, is it the same surface the route was planned
+          across, is there a route long enough to be worth testing. The quality ones grade coverage, camera placement,
+          flatness and drift.</p>
+        <p class="sm" style="margin-top:12px">Strict failures are never relaxed to produce a passing run. In the current
+          corpus two of ten scenes are refused certification by their own gate, including the scene used in the public
+          demonstration.</p>
+        <div class="rule-soft" style="margin:20px 0 14px"></div>
+        <div class="label-t">Mechanism two · an unattended traverse</div>
+        <p class="sm" style="margin-top:10px">The real viewer is launched headless, the real physics engine runs, and a
+          character is driven along the generated route with position, grounding and falls logged at regular intervals. The
+          demonstration and the verification share one code path, so a demo cannot be fixed independently of a test.</p>
+        <div class="panel-sun" style="margin-top:18px"><div class="label-t">The cross-check that matters</div>
+          <p class="sm" style="margin-top:8px">Distance travelled is recomputed from the logged trajectory and compared with
+            the distance the run reports. If they disagree, the harness says so. This exists because a summary statistic can
+            be internally consistent and describe something that never happened.</p></div>
+      </div>
+      <div>
+        <div class="plate" style="height:222px"><img src="img/hero-walk.jpg" alt="Character mid-walk across a rebuilt rock field with the support surface overlaid"></div>
+        <p class="sm faded" style="margin-top:9px">Mid-traverse inside a rebuilt field with the support surface visible. The
+          on-screen telemetry is the harness's own output, not a caption.</p>
+        <div class="rule" style="margin:16px 0 12px"></div>
+        <div class="label-t">What this has actually caught</div>
+        <div class="strand" style="grid-template-columns:1fr;padding:9px 0"><p class="sm">A walker reported airborne across
+          every sample of a run while its summary claimed a clean traverse with zero falls. Nothing that asserted correctness
+          could have found this; only a second, independent measurement of the same event did.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:9px 0"><p class="sm">Distance accumulating without
+          travel: a character pressed against an obstacle, reporting metres it never crossed. The sampled route covered a
+          fraction of the claimed distance and the discrepancy surfaced immediately.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:9px 0"><p class="sm">A ground check searching a band
+          that began below the floor of a small room, which made an entire class of results vacuous. Root cause was the
+          scale-inference issue from page 7 propagating into a threshold written in absolute metres.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:9px 0"><p class="sm">An unparseable value in a
+          generated document that killed the walk test for a scene everything else considered healthy. Every browser-facing
+          artefact is now checked for parseability as a condition of shipping.</p></div>
+        <div class="rule-soft" style="margin:14px 0 10px"></div>
+        <div class="label-t">Relation to prior art</div>
+        <p class="sm" style="margin-top:8px">Traversability estimation from radiance fields is established in robotics
+          [9][15]. What is uncommon here is making it a gate on the reconstruction rather than a planner on the robot: the
+          scene is certified before anyone is asked to trust it, and the certification can fail the pipeline's own
+          output.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Methodologically this is the strongest claim in the dossier, because it is the
+    only one that is falsifiable without human judgement.</span></div>
+</section>
+
+<!-- ============ 11 NOVELTY ============ -->
+<section class="slide">
+  <div class="pagenum">11 / 20</div>
+  <div class="head"><span class="label">What is actually new here</span><span class="mono faded">Stated narrowly, on purpose</span></div>
+  <div class="body" style="padding-top:22px;justify-content:center">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:start">
+      <div>
+        <h2 class="headline-sm">No new representation. No new model. One new claim.</h2>
+        <p class="lede" style="margin-top:20px">Every ingredient is published and well understood. The claim is that
+          combining them in a specific order produces an artefact class that does not currently exist: a reconstruction that
+          arrives with a stated frame, a derived support surface, and an independent certificate that a body can traverse
+          it.</p>
+        <div class="rule" style="margin:26px 0 18px"></div>
+        <div class="label-t">Four things we would defend as contributions</div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Frame recovery as an automatic
+          stage.</b> Gravity and metric scale resolved from motion statistics and device logs, applied before geometry is
+          used rather than at display time.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Support fields over radiance
+          clouds.</b> A voxelised surface whose purpose is to stop a body, with the body's dimensions defining traversability
+          instead of a slope threshold.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Measurement instead of
+          configuration.</b> Budgets derived from live machine state, all downstream thresholds expressed relatively, and a
+          review rule that a constant must justify why it cannot be measured.</p></div>
+        <div class="strand" style="grid-template-columns:1fr;padding:12px 0"><p class="sm"><b>Verification as a pipeline
+          stage that can block a release.</b> A rule set plus an unattended traverse, with a cross-check capable of
+          contradicting the system's own summary.</p></div>
+      </div>
+      <div>
+        <div class="panel-deep"><div class="label-t">Four things we would not defend</div>
+          <p class="sm" style="margin-top:10px"><b>Rendering quality.</b> Reconstruction error against held-out views is
+            below what published work reports for this representation. We are not competitive on appearance.</p>
+          <p class="sm" style="margin-top:10px"><b>The camera solver.</b> It is a mature external tool, used close to its
+            defaults with a retry ladder around it.</p>
+          <p class="sm" style="margin-top:10px"><b>Learning anything.</b> There is no trained component. Every decision is
+            arithmetic over measured quantities, which is a design position, not an oversight.</p>
+          <p class="sm" style="margin-top:10px"><b>Scale of evidence.</b> The corpus is small, self-captured, and produced
+            on one machine. Nothing here has survived contact with other people's footage.</p></div>
+        <div class="rule-soft" style="margin:26px 0 18px"></div>
+        <div class="label-t">Where the intellectual risk sits</div>
+        <p class="sm" style="margin-top:10px">The composition is defensible; the assumptions behind it are not exotic. Two
+          of them could be overtaken. Generative reconstruction that produces geometry with a consistent frame directly would
+          make our framing stage unnecessary. Standardised splat-to-mesh pipelines that carry semantics of support would
+          make the support field a commodity. Both are plausible within the horizon and neither is solved today.</p>
+        <p class="sm faded" style="margin-top:12px">The durable part is the verification layer. Whatever produces the
+          geometry, someone still has to establish that a person can stand in it, and that will not be settled by an image
+          quality score.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Positioning against the seven prior-art lines on page 3, stated as
+    composition rather than invention.</span></div>
+</section>
+
+<!-- ============ 12 FEASIBILITY: DEMONSTRATED ============ -->
+<section class="slide">
+  <div class="bloom br bloomin" style="opacity:.5"></div>
+  <div class="pagenum">12 / 20</div>
+  <div class="head"><span class="label">Feasibility · what has been demonstrated</span><span class="mono faded">Claim, evidence, strength</span></div>
+  <div class="body" style="padding-top:18px">
+    <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:48px;flex:1;align-items:start">
+      <div>
+        <div class="lhead" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><span>Claim</span><span>Evidence</span><span>Method</span><span style="text-align:right">Strength</span></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><div class="sm" style="font-weight:600">Casual video reconstructs end to end unattended</div><div class="sm faded">Ten scenes, seven distinct takes, drone and phone, portrait and 4K, single and multi-clip</div><div class="mono">Reproducible</div><div class="mono" style="text-align:right">Strong</div></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><div class="sm" style="font-weight:600">Metric scale recoverable without a human</div><div class="sm faded">Anchor methods a and b applied and used downstream by every distance check</div><div class="mono">Reproducible</div><div class="mono" style="text-align:right">Strong</div></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><div class="sm" style="font-weight:600">A support surface can be derived from a radiance cloud</div><div class="sm faded">Shell built for every scene; a character stands on it in a browser with real collision</div><div class="mono">Reproducible</div><div class="mono" style="text-align:right">Strong</div></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><div class="sm" style="font-weight:600">Walkability is machine-checkable and the check finds real defects</div><div class="sm faded">Four independent defects caught by the harness, listed on page 10</div><div class="mono">Reproducible</div><div class="mono" style="text-align:right">Strong</div></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><div class="sm" style="font-weight:600">The whole thing runs on consumer hardware</div><div class="sm faded">One 6&nbsp;GB laptop card, no data centre, no cluster</div><div class="mono">Reproducible</div><div class="mono" style="text-align:right">Strong</div></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><div class="sm" style="font-weight:600">A stranger can install and run it</div><div class="sm faded">One bootstrap command, a health check, continuous integration on a clean checkout</div><div class="mono">Reproducible</div><div class="mono" style="text-align:right">Moderate</div></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px"><div class="sm" style="font-weight:600">Reconstruction is visually faithful</div><div class="sm faded">Blind review on one outdoor scene; pixel scores below published norms</div><div class="mono">Weak</div><div class="mono" style="text-align:right">Limited</div></div>
+        <div class="lg" style="grid-template-columns:1.5fr 1.2fr .8fr 74px;border-bottom:0"><div class="sm" style="font-weight:600">Indoor scenes support a life-size walker</div><div class="sm faded">Not demonstrated. Rooms currently ship a deliberately shrunk character</div><div class="mono">None</div><div class="mono" style="text-align:right">Unproven</div></div>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:18px"></div>
+        <div class="label-t">How to read the strength column</div>
+        <p class="sm" style="margin-top:10px"><b>Strong</b> means the artefacts exist on disk, the run is reproducible from
+          the repository, and the claim does not depend on a judgement call.</p>
+        <p class="sm" style="margin-top:10px"><b>Moderate</b> means the mechanism is sound but has been exercised by people
+          who already understand the system.</p>
+        <p class="sm" style="margin-top:10px"><b>Limited</b> means evidence exists but covers one case, or the measurement
+          chosen is not the one a sceptical reader would ask for.</p>
+        <p class="sm" style="margin-top:10px"><b>Unproven</b> means we believe it is reachable and we have not reached
+          it.</p>
+        <div class="panel-sun" style="margin-top:24px"><div class="label-t">The one that matters most</div>
+          <p class="sm" style="margin-top:8px">Indoor life-size walking is the claim a customer would assume is included in
+            the phrase walkable world. It is not. The captured footprint of a small room supports only a couple of square
+            metres of genuine floor, and the current answer is to shrink the observer. That is an honest limitation and the
+            first item on the research agenda.</p></div>
+        <div class="rule-soft" style="margin:24px 0 16px"></div>
+        <div class="label-t">Corpus, stated plainly</div>
+        <p class="sm" style="margin-top:8px">Ten reconstructed scenes, seven distinct captures, all filmed by the author,
+          all processed on one machine, over roughly three weeks. That is the entire empirical basis of this dossier and it is
+          thin.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Feasibility conclusion: the method works on the input class it was designed for.
+    It has not been tested on the input class it will be sold to.</span></div>
+</section>
+
+<!-- ============ 13 FEASIBILITY: RISKS ============ -->
+<section class="slide big">
+  <div class="pagenum">13 / 20</div>
+  <div class="head"><span class="label">Feasibility · the technical risks</span><span class="mono faded">What could stop this working, and what answers it</span></div>
+  <div class="body" style="padding-top:18px">
+    <div class="g c2" style="gap:30px 56px;flex:1;align-items:start">
+      <div>
+        <div class="rule" style="margin-bottom:14px"></div>
+        <div class="label-t">Risk one</div>
+        <div class="strand-title" style="margin-top:8px">Scale inference is a prior, not a measurement</div>
+        <p class="sm" style="margin-top:10px">A phone held low, a drone in wind, or a clip shot from a vehicle shifts the
+          inferred metre. Everything downstream inherits the error proportionally, and nothing in the output looks wrong
+          because of it.</p>
+        <p class="sm faded" style="margin-top:10px"><b>Answer.</b> Prefer device pose logs, which give scale directly. Where
+          absent, report the anchor used and its assumption, and expose a single known dimension in frame as a correction.
+          For anything requiring survey accuracy, treat inferred scale as a placeholder and say so on the artefact.</p>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:14px"></div>
+        <div class="label-t">Risk two</div>
+        <div class="strand-title" style="margin-top:8px">The support field is coarse by construction</div>
+        <p class="sm" style="margin-top:10px">A voxel shell that reliably stops a body will not satisfy anyone expecting a
+          clean surface model, and the cell size is capped by the mesh builder's memory ceiling on large scenes.</p>
+        <p class="sm faded" style="margin-top:10px"><b>Answer.</b> Separate the two deliverables. Support fields answer
+          behavioural questions; surfaces answer geometric ones. Surface extraction from the same evidence is future work
+          with a known route through published methods [7][8], not something to fake with a coarse proxy.</p>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:14px"></div>
+        <div class="label-t">Risk three</div>
+        <div class="strand-title" style="margin-top:8px">The camera solver is not ours</div>
+        <p class="sm" style="margin-top:10px">The most failure-prone stage depends on a mature external binary whose
+          priorities we do not control, and the training stage is pinned to one interpreter, framework and compute
+          combination.</p>
+        <p class="sm faded" style="margin-top:10px"><b>Answer.</b> The retry ladder and option probing already absorb most
+          drift, and the health check turns an environment mismatch into a named, fixable condition. A learned alternative
+          exists and is credible [14]; adopting one is a swap behind a stable interface rather than a rewrite.</p>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:14px"></div>
+        <div class="label-t">Risk four</div>
+        <div class="strand-title" style="margin-top:8px">Verification can only check what it was told to check</div>
+        <p class="sm" style="margin-top:10px">Thirteen rules encode our current understanding of what a usable world is.
+          Anything outside that list passes silently, which is the exact failure mode we are trying to eliminate.</p>
+        <p class="sm faded" style="margin-top:10px"><b>Answer.</b> The rules are data, not code, and each records the
+          measurement behind its verdict, so a new defect class becomes a new rule rather than a redesign. The behavioural
+          traverse is the backstop precisely because it does not need to know what is wrong to notice that movement failed.</p>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:14px"></div>
+        <div class="label-t">Risk five</div>
+        <div class="strand-title" style="margin-top:8px">Thin and self-selected evidence</div>
+        <p class="sm" style="margin-top:10px">One operator, one machine, one capture style, three weeks. Failure rates quoted
+          here are about this corpus, not about the world's footage.</p>
+        <p class="sm faded" style="margin-top:10px"><b>Answer.</b> There is no substitute. The first external batch is the
+          experiment that matters and nothing in this dossier should be read as pre-empting it.</p>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:14px"></div>
+        <div class="label-t">Risk six</div>
+        <div class="strand-title" style="margin-top:8px">Delivery weight and platform lock</div>
+        <p class="sm" style="margin-top:10px">A room currently ships as an uncompressed point file over a hundred
+          megabytes, and the toolchain is vendored for one operating system and one graphics vendor.</p>
+        <p class="sm faded" style="margin-top:10px"><b>Answer.</b> Both are known and both have established routes:
+          compressed interchange formats are already in use across the ecosystem [16][17], and portability is unglamorous
+          engineering rather than research. Neither is a reason the approach could not work; both are reasons it cannot yet
+          be used widely.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Feasibility verdict: no identified risk threatens the core method. Risks one, two
+    and five threaten the value of its output; three, four and six threaten its reach.</span></div>
+</section>
+
+<!-- ============ 14 VIABILITY ============ -->
+<section class="slide">
+  <div class="bloom bl bloomin" style="opacity:.48"></div>
+  <div class="pagenum">14 / 20</div>
+  <div class="head"><span class="label">Viability · can this sustain itself</span><span class="mono faded">Cost, trajectory, dependence, path to scale</span></div>
+  <div class="body" style="padding-top:18px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;flex:1;align-items:start">
+      <div>
+        <h2 class="headline-sm">The expensive part of this gets cheaper every year without us touching it.</h2>
+        <p class="lede" style="margin-top:18px">The work that is specific to us, namely framing, support and verification,
+          is a rounding error against the two stages the entire field competes on. That asymmetry is the viability argument,
+          and it is favourable: our cost base falls with commodity hardware while our contribution is engineering that does
+          not.</p>
+        <div class="rule" style="margin:24px 0 16px"></div>
+        <div class="label-t">Where a run's cost actually sits</div>
+        <div style="margin-top:14px">
+          <div class="mono" style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Camera solving</span><span>dominant</span></div>
+          <div class="bar-track"><i style="width:50%"></i></div>
+          <div class="mono" style="display:flex;justify-content:space-between;margin:12px 0 5px"><span>Model training</span><span>large</span></div>
+          <div class="bar-track"><i style="width:39%"></i></div>
+          <div class="mono" style="display:flex;justify-content:space-between;margin:12px 0 5px"><span>Behavioural verification</span><span>minor</span></div>
+          <div class="bar-track"><i style="width:8%"></i></div>
+          <div class="mono" style="display:flex;justify-content:space-between;margin:12px 0 5px"><span>Framing, support, gate, evidence</span><span>negligible</span></div>
+          <div class="bar-track"><i class="lit" style="width:3%"></i></div>
+        </div>
+        <p class="sm faded" style="margin-top:14px">Proportions from the two fully instrumented runs. The highlighted band is
+          the entire differentiated contribution of this work.</p>
+        <div class="panel-sun" style="margin-top:22px"><div class="label-t">Why that matters commercially</div>
+          <p class="sm" style="margin-top:8px">A cost base dominated by commodity compute means margin improves as hardware
+            improves, and the two dominant stages are exactly where a large body of published optimisation work is already
+            pushing. Nothing in our differentiator depends on owning scarce resources.</p></div>
+      </div>
+      <div>
+        <div class="label-t">Four viability conditions</div>
+        <div class="strand" style="margin-top:14px"><div class="strand-num">1</div><div>
+          <div class="strand-title">Does the technique have a future, or are we early to a dead end?</div>
+          <p class="sm faded" style="margin-top:6px">Radiance-field representation is now the default for interactive capture:
+            hundreds of products, compression interchange formats in active use [16][17], browser-native rendering, and
+            sustained publication volume [5][6]. This is a settled bet, not a speculative one.</p></div></div>
+        <div class="strand"><div class="strand-num">2</div><div>
+          <div class="strand-title">Is there demand for a walkable output specifically?</div>
+          <p class="sm faded" style="margin-top:6px">The clearest signal is adjacent: robotics now converts splats into
+            traversability maps [9][15], and embodied simulation platforms are starved of real environments [10][11]. Both
+            need exactly the artefact this method produces. Insurance, safety inspection, heritage recording and remote
+            training are downstream of the same property.</p></div></div>
+        <div class="strand"><div class="strand-num">3</div><div>
+          <div class="strand-title">Can it be operated by someone who did not build it?</div>
+          <p class="sm faded" style="margin-top:6px">Partly. Zero per-scene configuration and a self-diagnosing health check
+            are designed for this. It has not been tested on other people's footage, and that is the open question, not this
+            page.</p></div></div>
+        <div class="strand"><div class="strand-num">4</div><div>
+          <div class="strand-title">Is the licence position clean?</div>
+          <p class="sm faded" style="margin-top:6px">Yes. Everything first-party is permissive, and every heavy dependency is
+            BSD, Apache or MIT. No copyleft component sits in the pipeline, so a hosted service built on this carries no
+            obligation to disclose its own source.</p></div></div>
+        <div class="rule-soft" style="margin:20px 0 14px"></div>
+        <div class="label-t">What would make this not viable</div>
+        <p class="sm" style="margin-top:8px">A generative model that emits metric, watertight, walkable scenes directly from
+          video would collapse the method's advantage to the verification layer alone. That is the scenario worth watching,
+          and it is why the durable asset is the certificate rather than the geometry.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Viability verdict: viable as a technique with a narrow but real window. Not yet
+    viable as a product, because the hosting layer, the delivery weight and the external corpus all have to exist
+    first.</span></div>
+</section>
+
+<!-- ============ 15 IMPACT ============ -->
+<section class="slide">
+  <div class="bloom br bloomin" style="opacity:.45"></div><div class="ember er"></div>
+  <div class="pagenum">15 / 20</div>
+  <div class="head"><span class="label">Impact · what changes if this works</span><span class="mono faded">Consequences of the four conditions being automatic</span></div>
+  <div class="body" style="padding-top:20px">
+    <h2 class="headline-sm" style="margin-bottom:24px">The value is not a nicer scan. It is that a reconstruction becomes
+      something you can <span class="ital">act inside</span> rather than look at.</h2>
+    <div class="g c3 split" style="flex:1;align-items:start">
+      <div>
+        <div class="label-t">Safety and inspection</div>
+        <div class="headline-xs" style="margin:10px 0 10px">A site you can walk<br>before you go to it</div>
+        <p class="sm">Support and scale turn a scan into a route. Where can a person stand, how far to the nearest way out,
+          what is the drop at this edge, what blocks the view of the thing being checked. Those become measurements a
+          supervisor can make from a desk, and a trainee can rehearse before their first visit.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">Depends on conditions one, two, three and four. This is the application that needs verification
+          most, because an uncertified walkthrough of a hazardous site is worse than none.</p>
+      </div>
+      <div>
+        <div class="label-t">Insurance and claims</div>
+        <div class="headline-xs" style="margin:10px 0 10px">A room that can be<br>revisited after it<br>is cleared</div>
+        <p class="sm">A loss is filmed on a phone once, and the scene then has to support distances under challenge long after
+          the room is rebuilt. A metric frame with a recorded traverse is what turns a photograph into evidence rather than
+          illustration.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">Depends heavily on scale being defensible, which is precisely risk one. Honest reporting of the
+          anchor used is a requirement here, not a nicety.</p>
+      </div>
+      <div>
+        <div class="label-t">Heritage and reconstruction</div>
+        <div class="headline-xs" style="margin:10px 0 10px">Walk a building<br>that no longer<br>exists</div>
+        <p class="sm">Fire-damaged, demolished or war-damaged structures survive as footage. Automatic framing makes that
+          footage navigable at human height without a specialist rebuilding it, which changes who can use an archive at
+          all.</p>
+        <div class="rule-soft" style="margin:16px 0 12px"></div>
+        <p class="xs faded">The most forgiving application: scale error is tolerable and the verification step is what makes
+          a reconstruction trustworthy enough to present publicly.</p>
+      </div>
+    </div>
+    <div class="g c3 split" style="margin-top:26px;padding-top:22px;border-top:1px solid var(--soft)">
+      <div><div class="label-t">Embodied AI and simulation</div>
+        <p class="sm" style="margin-top:8px">Robotics and agent research run on hand-built environments because real
+          reconstructions arrive without a floor, without scale and without a traversability guarantee. Supplying those three
+          automatically makes photographed space usable as training data, which is currently the binding constraint on
+          realistic simulation [10][11][9].</p></div>
+      <div><div class="label-t">Accessibility of space</div>
+        <p class="sm" style="margin-top:8px">Route planning for a wheelchair, a stroller or low vision is a support-and-clearance
+          problem, and it is the same computation the walker already performs. A reconstruction that knows where a body can
+          go is a navigation source, not a picture.</p></div>
+      <div><div class="label-t">Cheap documentation everywhere</div>
+        <p class="sm" style="margin-top:8px">The capture skill is already universal and the processing skill is what this
+          removes. That is the difference between surveying being something you commission and being something you do while
+          you are there.</p></div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Every one of these depends on the same four conditions being automatic. None
+    depends on rendering quality, which is where the rest of the field is competing.</span></div>
+</section>
+
+<!-- ============ 16 BENEFITS ============ -->
+<section class="slide xl">
+  <div class="pagenum">16 / 20</div>
+  <div class="head"><span class="label">Benefits of the specific approach taken</span><span class="mono faded">Why non-learning, why verify, why derive</span></div>
+  <div class="body" style="padding-top:20px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;flex:1;align-items:start">
+      <div>
+        <div class="label-t">Three design choices and what each buys</div>
+        <div class="strand" style="margin-top:16px"><div class="strand-num">1</div><div>
+          <div class="strand-title">Nothing learned, everything measured</div>
+          <p class="sm faded" style="margin-top:8px">Every decision is arithmetic over quantities that can be printed in a
+            report. When a world is wrong, the reason is a number someone can look at. A learned component would probably be
+            more accurate on hard footage and would make every failure opaque. For a system whose entire value is a
+            certificate, auditability is worth more than accuracy.</p></div></div>
+        <div class="strand"><div class="strand-num">2</div><div>
+          <div class="strand-title">Verification built in rather than added on</div>
+          <p class="sm faded" style="margin-top:8px">The output is a world plus a record that a body crossed it. That changes
+            what the artefact can be used for: it can be relied on by someone who is not able to judge a reconstruction by
+            eye, which is almost every actual consumer of a scan. It also gives the project a measurement that can embarrass
+            it, which is the only reason to believe the rest of its numbers.</p></div></div>
+        <div class="strand"><div class="strand-num">3</div><div>
+          <div class="strand-title">Budgets derived from live machine state</div>
+          <p class="sm faded" style="margin-top:8px">Runs on whatever hardware is present rather than on a specified rig,
+            which is what makes consumer-grade and on-premises deployment realistic. The cost is nondeterministic model size,
+            and that cost is paid down by forbidding absolute thresholds everywhere downstream.</p></div></div>
+      </div>
+      <div>
+        <div class="panel-deep"><div class="label-t">Benefits that follow structurally</div>
+          <p class="sm" style="margin-top:12px"><b>Runs where the data has to stay.</b> No cloud dependency in the current
+            design, so footage that cannot leave a site is not a blocker. This is an advantage in inspection, energy and
+            defence contexts rather than a limitation.</p>
+          <p class="sm" style="margin-top:12px"><b>Explainable to a regulator.</b> A run report states what was assumed, what
+            was measured, what failed and what was repaired. That is a requirement in exactly the sectors on the previous
+            page, and it is hard to obtain from an end-to-end learned pipeline.</p>
+          <p class="sm" style="margin-top:12px"><b>Improvable without retraining.</b> A new defect class becomes a new rule
+            and a new budget, not a new dataset and a new model. The system's failure taxonomy is the thing that grows.</p>
+          <p class="sm" style="margin-top:12px"><b>Open by default.</b> Permissive licensing throughout means the verification
+            idea can be adopted by others rather than only competed with, which in a young field is plausibly the faster route
+            to it becoming expected.</p></div>
+        <div class="rule" style="margin:10px 0 8px"></div>
+        <div class="label-t">What we give up, stated honestly</div>
+        <p class="sm" style="margin-top:10px">Robustness on the hardest footage. A learned prior handles a textureless wall
+          or a near-planar scene better than any amount of retry logic, and we know it because those are precisely the cases
+          that currently fail here. The design position is that auditability wins for now and the prior can be added behind a
+          stable interface later. That is a bet, and one worth revisiting when there is external evidence either way.</p>
+        <div class="panel-sun" style="margin-top:8px;padding:16px 24px"><div class="label-t">The single most valuable property</div>
+          <p class="sm" style="margin-top:8px">A reconstruction that can refuse to be called finished. A pipeline that is allowed
+            to lose to its own checks is a cultural choice most products will not make.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">These are design consequences rather than results, and are labelled as
+    reasoning rather than measurement.</span></div>
+</section>
+
+<!-- ============ 17 RESEARCH AGENDA ============ -->
+<section class="slide">
+  <div class="bloom bl bloomin" style="opacity:.42"></div>
+  <div class="pagenum">17 / 20</div>
+  <div class="head"><span class="label">Research agenda · what has to be worked out</span><span class="mono faded">Ordered by what unblocks the most</span></div>
+  <div class="body" style="padding-top:18px">
+    <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:52px;flex:1;align-items:start">
+      <div>
+        <div class="lhead" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px"><span>#</span><span>Open problem</span><span>Why it is open</span><span>What it unblocks</span><span style="text-align:right">Priority</span></div>
+        <div class="lg" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px"><div class="mono">1</div><div class="sm" style="font-weight:600">Life-size walking indoors from a small captured footprint</div><div class="sm faded">Coverage is thin and the walkable floor is genuinely tiny; needs denser capture guidance plus plausible completion of unseen floor</div><div class="sm">The largest market sits behind this one</div><div class="mono" style="text-align:right">Highest</div></div>
+        <div class="lg" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px"><div class="mono">2</div><div class="sm" style="font-weight:600">Robustness on other people's footage, at volume</div><div class="sm faded">Every failure rate here is measured on one operator's corpus; the distribution of real footage is unknown</div><div class="sm">Nothing else on this page is credible without it</div><div class="mono" style="text-align:right">Highest</div></div>
+        <div class="lg" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px"><div class="mono">3</div><div class="sm" style="font-weight:600">Scale from a single known dimension in frame</div><div class="sm faded">Removes reliance on behavioural priors; needs detection of a calibrated object and a confidence statement</div><div class="sm">Makes metric claims defensible</div><div class="mono" style="text-align:right">High</div></div>
+        <div class="lg" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px"><div class="mono">4</div><div class="sm" style="font-weight:600">A clean surface out of the same evidence</div><div class="sm faded">Published routes exist [7][8] but optimise visual fidelity; support and geometry need reconciling in one artefact</div><div class="sm">Required for engineering use</div><div class="mono" style="text-align:right">High</div></div>
+        <div class="lg" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px"><div class="mono">5</div><div class="sm" style="font-weight:600">Delivery weight and progressive loading</div><div class="sm faded">Compressed interchange exists [16][17]; integrating it without losing the frame and the shell is unresolved</div><div class="sm">Required for sharing at all</div><div class="mono" style="text-align:right">Medium</div></div>
+        <div class="lg" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px"><div class="mono">6</div><div class="sm" style="font-weight:600">Fusing multi-clip captures reliably</div><div class="sm faded">Works, and is the weakest thing in the system; cross-clip matching degrades on repeat texture</div><div class="sm">Needed for sites larger than a room</div><div class="mono" style="text-align:right">Medium</div></div>
+        <div class="lg" style="grid-template-columns:20px 1.3fr 1.45fr 1.05fr 66px;gap:18px;border-bottom:0"><div class="mono">7</div><div class="sm" style="font-weight:600">Traversability as a first-class output, not a test</div><div class="sm faded">The support field already knows where a body can go; exposing that as a queryable layer is unstarted</div><div class="sm">Where the impact page pays off</div><div class="mono" style="text-align:right">Medium</div></div>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:18px"></div>
+        <div class="label-t">Methodological commitments carried forward</div>
+        <p class="sm" style="margin-top:12px">Four rules that the next phase of work inherits from this one.</p>
+        <div class="strand" style="grid-template-columns:26px 1fr;margin-top:14px;padding:11px 0"><div class="strand-num" style="font-size:26px">&sect;</div><div><p class="sm">Every capability ships with a measurement that can contradict it. If a claim
+          cannot be checked by something other than a human looking, it is not finished.</p></div></div>
+        <div class="strand" style="grid-template-columns:26px 1fr;padding:11px 0"><div class="strand-num" style="font-size:26px">&sect;</div><div><p class="sm">No absolute thresholds after framing. This is what keeps machine-dependent
+          behaviour from looking like random failure.</p></div></div>
+        <div class="strand" style="grid-template-columns:26px 1fr;padding:11px 0"><div class="strand-num" style="font-size:26px">&sect;</div><div><p class="sm">Degrade with a stated limit rather than discard. A partial world with a warning is
+          worth more than a failed job.</p></div></div>
+        <div class="strand" style="grid-template-columns:26px 1fr;padding:11px 0"><div class="strand-num" style="font-size:26px">&sect;</div><div><p class="sm">Negative results are recorded. The ground-race finding that no roughness
+          statistic predicts the winner is more useful than a heuristic that pretends otherwise.</p></div></div>
+        <div class="rule-soft" style="margin:20px 0 14px"></div>
+        <div class="label-t">What we would like to learn from outside</div>
+        <p class="sm" style="margin-top:8px">Whether the verification layer is a product requirement or a research curiosity.
+          Two years of external usage will answer that and nothing written here can.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Items one and two are not research problems so much as honest ones: they need
+    footage that is not ours.</span></div>
+</section>
+
+<!-- ============ 18 LIMITATIONS AND RESPONSIBILITY ============ -->
+<section class="slide big">
+  <div class="pagenum">18 / 20</div>
+  <div class="head"><span class="label">Limitations, and what this must not be used for</span><span class="mono faded">Stated before anyone has to ask</span></div>
+  <div class="body" style="padding-top:20px;justify-content:center">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start">
+      <div>
+        <h2 class="headline-sm">A walkable world is a claim about safety. That constrains how it may be used.</h2>
+        <p class="lede" style="margin-top:20px">The moment a reconstruction certifies that someone can cross a space, it is
+          carrying an implication that they are safe to do so. That is a serious responsibility for an artefact generated by
+          an automatic pipeline from a phone clip, and it should be bounded explicitly rather than discovered in an
+          incident.</p>
+        <div class="rule" style="margin:24px 0 16px"></div>
+        <div class="label-t">Not a substitute for a survey</div>
+        <p class="sm" style="margin-top:10px">Scale here is inferred from priors unless a device log or a known dimension
+          supplies it. Nothing produced by this pipeline should support a structural decision, a legal boundary, an
+          evacuation certification, or a compliance sign-off without independent measurement.</p>
+        <div class="label-t" style="margin-top:20px">Not a statement about what is not visible</div>
+        <p class="sm" style="margin-top:10px">The support field describes what the cameras saw. A floor that was never filmed
+          from above, a opening hidden behind furniture, or a surface that was wet on the day and dry now are all invisible to
+          it, and the certificate does not and cannot speak to them.</p>
+        <div class="label-t" style="margin-top:20px">The certificate must travel with the world</div>
+        <p class="sm" style="margin-top:10px">A scene stripped of its verdict file is a scene stripped of its limits. Any
+          sharing surface has to carry the warnings, the anchor used, and the refusal status where one applies. Suppressing
+          them for a cleaner presentation would be the most damaging possible misuse of this work.</p>
+      </div>
+      <div>
+        <div class="panel-deep"><div class="label-t">Privacy, because the input is a home</div>
+          <p class="sm" style="margin-top:10px">The capture device films the inside of people's private spaces, at metric
+            scale, with a route through them. That is a materially sensitive artefact, not a photograph. Consent at capture,
+            retention limits, and the ability to delete a derived world along its evidence must be design requirements of any
+            hosted version rather than policy added after an incident.</p></div>
+        <div class="rule-soft" style="margin:24px 0 16px"></div>
+        <div class="label-t">Technical limitations, unrounded</div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Indoor human-scale walking</div><div class="mono faded">Not achieved</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Clean mesh or drawing export</div><div class="mono faded">Not available</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Hosted service or accounts</div><div class="mono faded">Not built</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Cross-platform operation</div><div class="mono faded">One platform only</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Highest quality tier</div><div class="mono faded">Never run</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0"><div class="sm">Visual fidelity versus published work</div><div class="mono faded">Below norms</div></div>
+        <div class="lg" style="grid-template-columns:1fr auto;padding:10px 0;border-bottom:0"><div class="sm">Blind review coverage</div><div class="mono faded">One scene</div></div>
+        <div class="rule-soft" style="margin:22px 0 14px"></div>
+        <p class="sm faded">Two of ten scenes are currently refused certification by the system's own gate, including the one
+          used in the public demonstration. That is the mechanism working and the pipeline not yet being good enough for it to
+          be quiet.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">The bounds above are proposals for how the artefact should be labelled, not
+    claims that they are currently enforced anywhere.</span></div>
+</section>
+
+<!-- ============ 19 REFERENCES ============ -->
+<section class="slide">
+  <div class="pagenum">19 / 20</div>
+  <div class="head"><span class="label">References</span><span class="mono faded">Literature, tools and sources cited in this dossier</span></div>
+  <div class="body" style="padding-top:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 56px;flex:1;align-items:start">
+      <div>
+        <div class="label-t" style="margin-bottom:6px">Research literature</div>
+        <div class="ref"><div class="ref-id">[1]</div><div><p class="sm">Kerbl, B., Kopanas, G., Leimkühler, T., Drettakis, G.
+          <b>3D Gaussian Splatting for Real-Time Radiance Field Rendering.</b> ACM Transactions on Graphics 42(4), SIGGRAPH,
+          2023.</p></div></div>
+        <div class="ref"><div class="ref-id">[2]</div><div><p class="sm">Schönberger, J. L., Frahm, J.-M. et al.
+          <b>Structure-from-Motion Revisited.</b> IEEE Conference on Computer Vision and Pattern Recognition, 2016.</p></div></div>
+        <div class="ref"><div class="ref-id">[3]</div><div><p class="sm">Mildenhall, B., Srinivasan, P. P., Tancik, M.,
+          Barron, J. T., Ramamoorthi, R., Ng, R. <b>NeRF: Representing Scenes as Neural Radiance Fields for View
+          Synthesis.</b> European Conference on Computer Vision, 2020.</p></div></div>
+        <div class="ref"><div class="ref-id">[4]</div><div><p class="sm">Barron, J. T., Mildenhall, B., Verbin, D., Srinivasan,
+          P. P., Hedman, P. <b>Mip-NeRF 360: Unbounded Anti-Aliased Neural Radiance Fields.</b> CVPR, 2022.</p></div></div>
+        <div class="ref"><div class="ref-id">[5]</div><div><p class="sm"><b>A Survey on 3D Gaussian Splatting.</b> ACM
+          Computing Surveys, 2026. doi 10.1145/3807511.</p></div></div>
+        <div class="ref"><div class="ref-id">[6]</div><div><p class="sm"><b>3D Gaussian Splatting as a New Era: A
+          Survey.</b> IEEE Transactions on Visualization and Computer Graphics, 2025.</p></div></div>
+        <div class="ref"><div class="ref-id">[7]</div><div><p class="sm">Guédon, A., Lepetit, V. <b>SuGaR: Surface-Aligned
+          Gaussian Splatting for Efficient 3D Mesh Reconstruction and High-Quality Mesh Rendering.</b> CVPR, 2024.
+          arXiv:2311.12775.</p></div></div>
+        <div class="ref"><div class="ref-id">[8]</div><div><p class="sm">Huang, B., Yu, Z., Chen, A., Geiger, A., Giegerich,
+          M. <b>2D Gaussian Splatting for Geometrically Accurate Radiance Fields.</b> SIGGRAPH, 2024.</p></div></div>
+        <div class="ref"><div class="ref-id">[9]</div><div><p class="sm">Chopra, A., Liang, A. et al. <b>Splatblox:
+          Traversability-Aware Gaussian Splatting for Outdoor Robot Navigation.</b> arXiv:2511.18525, 2025.</p></div></div>
+        <div class="ref"><div class="ref-id">[10]</div><div><p class="sm">Savva, A. et al. <b>Habitat: A Platform for Embodied
+          AI Research.</b> IEEE International Conference on Computer Vision, 2019.</p></div></div>
+        <div class="ref"><div class="ref-id">[11]</div><div><p class="sm">Kolve, E. et al. <b>AI2-THOR: An Interactive 3D
+          Environment for Visual AI Research.</b> arXiv:1712.05474, 2017.</p></div></div>
+        <div class="ref"><div class="ref-id">[12]</div><div><p class="sm">Curless, B., Levoy, M. <b>A Volumetric Method for
+          Building Complex Models from Range Images.</b> SIGGRAPH, 1996.</p></div></div>
+        <div class="ref"><div class="ref-id">[13]</div><div><p class="sm">Nießner, M., Zollhöfer, M., Izadi, S., Rekik, C.
+          <b>Real-Time 3D Model Reconstruction on IoT Devices.</b> IEEE Transactions on Visualization and Computer Graphics,
+          2013.</p></div></div>
+        <div class="ref"><div class="ref-id">[14]</div><div><p class="sm">Pataki, B., Sarlin, P.-E. et al. <b>MP-SfM:
+          Monocular Surface Priors for Robust Structure-from-Motion.</b> CVPR, 2025.</p></div></div>
+        <div class="ref"><div class="ref-id">[15]</div><div><p class="sm">Ren, T. et al. <b>TOP-Nav: Legged Navigation
+          Integrating Terrain, Obstacle and Slope Traversability.</b> Conference on Robot Learning, 2025.</p></div></div>
+      </div>
+      <div>
+        <div class="label-t" style="margin-bottom:6px">Tools and implementations</div>
+        <div class="ref"><div class="ref-id">[16]</div><div><p class="sm">Niantic Spatial. <b>SPZ 4: leaner, faster and more
+          future-proof.</b> Engineering blog, 2026. &mdash; compressed point-interchange format used across splat
+          tooling.</p></div></div>
+        <div class="ref"><div class="ref-id">[17]</div><div><p class="sm">PlayCanvas. <b>Splat File Formats</b> developer
+          documentation, and <b>splat-transform</b> command-line tool, v3.3.3, 2026. &mdash; the mesh builder used by this
+          pipeline.</p></div></div>
+        <div class="ref"><div class="ref-id">[18]</div><div><p class="sm">nerfstudio-project. <b>gsplat</b>, v1.5.3, Apache-2.0.
+          &mdash; the training and rasterisation backend.</p></div></div>
+        <div class="ref"><div class="ref-id">[19]</div><div><p class="sm">NVIDIA. <b>PyTorch</b> 2.4.1 with CUDA 12.4. &mdash;
+          compute backend for the training stage.</p></div></div>
+        <div class="ref"><div class="ref-id">[20]</div><div><p class="sm">Goeddel, H. et al. <b>PlayCanvas engine</b> and
+          <b>ammo.js</b>. &mdash; browser scene graph and physics used by the viewer.</p></div></div>
+        <div class="ref"><div class="ref-id">[21]</div><div><p class="sm">Microsoft. <b>Playwright</b>, v1.62. &mdash; drives
+          the unattended walk test against the real viewer.</p></div></div>
+        <div class="ref"><div class="ref-id">[22]</div><div><p class="sm">Khronos / Google / Apple. <b>WebXR Device API</b>,
+          ARCore and ARKit motion tracking. &mdash; the capture and pose-log surface.</p></div></div>
+        <div class="rule" style="margin:12px 0 8px"></div>
+        <div class="label-t" style="margin-bottom:6px">Industry and market sources</div>
+        <div class="ref"><div class="ref-id">[23]</div><div><p class="sm">Radiance Fields. <b>Gaussian Splatting
+          Statistics.</b> July 2026. &mdash; 212 products, roughly 1.5&nbsp;billion dollars raised across spatial and
+          reconstruction companies with about 480&nbsp;million directly on this technique, 3,333 papers of which 749 in 2026.</p></div></div>
+        <div class="ref"><div class="ref-id">[24]</div><div><p class="sm">Radiance Fields. <b>Shrinking 3DGS File Size: Every
+          Compression Format Explained.</b> 2024&ndash;2026. &mdash; interchange and compression landscape behind limitation
+          five.</p></div></div>
+        <div class="ref"><div class="ref-id">[25]</div><div><p class="sm">Mordor Intelligence. <b>3D Reconstruction Market
+          Report</b> and <b>Digital Twin Market Report</b>, 2026. &mdash; reconstruction 1.86&nbsp;billion dollars in 2026
+          growing at 11.4%; digital twins 49.2&nbsp;billion growing at 36.0%.</p></div></div>
+        <div class="ref"><div class="ref-id">[26]</div><div><p class="sm">Fact.MR. <b>Drone Surveying Market</b>, 2026.
+          &mdash; 2.4&nbsp;billion dollars in 2026 projected to 13.7&nbsp;billion by 2036.</p></div></div>
+        <div class="ref"><div class="ref-id">[27]</div><div><p class="sm"><b>Market context is deliberately thin here.</b>
+          These figures establish that the surrounding categories are large and growing. They do not measure demand for a
+          walkable output, which this dossier argues from adjacent research [9][10][11] instead.</p></div></div>
+        <div class="rule" style="margin:12px 0 8px"></div>
+        <div class="label-t" style="margin-bottom:6px">Primary source for all measurements</div>
+        <div class="ref"><div class="ref-id">[28]</div><div><p class="sm">Garg, K. <b>Drone / Phone video to playable 3D
+          world.</b> Public repository, MIT licence. Run reports, gate verdicts, walk logs, training logs and blind
+          comparison sets referenced throughout are artefacts of this codebase.</p>
+          <p class="cite" style="margin-top:2px">github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world</p></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Where a claim in this dossier rests on a single source, it is marked as such in
+    the text rather than here.</span></div>
+</section>
+
+<!-- ============ 20 REPRODUCE / CLOSE ============ -->
+<section class="slide">
+  <div class="bloom bloomin"></div><div class="ember"></div><div class="tiles"></div>
+  <div class="pagenum">20 / 20</div>
+  <div class="head"><span class="label">Reproducing this work</span><span class="label">Colophon</span></div>
+  <div class="body" style="justify-content:center;padding-top:26px">
+    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:60px;align-items:end">
+      <div>
+        <div class="label" style="margin-bottom:30px">The claim, in one line</div>
+        <h2 class="display" style="font-size:132px;line-height:.88">A place is only<br>reconstructed when<br>someone can
+          <span class="ital">stand in it.</span></h2>
+        <p class="lede" style="margin-top:30px;max-width:840px">Everything in this dossier is in service of that sentence,
+          and everything that remains unproven is a consequence of it being a hard claim to make cheaply. The representation
+          is settled, the geometry is commodity, and the missing piece was never a better picture. It was gravity, a metre, a
+          floor, and the willingness to let a system fail its own test.</p>
+      </div>
+      <div>
+        <div class="rule" style="margin-bottom:18px"></div>
+        <div class="label-t">How to check any number here</div>
+        <p class="sm" style="margin-top:12px">Clone the repository, run the bootstrap, then the health check. The fast suites
+          reproduce the 232 checks. The end-to-end matrix reproduces the per-stage timings and the gate verdicts on every take
+          in the corpus. The run report, the verdict file and the walk log are written to disk by each job and are the primary
+          source for pages 12 to 14.</p>
+        <div class="rule-soft" style="margin:20px 0 14px"></div>
+        <div class="label-t">What to look at first</div>
+        <p class="sm" style="margin-top:10px">The two scenes the gate refused. They are the fastest way to judge whether this
+          system measures itself honestly, which is the property everything else here depends on.</p>
+        <div class="panel-deep" style="margin-top:22px">
+          <div class="label-t">Correspondence</div>
+          <p class="sm" style="margin-top:8px">Kris Garg &mdash; author and implementer<br>
+          <span class="cite">github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="sm faded">Set in Instrument Serif, Archivo and JetBrains Mono. Parchment, indigo ink and one
+    solar yellow. Twenty pages, September 2026.</span><span class="mono faded">End of dossier</span></div>
+</section>
+
+</main>
+</div>
+<div class="deck-controls"><button id="prevBtn">Prev</button><span id="counter">01 / 20</span><button id="nextBtn">Next</button></div>
+<script>
+class SlidePresentation{
+  constructor(){
+    this.slides=[...document.querySelectorAll('.slide')];
+    this.stage=document.getElementById('deckStage');this.i=0;
+    this.scale();addEventListener('resize',()=>this.scale());
+    addEventListener('keydown',e=>this.key(e));
+    let t=0;addEventListener('wheel',e=>{if(Date.now()-t<450)return;t=Date.now();
+      if(e.deltaY>26)this.go(1);else if(e.deltaY<-26)this.go(-1);},{passive:true});
+    let x0=null;
+    addEventListener('touchstart',e=>x0=e.touches[0].clientX,{passive:true});
+    addEventListener('touchend',e=>{if(x0===null)return;const d=e.changedTouches[0].clientX-x0;
+      if(Math.abs(d)>52)this.go(d<0?1:-1);x0=null;},{passive:true});
+    document.getElementById('prevBtn').onclick=()=>this.go(-1);
+    document.getElementById('nextBtn').onclick=()=>this.go(1);
+    this.show(0);
+  }
+  scale(){const f=Math.min(innerWidth/1920,innerHeight/1080);
+    this.stage.style.transform=`translate(${(innerWidth-1920*f)/2}px,${(innerHeight-1080*f)/2}px) scale(${f})`;}
+  key(e){if(['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)){e.preventDefault();this.go(1);}
+    else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();this.go(-1);}
+    else if(e.key==='Home')this.show(0);else if(e.key==='End')this.show(this.slides.length-1);}
+  go(d){this.show(this.i+d);}
+  show(n){this.i=Math.max(0,Math.min(n,this.slides.length-1));
+    this.slides.forEach((s,k)=>{s.classList.toggle('active',k===this.i);s.classList.toggle('visible',k===this.i);});
+    document.getElementById('counter').textContent=
+      String(this.i+1).padStart(2,'0')+' / '+String(this.slides.length).padStart(2,'0');}
+}
+new SlidePresentation();
+</script>
+</body>
+</html>

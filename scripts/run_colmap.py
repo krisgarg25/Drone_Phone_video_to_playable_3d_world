@@ -150,6 +150,8 @@ DEFAULT_PLAN = {
     "init_min_tri_angle": 16.0,
     "rescue_below": 0.6,
     "calibration_json": None,   # path to WebXR capture calibration.json
+    "image_dir": "frames_train",  # what COLMAP reads: raw extraction, or survey_frames output
+    "mask_path": None,            # directory of per-image masks for ImageReader.mask_path
 }
 
 
@@ -408,6 +410,17 @@ def main() -> None:
             plan[k] = type(old)(float(v))
         else:
             plan[k] = v
+    # The survey path hands COLMAP a prepared directory - quality-filtered and
+    # optionally illumination-flattened - instead of the raw extraction output, and
+    # a mask beside each image so a moving vehicle cannot be matched as a facade.
+    frames = work / plan["image_dir"]
+    if not frames.is_dir():
+        sys.exit(f"[colmap] image_dir {plan['image_dir']!r} does not exist under {work}")
+    mask_dir = None
+    if plan.get("mask_path"):
+        mask_dir = work / plan["mask_path"]
+        if not mask_dir.is_dir():
+            sys.exit(f"[colmap] mask_path {plan['mask_path']!r} does not exist under {work}")
     if not COLMAP.exists():
         sys.exit(f"colmap.exe not found at {COLMAP}")
 
@@ -492,6 +505,8 @@ def main() -> None:
                      else ["--ImageReader.single_camera", "1"])
     if camera_params_str:
         reader_flags += ["--ImageReader.camera_params", camera_params_str]
+    if mask_dir is not None:
+        reader_flags += ["--ImageReader.mask_path", str(mask_dir)]
     
     # Sensitive peak threshold (0.002) and edge threshold (16) to capture plain painted walls & faint room features
     peak_thresh = str(plan.get("sift_peak_threshold", 0.002))

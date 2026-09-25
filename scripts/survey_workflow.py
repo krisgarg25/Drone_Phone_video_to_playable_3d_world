@@ -1,4 +1,5 @@
 import json
+import io
 import math
 import os
 import re
@@ -112,6 +113,75 @@ def _unchanged(root, manifest, full=False):
     )
 
 
+def normalise_telemetry_source(text, metadata, *, video_path=None):
+    """Accept what a drone actually exports, and write the contract it must satisfy.
+
+    ``survey_georef.normalize_telemetry`` insists on six fields, an ellipsoidal
+    height and a declared clock. A GPX track, a DJI ``.srt`` subtitle or a Pilot CSV
+    has none of those declarations, so ``survey_inputs`` reads them, states what the
+    source can and cannot prove, and turns a missing precision figure into a typed
+    blocker instead of an invented standard deviation.
+    """
+    import survey_inputs as ingest
+    with tempfile.TemporaryDirectory(prefix="survey-source-") as directory:
+        root = Path(directory)
+        source = root / "telemetry"
+        source.write_text(text, encoding="utf-8")
+        detected = ingest.sniff_format(source)
+        if detected.kind == "telemetry_csv":
+            return text, {"source": detected.kind, "rows": None, "uncertainty_source": "in_file",
+                          "fix_quality_basis": None, "rejected": None}
+        rows = ingest.from_flight_log(
+            source, horizontal_std_m=(metadata or {}).get("horizontal_std_m"),
+            vertical_std_m=(metadata or {}).get("vertical_std_m"))
+        info = ingest.source_info(source)
+        sidecar = {"source": detected.kind, "detected_via": detected.via,
+                   "altitude_datum": info.get("altitude_datum"),
+                   "time_reference": info.get("time_reference"),
+                   "uncertainty_source": info.get("uncertainty_source"),
+                   "rows": len(rows), "rejected": info.get("rejected")}
+        if not all(ingest.TELEMETRY_FIELDS[4] in row and ingest.TELEMETRY_FIELDS[5] in row
+                   for row in rows):
+            raise ValueError(
+                "the " + detected.kind + " log carries no evidence of positioning precision. "
+                "Supply fix quality or HDOP alongside it, or declare horizontal_std_m and "
+                "vertical_std_m for the flight - an invented standard deviation is a false "
+                "accuracy claim")
+    import csv
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=list(ingest.TELEMETRY_FIELDS), lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: row[key] for key in ingest.TELEMETRY_FIELDS})
+    return buffer.getvalue(), sidecar
+
+
+def declare_metadata(metadata, telemetry_text, *, video_path=None):
+    """Fill in only what the sources prove; return the blockers the rest would need."""
+    import survey_inputs as ingest
+    overrides = {key: value for key, value in (metadata or {}).items()
+                 if key in ("time_reference", "time_offset_s", "video_duration_s",
+                            "altitude_datum", "altitude_datum_basis", "position_reference",
+                            "antenna_offset_applied", "lever_arm_uncertainty_m",
+                            "lever_arm_negligible", "single_pass", "horizontal_std_m",
+                            "vertical_std_m", "camera_id")}
+    with tempfile.TemporaryDirectory(prefix="survey-meta-") as directory:
+        source = Path(directory) / "telemetry"
+        source.write_text(telemetry_text, encoding="utf-8")
+        try:
+            info = ingest.source_info(source)
+        except ValueError:
+            info = None
+    declared = ingest.merge_metadata(video_path=video_path, source_info=info,
+                                     overrides=overrides)
+    blockers = list(declared.get("blockers") or [])
+    if blockers:
+        raise ValueError("flight metadata is incomplete: "
+                         + "; ".join("{}: {}".format(item.code, item.message) for item in blockers)
+                         + ". Declare them in flight_metadata.json - nothing is assumed here.")
+    return declared
+
+
 def save_inputs(root, scene, telemetry_csv, metadata):
     _, georef = _modules()
     source, _ = scene_paths(root, scene)
@@ -119,22 +189,39 @@ def save_inputs(root, scene, telemetry_csv, metadata):
         raise ValueError("Telemetry must be CSV text below 2 MiB.")
     if not isinstance(metadata, dict):
         raise ValueError("Flight metadata must be a JSON object.")
+    video = next((path for path in sorted(source.iterdir())
+                  if path.suffix.lower() in VIDEO_EXTS), None) if source.is_dir() else None
+    telemetry_text, sidecar = normalise_telemetry_source(telemetry_csv, metadata,
+                                                         video_path=video)
+    try:
+        georef.validate_metadata(metadata)
+        declared = metadata
+    except (ValueError, KeyError):
+        # The contract is still the contract; this only turns "altitude_datum must
+        # declare 'ellipsoidal'" into the itemised list of what to add, and fills in
+        # whatever the video and the log actually prove.
+        declared = declare_metadata(metadata, telemetry_text, video_path=video)
     with tempfile.TemporaryDirectory(prefix="survey-input-") as temp:
         path = Path(temp) / "telemetry.csv"
-        path.write_text(telemetry_csv, encoding="utf-8")
-        georef.normalize_telemetry(path, metadata)
+        path.write_text(telemetry_text, encoding="utf-8")
+        georef.normalize_telemetry(path, declared)
     target_csv, target_meta = source / "telemetry.csv", source / "flight_metadata.json"
     if target_csv.exists() or target_meta.exists():
         raise FileExistsError("Survey inputs already exist; use a new scene or edit them locally, then prepare again.")
     source.mkdir(parents=True, exist_ok=True)
-    encoded = json.dumps(metadata, indent=2, allow_nan=False)
+    encoded = json.dumps(declared, indent=2, allow_nan=False)
     with target_csv.open("x", encoding="utf-8", newline="") as stream:
-        stream.write(telemetry_csv)
+        stream.write(telemetry_text)
     try:
         with target_meta.open("x", encoding="utf-8") as stream:
             stream.write(encoded)
+        if sidecar.get("source") != "telemetry_csv":
+            with (source / "telemetry_source.json").open("x", encoding="utf-8") as stream:
+                stream.write(json.dumps(sidecar, indent=2, allow_nan=False))
     except Exception:
         target_csv.unlink(missing_ok=True)
+        target_meta.unlink(missing_ok=True)
+        (source / "telemetry_source.json").unlink(missing_ok=True)
         raise
     return scene_status(root, scene)
 
@@ -146,12 +233,39 @@ def prepare_scene(root, scene):
     metadata = read_json(files[2])
     telemetry = georef.normalize_telemetry(files[1], metadata)
     _, work = scene_paths(root, scene)
+    # Two CPU diagnostics, both of which only ever report. A scene with a straight
+    # flight path or a barometric altitude mislabelled as ellipsoidal is still worth
+    # reconstructing, and refusing it outright would bury the finding that matters.
+    gates, capture_plan = {}, None
+    try:
+        import survey_assess as assess
+        gates = assess.control_requirement(
+            telemetry=metadata, max_speed_m_s=MAX_PLAUSIBLE_SPEED_M_S,
+            camera_centers_enu=[s["position"] for s in telemetry["samples"]],
+            samples=telemetry["samples"])
+    except (ValueError, KeyError, IndexError) as error:
+        gates = {"error": str(error)}
+    try:
+        import survey_capture as capture
+        capture_plan = capture.plan(telemetry, video_duration_s=metadata["video_duration_s"],
+                                    budget=CAPTURE_BUDGET_FRAMES)
+        write_json(_safe_path(work, "survey/capture_plan.json"), capture_plan)
+    except (ValueError, KeyError, IndexError) as error:
+        gates["capture_plan"] = {"status": "unavailable", "reason": str(error)}
     manifest = {
         "schema_version": 1, "id": uuid.uuid4().hex,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "inputs": [_fingerprint(p, root) for p in files],
         "metadata": metadata, "video_duration_verified": False,
         "telemetry": telemetry, "gpu_execution_enabled": False,
+        "gates": {key: gates[key] for key in
+                  ("telemetry_quality", "observability", "vertical_reference", "fix_quality",
+                   "clock_bounds", "requirement", "error", "capture_plan")
+                  if isinstance(gates, dict) and key in gates},
+        "capture_plan": None if capture_plan is None else {
+            "frame_count": capture_plan["frame_count"], "budget": capture_plan["budget"],
+            "min_baseline_m": capture_plan["min_baseline_m"],
+            "path_coverage": capture_plan["path_coverage"]},
     }
     write_json(work / "survey" / "preparation.json", manifest)
     return scene_status(root, scene)
@@ -436,6 +550,7 @@ def _evaluation_metrics(preparation, context, paths):
     evaluation, _ = _modules()
     alignment, latest = context["alignment"], context["latest"]
     checkpoint_result = surface_result = None
+    accuracy_report = accuracy_note = None
     if paths["checkpoint"]:
         data = read_json(paths["checkpoint"])
         if alignment is None:
@@ -449,7 +564,27 @@ def _evaluation_metrics(preparation, context, paths):
         if (not isinstance(rows, list) or not rows or len(rows) > 10000
                 or any(not isinstance(r, dict) or set(r) != {"reconstructed", "reference"} for r in rows)):
             raise ValueError("Supply 1–10000 independent checkpoint pairs: reconstructed, reference.")
-        checkpoint_result = evaluation.checkpoint_metrics([r["reconstructed"] for r in rows], [r["reference"] for r in rows])
+        checkpoint_result = evaluation.checkpoint_metrics([r["reconstructed"] for r in rows],
+                                                          [r["reference"] for r in rows])
+        paired = [{"id": str(index), "surveyed": row["reference"], "model": row["reconstructed"]}
+                  for index, row in enumerate(rows)]
+        frame = alignment["coordinate_frame"]
+        origin = frame.get("origin", {})
+        crs = ("{} {}, origin {} {}, height datum {}"
+               .format(frame.get("geodetic_crs"), frame.get("type"), origin.get("latitude_deg"),
+                       origin.get("longitude_deg"), frame.get("altitude_datum")))
+        try:
+            import survey_assess as assess
+            accuracy_report = assess.accuracy_from_checkpoints(
+                paired, crs=crs, vertical_datum=frame.get("altitude_datum", "unknown"))
+        except ValueError as error:
+            accuracy_report, accuracy_note = None, str(error)
+        else:
+            accuracy_note = None
+        if accuracy_report is not None:
+            # The unaligned track is the absolute error of the georeferenced model;
+            # a Sim(3)-aligned figure would absorb the very scale error being tested.
+            checkpoint_result = accuracy_report["tracks"]["unaligned"]["metrics"]
     if paths["surface"]:
         data = read_json(paths["surface"])
         if alignment is None:
@@ -471,8 +606,28 @@ def _evaluation_metrics(preparation, context, paths):
         else:
             speed = _diagnostic_speed(read_json(paths["report"]), preparation["metadata"]["video_duration_s"])
             speed["reason"] += " Historical source duration is declared, not independently verified."
-    return evaluation.build_evaluation(checkpoints=checkpoint_result, surface=surface_result,
-                                       speed=speed, georeferenced=alignment is not None)
+    result = evaluation.build_evaluation(checkpoints=checkpoint_result, surface=surface_result,
+                                         speed=speed, georeferenced=alignment is not None)
+    if accuracy_report is not None:
+        result["accuracy_split"] = {key: accuracy_report[key] for key in
+                                    ("protocol", "counts", "split", "tracks", "primary_track",
+                                     "headline", "verdict", "target", "meets_accuracy_target",
+                                     "accuracy_validated", "accuracy_validation_reasons",
+                                     "what_this_does_not_prove", "warnings")
+                                    if key in accuracy_report}
+    elif accuracy_note is not None:
+        result["accuracy_split"] = {"status": "not_attempted", "reason": accuracy_note}
+    elif checkpoint_result is not None:
+        result["accuracy_split"] = {
+            "status": "not_attempted",
+            "reason": "fewer than 8 checkpoints: a fit/hold-out split is impossible, so the "
+                      "paired error is reported unsplit and is only as independent as the "
+                      "file that supplied it"}
+    for key, name in (("model_completeness", "completeness"),
+                      ("processing_prediction", "throughput")):
+        if latest and isinstance(latest.get(name), dict):
+            result[key] = latest[name]
+    return result
 
 
 def evaluate_scene(root, scene):
@@ -570,7 +725,8 @@ def scene_status(root, scene):
             names = [(prep_path, "Input provenance")]
             if latest:
                 state["latest_run"] = {key: latest[key] for key in
-                                       ("id", "status", "preparation_id", "secs", "error") if key in latest}
+                                       ("id", "status", "preparation_id", "secs", "error",
+                                        "progressive", "progressive_error") if key in latest}
                 names.append((run / "run.json", "Run timing/provenance; the official gate needs a "
                                                 "decoder-verified duration and recorded hardware"))
                 if latest["status"] != "complete":
@@ -655,9 +811,16 @@ DENSE_PROFILES = {
     "fast": {"consistency": False, "max_image_size": 1000},
     "budget": {"consistency": False, "max_image_size": 700},
 }
+CAPTURE_BUDGET_FRAMES = 400
+"""Frames the capture plan is allowed to spend. Matches the keyframe target the run
+asks for, so the plan and the extraction never disagree about the budget."""
+MAX_PLAUSIBLE_SPEED_M_S = 25.0
+"""Ceiling used only to flag suspicious GPS steps. A multirotor that cannot exceed
+~30 m/s in a dive makes a 25 m/s sustained reading a positioning artefact, not a
+flight; it is a tripwire, not a specification of the aircraft."""
 
 
-def dense_commands(root, workspace, dense_dir, *, profile="survey"):
+def dense_commands(root, workspace, dense_dir, *, profile="survey", image_dir="frames_train"):
     colmap = str(Path(root) / "tools" / "colmap" / "bin" / "colmap.exe")
     workspace, dense_dir = Path(workspace), Path(dense_dir)
     if profile not in DENSE_PROFILES:
@@ -667,10 +830,30 @@ def dense_commands(root, workspace, dense_dir, *, profile="survey"):
     consistency = settings["consistency"]
     size = str(settings["max_image_size"])
     return [
-        {"stage": "undistort", "requires_gpu": False, "argv": [colmap, "image_undistorter", "--image_path", str(workspace / "frames_train"), "--input_path", str(workspace / "colmap/sparse/txt"), "--output_path", str(dense_dir), "--output_type", "COLMAP", "--max_image_size", size]},
+        {"stage": "undistort", "requires_gpu": False, "argv": [colmap, "image_undistorter", "--image_path", str(workspace / image_dir), "--input_path", str(workspace / "colmap/sparse/txt"), "--output_path", str(dense_dir), "--output_type", "COLMAP", "--max_image_size", size]},
         {"stage": "dense", "requires_gpu": True, "argv": [colmap, "patch_match_stereo", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--PatchMatchStereo.geom_consistency", "true" if consistency else "false", "--PatchMatchStereo.max_image_size", size]},
         {"stage": "fusion", "requires_gpu": False, "argv": [colmap, "stereo_fusion", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--input_type", "geometric" if consistency else "photometric", "--output_path", str(dense_dir / "fused.ply")]},
     ]
+
+
+def mesh_command(root, dense_dir, *, depth=9, trim=10.0, color=3.0):
+    """COLMAP's Poisson mesher: faces from the fused cloud, on CPU, no invention.
+
+    This is what makes OBJ a deliverable instead of a refusal. COLMAP 4.1 takes the
+    fused PLY itself as ``input_path`` - handing it the dense directory fails with
+    "does not match file extension .ply". The mesher interpolates an isosurface
+    through the measured depth samples, so the result is a surface *estimate* whose
+    vertices are not individually measured points; the delivery manifest says so and
+    the evidence layers keep the two apart.
+    """
+    colmap = str(Path(root) / "tools" / "colmap" / "bin" / "colmap.exe")
+    dense_dir = Path(dense_dir)
+    return {"stage": "mesh", "requires_gpu": False,
+            "argv": [colmap, "poisson_mesher", "--input_path", str(dense_dir / "fused.ply"),
+                     "--output_path", str(dense_dir / "mesh.ply"),
+                     "--PoissonMeshing.depth", str(depth),
+                     "--PoissonMeshing.trim", str(trim),
+                     "--PoissonMeshing.color", str(color)]}
 
 
 def _publish_run(work, run, record):
@@ -679,6 +862,24 @@ def _publish_run(work, run, record):
         "id": record["id"], "status": record["status"], "preparation_id": record["preparation_id"],
         "report": _fingerprint(run / "run.json", run),
     })
+
+
+def _progressive_result(root, run, image_dir, dense_profile):
+    """Execute the streaming window plan over the frames the colmap stage just solved.
+
+    The plan's seconds stay predictions; survey_progressive records *measured*
+    wall seconds per window and publishes progressive/checkpoints.json after
+    every window. The shared database is the one run_colmap.py just filled, so
+    no frame is re-extracted. This whole block is diagnostic: the caller records
+    any failure here as progressive_error instead of losing the reconstruction.
+    """
+    import survey_progressive
+    import survey_streaming as streaming
+    frames = survey_progressive.frame_names(run / image_dir)
+    plan = streaming.progressive_plan(
+        len(frames), streaming.DEFAULT_WINDOWS, rates=streaming.MEASURED_RATES,
+        image_px=DENSE_PROFILES[dense_profile]["max_image_size"])
+    return survey_progressive.execute_plan(root, run, plan, image_dir=image_dir)
 
 
 def _depth_views(run, *, kind="geometric"):
@@ -736,7 +937,7 @@ def _preflight(root, video, expected_duration):
     return duration, int(width), int(height)
 
 
-def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
+def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey", progressive=False):
     if allow_gpu is not True:
         raise PermissionError("GPU reconstruction requires explicit approval and --allow-gpu. No work started.")
     started = time.perf_counter()
@@ -753,16 +954,29 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
         root, video, preparation["metadata"]["video_duration_s"])
     run.mkdir(parents=True, exist_ok=False)
     py = str(root / ".venv/Scripts/python.exe")
+    # Preparation only runs when preparation produced a capture plan for this scene:
+    # a scene prepared before the plan existed still reconstructs, exactly as before.
+    plan_path = _safe_path(work, "survey/capture_plan.json")
+    frames_ready = plan_path.is_file()
+    image_dir = "frames_match" if frames_ready else "frames_train"
     commands = [
         {"stage": "keyframes", "argv": [py, str(root / "scripts/extract_keyframes.py"), "--work", str(run), "--video", str(video), "--target", "400", "--train-width", "1600"]},
+        *([{"stage": "frames", "requires_gpu": False,
+            "argv": [py, str(root / "scripts/survey_frames.py"), "--work", str(run),
+                     "--preparation", str(work / "survey/preparation.json"),
+                     "--plan", str(plan_path), "--select", "--flatten", "--mask"]}]
+           if frames_ready else []),
         {"stage": "priors", "argv": [py, str(root / "scripts/survey_priors.py"),
                                      "--keyframes", str(run / "keyframes.jsonl"),
                                      "--preparation", str(work / "survey/preparation.json"),
                                      "--out", str(run / "pose_priors.jsonl")]},
         {"stage": "colmap", "argv": [py, str(root / "scripts/run_colmap.py"), str(run),
-                                     "--set", "mapper=pose_prior"]},
+                                     "--set", "mapper=pose_prior",
+                                     "--set", f"image_dir={image_dir}",
+                                     *(["--set", "mask_path=masks"] if frames_ready else [])]},
         {"stage": "poses", "argv": [py, str(root / "scripts/parse_colmap.py"), "--work", str(run)]},
-        *dense_commands(root, run, run / "dense", profile=dense_profile),
+        *dense_commands(root, run, run / "dense", profile=dense_profile, image_dir=image_dir),
+        mesh_command(root, run / "dense"),
     ]
     record = {"schema_version": 1, "id": run_id, "preparation_id": preparation["id"], "status": "running",
               "inputs": preparation["inputs"], "steps": [], "hardware": _hardware(),
@@ -782,6 +996,12 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
         code_paths += [Path(command["argv"][1]) for command in commands
                        if str(command["argv"][1]).endswith(".py")]
         record["code_sha256"] = {str(path.resolve()): evaluation.file_fingerprint(path)["sha256"] for path in code_paths}
+        if progressive:
+            # The executor shapes what the checkpoint reports, so its bytes belong
+            # in the run's provenance exactly like the stage scripts do.
+            import survey_progressive
+            executor = Path(survey_progressive.__file__)
+            record["code_sha256"][str(executor.resolve())] = evaluation.file_fingerprint(executor)["sha256"]
         record["steps"].append({"name": "setup", "status": "done", "secs": time.perf_counter() - started})
         for command in commands:
             t0 = time.perf_counter()
@@ -792,6 +1012,19 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
             _publish_run(work, run, record)
             if proc.returncode:
                 raise RuntimeError(f"{command['stage']} failed with exit {proc.returncode}; inspect {run / (command['stage'] + '.log')}")
+            if progressive and command["stage"] == "colmap":
+                # Assessment is diagnostic, never fatal: a progressive window plan
+                # that fails to execute is recorded with its reason and must not
+                # throw away the monolithic reconstruction that follows.
+                t0_progressive = time.perf_counter()
+                progressive_status = "done"
+                try:
+                    record["progressive"] = _progressive_result(root, run, image_dir, dense_profile)
+                except (ValueError, KeyError, IndexError, RuntimeError, OSError) as error:
+                    record["progressive_error"] = str(error)
+                    progressive_status = "failed"
+                record["steps"].append({"name": "progressive", "status": progressive_status, "secs": time.perf_counter() - t0_progressive})
+                _publish_run(work, run, record)
         t0 = time.perf_counter()
         alignment = georef.align_camera_trajectory(_camera_rows(run / "keyframes_poses.jsonl"), preparation["telemetry"])
         alignment.update(preparation_id=preparation["id"], run_id=run_id,
@@ -801,10 +1034,17 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
         points = np.column_stack([cloud[k] for k in ("x", "y", "z")])
         colors = np.column_stack([cloud[k] for k in ("red", "green", "blue")])
         _export_points(points, colors, alignment, run / "dense_points.ply")
-        import survey_export as exporter
-        product_manifest = exporter.export_products(points, colors, alignment,
-                                                    _safe_path(run, "products"))
+        import survey_deliver as deliver
+        delivery = deliver.deliver(points, colors, alignment, _safe_path(run, "products"),
+                                   mesh_path=_safe_path(run, "dense/mesh.ply"))
+        product_manifest = delivery["local_enu"]["manifest"]
         record["products"] = product_manifest
+        record["delivery"] = {"meshed": delivery["meshed"], "mesh": delivery["mesh"],
+                              "cloud_point_count": delivery["cloud_point_count"],
+                              "local_enu": delivery["local_enu"]["formats"],
+                              "georeferenced": (delivery["georeferenced"] or {}).get("formats"),
+                              "crs": (delivery["georeferenced"] or {}).get("crs"),
+                              "refusals": delivery["refusals"]}
         sparse_points = _safe_path(run, POINTS3D)
         if sparse_points.is_file():
             import survey_products as products
@@ -812,9 +1052,28 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey"):
             evidence_cloud, evidence_report = products.evidence_for_sparse(
                 sparse_points, alignment, _safe_path(run, "evidence"), views=views)
             record["evidence"] = read_json(evidence_report)
-        record["product_files"] = {"products/" + entry["path"]:
-                                    _fingerprint(_safe_path(run, "products/" + entry["path"]), run)
-                                    for entry in product_manifest["files"]}
+        record["product_files"] = {}
+        manifests = {"enu": product_manifest,
+                     "georeferenced": (delivery["georeferenced"] or {}).get("manifest")}
+        for name, manifest in manifests.items():
+            for entry in (manifest or {}).get("files", []):
+                relative = "products/" + name + "/" + entry["path"]
+                record["product_files"][relative] = _fingerprint(_safe_path(run, relative), run)
+        # Assessment is diagnostic, never fatal: a degenerate trajectory that makes an
+        # observability statistic impossible must not throw away a finished
+        # reconstruction, so the failure is recorded as the reason it is missing.
+        try:
+            import survey_assess as assess
+            pose_rows = _camera_rows(run / "keyframes_poses.jsonl")
+            _, camera_enu, _, _ = georef.camera_positions(pose_rows, preparation["telemetry"])
+            record["completeness"] = assess.completeness(
+                camera_enu, georef.transform_points(points, alignment))
+            record["throughput"] = assess.throughput(
+                frame_count=len(pose_rows),
+                image_px=DENSE_PROFILES[dense_profile]["max_image_size"],
+                video_duration_s=duration)
+        except (ValueError, KeyError, IndexError) as error:
+            record["assessment_error"] = str(error)
         record["files"] = {name: _fingerprint(_safe_path(run, name), run) for name in RUN_FILES
                            if _safe_path(run, name).is_file()}
         record["output"] = record["files"]["dense_points.ply"]

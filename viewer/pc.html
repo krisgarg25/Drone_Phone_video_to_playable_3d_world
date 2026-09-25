@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>3D Room Walk & Drone Flight — PlayCanvas Viewer</title>
+<script>
+  if (new URLSearchParams(location.search).get("embed") === "1") {
+    document.documentElement.classList.add("workspace-embed");
+  }
+</script>
 <style>
   html, body { margin:0; height:100%; overflow:hidden; background:#0b0e14;
                font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'JetBrains Mono', monospace; }
@@ -163,13 +168,21 @@
           font-weight:500; letter-spacing:.04em; background:#0b0e14; z-index:30;
           transition:opacity .35s; }
   #load.err { color:#ff8f7a; }
+  /* Keep legacy DOM/standalone controls intact; only the host owns embedded UI. */
+  .workspace-embed #hud-container,
+  .workspace-embed #cam-inspector,
+  .workspace-embed #cov-panel { display:none !important; }
+  .workspace-embed #app {
+    position:absolute; inset:0; width:100%; height:100%; touch-action:none;
+  }
+  .workspace-embed #load { padding:24px; text-align:center; font-size:13px; }
 </style>
 <script type="importmap">
 { "imports": { "playcanvas": "./pc/playcanvas.mjs" } }
 </script>
 </head>
 <body>
-<canvas id="app"></canvas>
+<canvas id="app" tabindex="0" aria-label="3D scene viewer"></canvas>
 
 <!-- Top-Left HUD & Controls Toolbar -->
 <div id="hud-container">
@@ -231,14 +244,23 @@
 
 <div id="load">loading engine…</div>
 <script>
-  window.addEventListener("error", function(e) {
-    var l = document.getElementById("load");
-    if (l) { l.textContent = "ERROR: " + (e.message || e); l.className = "err"; }
-  });
-  window.addEventListener("unhandledrejection", function(e) {
-    var l = document.getElementById("load");
-    if (l) { l.textContent = "ERROR: " + (e.reason && e.reason.message ? e.reason.message : e.reason); l.className = "err"; }
-  });
+  function showViewerError(message) {
+    const l = document.getElementById("load");
+    const text = String(message);
+    if (l) {
+      l.textContent = "ERROR: " + text;
+      l.className = "err";
+      l.style.opacity = "1";
+      l.style.pointerEvents = "auto";
+    }
+    if (document.documentElement.classList.contains("workspace-embed")) {
+      window.__loadError = text;
+      window.__ready = false;
+      window.parent.postMessage({ namespace: "groundcontrol", type: "error", message: text }, location.origin);
+    }
+  }
+  window.addEventListener("error", e => showViewerError(e.message || e));
+  window.addEventListener("unhandledrejection", e => showViewerError(e.reason?.message || e.reason));
 </script>
 <script type="module" src="./pc.js"></script>
 </body>

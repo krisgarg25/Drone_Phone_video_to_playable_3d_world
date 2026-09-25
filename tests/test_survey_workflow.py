@@ -44,6 +44,40 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertEqual(sum(c["weight"] for c in state["evaluation"]["criteria"]), 100)
         self.assertTrue(all(c["status"] == "not_evaluated" for c in state["evaluation"]["criteria"]))
 
+    GPX = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<gpx version="1.1" creator="fixture" xmlns="http://www.topografix.com/GPX/1/1">'
+           '<trk><trkseg>'
+           '<trkpt lat="28.0" lon="77.0"><ele>100</ele><time>2026-01-01T00:00:00Z</time></trkpt>'
+           '<trkpt lat="28.0001" lon="77.0"><ele>100.5</ele><time>2026-01-01T00:00:01Z</time></trkpt>'
+           '<trkpt lat="28.0001" lon="77.0001"><ele>101</ele><time>2026-01-01T00:00:02Z</time></trkpt>'
+           '<trkpt lat="28.0" lon="77.0001"><ele>101.5</ele><time>2026-01-01T00:00:03Z</time></trkpt>'
+           '</trkseg></trk></gpx>\n')
+
+    def test_a_gpx_track_enters_the_survey_without_being_hand_edited_into_the_contract(self):
+        """The mandatory input is a drone log, not a file somebody retyped."""
+        survey.save_inputs(self.root, "flight", self.GPX,
+                           dict(self.metadata, video_duration_s=4, horizontal_std_m=2.0,
+                                vertical_std_m=4.0))
+        written = (self.source / "telemetry.csv").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(written[0], "t_sec,latitude_deg,longitude_deg,altitude_m,"
+                                     "horizontal_std_m,vertical_std_m")
+        self.assertEqual(len(written), 5)
+        sidecar = json.loads((self.source / "telemetry_source.json").read_text(encoding="utf-8"))
+        self.assertEqual(sidecar["source"], "gpx")
+        self.assertEqual(sidecar["uncertainty_source"], "declared_by_caller")
+        self.assertEqual(survey.prepare_scene(self.root, "flight")["status"], "prepared")
+
+    def test_a_log_with_no_evidence_of_precision_is_refused_not_rounded_up(self):
+        with self.assertRaisesRegex(ValueError, "positioning precision"):
+            survey.save_inputs(self.root, "flight", self.GPX, dict(self.metadata,
+                                                                   video_duration_s=4))
+        self.assertFalse((self.source / "telemetry.csv").exists())
+
+    def test_incomplete_metadata_comes_back_as_named_blockers(self):
+        with self.assertRaisesRegex(ValueError, "flight metadata is incomplete"):
+            survey.save_inputs(self.root, "flight", self.csv, {"video_duration_s": 600})
+        self.assertFalse((self.source / "flight_metadata.json").exists())
+
     def test_inputs_validate_before_saving_and_refuse_overwrite(self):
         bad = dict(self.metadata, altitude_datum="unknown")
         with self.assertRaises(ValueError):
@@ -202,7 +236,8 @@ class SurveyWorkflowTests(unittest.TestCase):
         survey._export_points([[0, 0, 0]], [[0, 0, 0]], alignment, output)
         self.assertEqual(occupied.read_text(), "owned by another export")
 
-    def fake_reconstruction(self, *, width=1920, height=1080, fail_stage=None, omit_cloud=False):
+    def fake_reconstruction(self, *, width=1920, height=1080, fail_stage=None, omit_cloud=False,
+                            write_mesh=False):
         import cv2
         executable = self.root / "tools/colmap/bin/colmap.exe"
         executable.parent.mkdir(parents=True, exist_ok=True)
@@ -210,7 +245,7 @@ class SurveyWorkflowTests(unittest.TestCase):
         scripts = self.root / "scripts"
         scripts.mkdir(exist_ok=True)
         for name in ("extract_keyframes.py", "run_colmap.py", "parse_colmap.py",
-                     "survey_priors.py"):
+                     "survey_priors.py", "survey_frames.py"):
             (scripts / name).write_text("# fake runner fixture; never executed\n")
         calls = []
         self.spawned = []
@@ -220,6 +255,13 @@ class SurveyWorkflowTests(unittest.TestCase):
             run = Path(kwargs["stdout"].name).parent
             calls.append((stage, run))
             self.spawned.append([str(part) for part in argv])
+            if stage == "frames":
+                # The progressive executor windows over the written frames, so the
+                # fake run has to leave them on disk like survey_frames.py does.
+                matching = run / "frames_match"
+                matching.mkdir(exist_ok=True)
+                for index in range(12):
+                    (matching / f"{index:05d}.jpg").write_bytes(b"not decoded")
             if stage == "poses":
                 self.write_geometry(run, scale=3)
             if stage == "fusion" and not omit_cloud:
@@ -229,6 +271,19 @@ class SurveyWorkflowTests(unittest.TestCase):
                                     dtype=[("x", "f8"), ("y", "f8"), ("z", "f8"),
                                            ("red", "u1"), ("green", "u1"), ("blue", "u1")])
                 PlyData([PlyElement.describe(vertices, "vertex")], text=True).write(str(dense / "fused.ply"))
+            if stage == "mesh" and write_mesh:
+                # Poisson rebuilds the surface: its own vertices and faces, not the
+                # fused cloud's, which is the case delivery has to handle.
+                dense = run / "dense"
+                dense.mkdir(exist_ok=True)
+                vertices = np.array([(0, 0, 0, 10, 20, 30), (1, 2, 3, 40, 50, 60),
+                                     (2, 3, 4, 70, 80, 90)],
+                                    dtype=[("x", "f8"), ("y", "f8"), ("z", "f8"),
+                                           ("red", "u1"), ("green", "u1"), ("blue", "u1")])
+                faces = np.zeros(1, dtype=[("vertex_indices", "i4", (3,))])
+                faces["vertex_indices"] = np.array([[0, 1, 2]], dtype=np.int32)
+                PlyData([PlyElement.describe(vertices, "vertex"),
+                         PlyElement.describe(faces, "face")], text=True).write(str(dense / "mesh.ply"))
             return SimpleNamespace(returncode=7 if stage == fail_stage else 0)
 
         metadata = {cv2.CAP_PROP_FPS: 30, cv2.CAP_PROP_FRAME_COUNT: 18000,
@@ -244,7 +299,9 @@ class SurveyWorkflowTests(unittest.TestCase):
         calls = self.fake_reconstruction()
         record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
         run = self.work / "survey/runs" / record["id"]
-        self.assertEqual([c[0] for c in calls], ["keyframes", "priors", "colmap", "poses", "undistort", "dense", "fusion"])
+        self.assertEqual([c[0] for c in calls],
+                         ["keyframes", "frames", "priors", "colmap", "poses", "undistort", "dense",
+                          "fusion", "mesh"])
         colmap = next(argv for argv in self.spawned if argv[1].endswith("run_colmap.py"))
         self.assertIn("mapper=pose_prior", colmap)
         priors = next(argv for argv in self.spawned if argv[1].endswith("survey_priors.py"))
@@ -616,7 +673,8 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertNotIn("nvidia", spawned)
         self.assertNotIn("torch", spawned)
         self.assertEqual([c[0] for c in calls],
-                         ["keyframes", "priors", "colmap", "poses", "undistort", "dense", "fusion"])
+                         ["keyframes", "frames", "priors", "colmap", "poses", "undistort", "dense",
+                          "fusion", "mesh"])
 
     def test_speed_gate_fires_only_on_a_verified_duration(self):
         self.prepared_geometry()
@@ -627,8 +685,8 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.assertEqual(record["speed"]["official_status"], "meets_target")
         self.assertFalse(record["speed"]["diagnostic_only"])
         self.assertEqual(record["speed"]["required_stages"],
-                         ["setup", "keyframes", "priors", "colmap", "poses", "undistort", "dense",
-                          "fusion", "georeferenced_export"])
+                         ["setup", "keyframes", "frames", "priors", "colmap", "poses", "undistort",
+                          "dense", "fusion", "mesh", "georeferenced_export"])
         criteria = {c["id"]: c for c in survey.evaluate_scene(self.root, "flight")["evaluation"]["criteria"]}
         self.assertEqual(criteria["speed"]["status"], "meets_target")
         self.assertEqual(criteria["accuracy"]["status"], "not_evaluated")
@@ -677,7 +735,7 @@ class SurveyWorkflowTests(unittest.TestCase):
         self.fake_reconstruction()
         record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
         run = self.work / "survey/runs" / record["id"]
-        manifest = json.loads((run / "products" / "export_manifest.json").read_text(encoding="utf-8"))
+        manifest = json.loads((run / "products" / "enu" / "export_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["claims_textured_mesh"], False)
         written = {entry["format"] for entry in manifest["files"]}
         self.assertIn("las", written)
@@ -686,11 +744,48 @@ class SurveyWorkflowTests(unittest.TestCase):
         state = survey.scene_status(self.root, "flight")
         self.assertIn("cloud.las", [a["name"] for a in state["artifacts"]])
         # Tampering with a deliverable must invalidate the scene, not just the file.
-        target = run / "products" / "cloud.las"
+        target = run / "products" / "enu" / "cloud.las"
         target.write_bytes(target.read_bytes() + b"x")
         tampered = survey.scene_status(self.root, "flight")
         self.assertEqual(tampered["status"], "invalid")
         self.assertIn("cloud.las", " ".join(tampered["blockers"]))
+
+    def test_a_meshed_run_delivers_every_official_format_in_a_derived_crs(self):
+        """The claim the brief is graded on: OBJ, PLY, LAS, GeoTIFF, glTF, FBX, georeferenced."""
+        self.prepared_geometry()
+        self.fake_reconstruction(write_mesh=True)
+        record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        run = self.work / "survey/runs" / record["id"]
+        delivery = record["delivery"]
+        self.assertTrue(delivery["meshed"])
+        self.assertEqual(delivery["mesh"]["mesh_face_count"], 1)
+        self.assertEqual(delivery["georeferenced"]["delivered"],
+                         delivery["georeferenced"]["total"], delivery["georeferenced"]["rows"])
+        self.assertEqual(delivery["crs"]["epsg"], 32643)
+        for name in ("surface.obj", "dsm.tif", "cloud.las", "cloud.ply", "cloud.gltf",
+                     "cloud.fbx", "positions_wgs84.csv"):
+            self.assertTrue((run / "products" / "georeferenced" / name).is_file(), name)
+        local = {r["format"]: r["status"] for r in delivery["local_enu"]["rows"]}
+        self.assertEqual(local["geotiff"], "not_delivered")
+        self.assertEqual(local["obj"], "delivered")
+        state = survey.scene_status(self.root, "flight")
+        names = [a["name"] for a in state["artifacts"]]
+        self.assertIn("dsm.tif", names)
+        self.assertIn("surface.obj", names)
+
+    def test_mesh_command_points_at_the_fused_ply_not_the_dense_directory(self):
+        """COLMAP 4.1 fails with "does not match file extension .ply" on a directory.
+
+        Found by running the stage for real: the fake runner never executes COLMAP,
+        so no unit test could see this.
+        """
+        command = survey.mesh_command(self.root, self.root / "work/flight/dense")
+        self.assertEqual(command["stage"], "mesh")
+        self.assertFalse(command["requires_gpu"])
+        argv = command["argv"]
+        self.assertEqual(argv[argv.index("--input_path") + 1],
+                         str(self.root / "work/flight/dense/fused.ply"))
+        self.assertTrue(argv[argv.index("--output_path") + 1].endswith("mesh.ply"))
 
     def test_dense_profile_keeps_consistency_and_fusion_in_agreement(self):
         work = self.root / "work/flight"
@@ -725,6 +820,66 @@ class SurveyWorkflowTests(unittest.TestCase):
 
     def test_depth_views_returns_none_without_a_dense_model(self):
         self.assertIsNone(survey._depth_views(self.root / "work/flight/survey/runs/absent"))
+
+    def test_progressive_flag_executes_windows_after_colmap_and_publishes(self):
+        self.prepared_geometry()
+        self.fake_reconstruction()
+        import survey_progressive
+        canned = {"schema_version": 1, "label": "measured", "plan": {}, "windows": [],
+                  "accumulated": {"registered_images": None, "points": None,
+                                  "windows_done": 0, "windows_total": 0},
+                  "first_useful_output_s": None}
+        with patch.object(survey_progressive, "execute_plan", return_value=canned) as executor:
+            record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True,
+                                              progressive=True)
+        self.assertEqual(record["progressive"], canned)
+        self.assertNotIn("progressive_error", record)
+        executor.assert_called_once()
+        _, run_directory, plan = executor.call_args[0]
+        self.assertEqual(plan["frame_count"], 12)
+        self.assertEqual(plan["label"], "predicted from measured per-image rates")
+        self.assertIsNotNone(plan["windows"][0]["predicted_s"])
+        self.assertEqual(executor.call_args[1]["image_dir"], "frames_match")
+        names = [step["name"] for step in record["steps"]]
+        self.assertEqual(names[names.index("colmap") + 1], "progressive")
+        self.assertEqual(next(s for s in record["steps"]
+                              if s["name"] == "progressive")["status"], "done")
+        published = survey.read_json(run_directory / "run.json")
+        self.assertEqual(published["progressive"], canned)
+        # The executor's bytes are part of what shaped the run's claims.
+        self.assertIn(str(Path(survey_progressive.__file__).resolve()), record["code_sha256"])
+        self.assertEqual(record["status"], "complete")
+
+    def test_progressive_failure_is_diagnostic_and_never_fatal(self):
+        self.prepared_geometry()
+        self.fake_reconstruction()
+        import survey_progressive
+        with patch.object(survey_progressive, "execute_plan",
+                          side_effect=RuntimeError("merger exploded")):
+            record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True,
+                                              progressive=True)
+        # The monolithic reconstruction survives: the failure is recorded, not raised.
+        self.assertEqual(record["status"], "complete")
+        self.assertEqual(record["progressive_error"], "merger exploded")
+        self.assertNotIn("progressive", record)
+        step = next(s for s in record["steps"] if s["name"] == "progressive")
+        self.assertEqual(step["status"], "failed")
+        self.assertEqual(record["speed"]["official_status"], "meets_target")
+        self.assertEqual(survey.read_json(self.work / "survey/latest_run.json")["status"],
+                         "complete")
+
+    def test_default_reconstruction_stays_byte_identical_without_the_flag(self):
+        self.prepared_geometry()
+        self.fake_reconstruction()
+        record = survey.reconstruct_scene(self.root, "flight", allow_gpu=True)
+        self.assertNotIn("progressive", record)
+        self.assertNotIn("progressive_error", record)
+        self.assertNotIn("progressive", [step["name"] for step in record["steps"]])
+        run = self.work / "survey/runs" / record["id"]
+        self.assertFalse((run / "progressive").exists())
+        self.assertEqual([step["name"] for step in record["steps"]],
+                         ["setup", "keyframes", "frames", "priors", "colmap", "poses",
+                          "undistort", "dense", "fusion", "mesh", "georeferenced_export"])
 
 
 if __name__ == "__main__":

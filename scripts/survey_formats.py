@@ -1164,13 +1164,19 @@ _EPSG_PATTERN = re.compile(r'AUTHORITY\s*\[\s*"EPSG"\s*,\s*"(\d+)"\s*\]'
 
 
 def _epsg_from_wkt(wkt):
-    """Pull an EPSG code out of WKT text. Nothing is looked up: an unknown name is None."""
+    """Pull an EPSG code out of WKT text. Nothing is looked up: an unknown name is None.
+
+    The code of the CRS itself is the LAST authority in a WKT1/WKT2 definition: a
+    full PROJCS opens with the spheroid's 7030 and the datum's 6326, so taking the
+    first match would label a GeoTIFF's projected-CRS key with an ellipsoid.
+    """
     if not wkt:
         return None
-    match = _EPSG_PATTERN.search(wkt)
-    if not match:
+    matches = _EPSG_PATTERN.findall(wkt)
+    if not matches:
         return None
-    code = int(match.group(1) or match.group(2))
+    code = int(next((m[0] for m in reversed(matches) if m[0]),
+                    next((m[1] for m in reversed(matches) if m[1]), 0)))
     return code if 1000 <= code < 100000 else None
 
 

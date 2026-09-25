@@ -516,10 +516,11 @@ with tempfile.TemporaryDirectory() as _td:
     ok(pipeline.code_digest([sys.executable, str(_s1)]) != _d1,
        "editing the script a step runs invalidates its marker")
 
-# The evidence steps are the last things to fail and the least load-bearing: a
-# take still ships its world if a browser cannot hand over a jpg.
-ok(set(pipeline.ADVISORY) == {"evals", "pairs"},
-   "the two evidence steps are advisory, so neither can abort the walk test",
+# The evidence and enhancement steps are the last things to fail and the least
+# load-bearing: a take still ships its world if a browser cannot hand over a jpg
+# or the semantic labeller cannot run.
+ok(set(pipeline.ADVISORY) == {"evals", "pairs", "semantics"},
+   "evidence and labelling steps are advisory, so none can abort the walk test",
    ", ".join(pipeline.ADVISORY))
 
 # ------------------------------------------- one locked screenshot is not a failed run

@@ -84,15 +84,29 @@ def validate(points, colors, triangles):
 
 
 def export_products(points, colors, alignment, output_dir, *, triangles=None, crs_wkt=None,
-                    source_sha256=None, cell_size_m=0.5, scale_mm=1.0):
-    """Write the measured cloud into every container that needs no invention."""
+                    source_sha256=None, cell_size_m=0.5, scale_mm=1.0,
+                    positions=None, coordinate_frame=None, crs=None):
+    """Write the measured cloud into every container that needs no invention.
+
+    ``positions`` pre-empts the ENU transform: pass an already-projected Nx3 array
+    (see ``survey_deliver``) together with the ``coordinate_frame`` and ``crs`` that
+    describe it, and the same writers fill a georeferenced product set. Leaving all
+    three unset keeps the original local-ENU behaviour.
+    """
     points, rgb, faces = validate(points, colors, triangles)
     if not 0 < float(scale_mm) <= 100.0:
         raise ValueError("scale_mm must be between 0.001 and 100 mm for a metric cloud")
     if float(cell_size_m) <= 0:
         raise ValueError("cell_size_m must be positive")
 
-    enu = georef.transform_points(points, alignment)
+    if positions is None:
+        enu = georef.transform_points(points, alignment)
+    else:
+        enu = np.asarray(positions, dtype=np.float64)
+        if enu.shape != points.shape or not np.isfinite(enu).all():
+            raise ValueError("positions must be a finite Nx3 array matching points")
+    if coordinate_frame is None:
+        coordinate_frame = alignment["coordinate_frame"]
     columns = {"x": enu[:, 0], "y": enu[:, 1], "z": enu[:, 2]}
     if rgb is not None:
         columns.update(red=rgb[:, 0], green=rgb[:, 1], blue=rgb[:, 2])
@@ -120,9 +134,12 @@ def export_products(points, colors, alignment, output_dir, *, triangles=None, cr
     record("las", "cloud.las", geometry="points", verified=las["verified"],
            scale_mm=float(scale_mm), offset_x=offsets[0], offset_y=offsets[1],
            offset_z=offsets[2], crs_written=bool(crs_wkt))
-    record("gltf", "cloud.gltf", geometry="points",
-           verified=formats.write_gltf(enu, rgb, out=output_dir / "cloud.gltf",
-                                       mode="points")["verified"])
+    record("gltf", "cloud.gltf", geometry="mesh" if faces is not None else "points",
+           vertex_colors=rgb is not None,
+           verified=formats.write_gltf(enu, faces if faces is not None else rgb,
+                                       out=output_dir / "cloud.gltf",
+                                       mode="triangles" if faces is not None else
+                                       "points")["verified"])
     record("fbx", "cloud.fbx", geometry="mesh" if faces is not None else "points",
            verified=formats.write_fbx(enu, output_dir / "cloud.fbx",
                                       triangles=faces)["verified"])
@@ -132,6 +149,7 @@ def export_products(points, colors, alignment, output_dir, *, triangles=None, cr
                                   "them would present inferred geometry as measured"})
     else:
         record("obj", "surface.obj", geometry="mesh", textured=False,
+               vertex_colors=rgb is not None,
                verified=formats.write_obj(faces, enu, output_dir / "surface.obj")["verified"])
 
     caveats = []
@@ -139,7 +157,9 @@ def export_products(points, colors, alignment, output_dir, *, triangles=None, cr
         caveats.append("no surface mesh was produced: this is a measured point cloud, and no "
                        "faces were invented to fill the gap")
     else:
-        caveats.append("the mesh carries no texture; it is geometry only")
+        caveats.append("the mesh carries no UV texture: "
+                       + ("per-vertex colour from the fused cloud, not an image"
+                          if rgb is not None else "geometry only"))
     if crs_wkt is None:
         missing.append({"format": "geotiff",
                         "reason": "no projected or geodetic CRS supplied: the cloud is in local "
@@ -156,13 +176,15 @@ def export_products(points, colors, alignment, output_dir, *, triangles=None, cr
                        "canopy, so it is not bare-earth terrain")
 
     manifest = {"schema_version": 1, "point_count": int(len(enu)),
-                "coordinate_frame": alignment["coordinate_frame"], "files": files,
+                "coordinate_frame": coordinate_frame, "files": files,
                 "not_delivered": missing, "caveats": caveats,
                 "claims_textured_mesh": False, "claims_surface_mesh": faces is not None,
                 "externally_validated": False,
                 "verification_note": "readers in scripts/survey_formats re-parse these files; "
                                      "no third-party library (laspy/GDAL/PDAL) was available to "
                                      "confirm spec compliance"}
+    if crs is not None:
+        manifest["crs"] = crs
     if crs_wkt is not None:
         manifest["crs_wkt"] = crs_wkt
     if source_sha256 is not None:

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SE Lab — SRS, DFD, Class &amp; UML — WALKABLE</title>
+<style>
+  :root{
+    --ink:#16202b; --ink2:#42525f; --ink3:#6b7b88;
+    --accent:#1f5f8b; --accent-l:#eaf1f7; --rust:#9c4a22;
+    --rule:#cfd8e0; --page:#fff;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  body{
+    margin:0; background:#e6e9ec; color:var(--ink);
+    font-family:"Segoe UI",Inter,system-ui,-apple-system,Roboto,Arial,sans-serif;
+    font-size:10.2pt; line-height:1.42;
+  }
+  .sheet{background:var(--page); max-width:190mm; margin:16px auto; padding:16mm 15mm 14mm;
+         box-shadow:0 2px 18px rgba(20,32,43,.14)}
+  @media print{ body{background:#fff} .sheet{margin:0; max-width:none; box-shadow:none; padding:0} }
+
+  /* masthead */
+  .mast{border-bottom:2.5px solid var(--ink); padding-bottom:9px; margin-bottom:11px}
+  .mast .kicker{font-size:7.8pt; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:700}
+  .mast h1{margin:3px 0 2px; font-size:19pt; line-height:1.1; letter-spacing:-.015em; font-weight:750}
+  .mast h2{margin:0; font-size:10.4pt; font-weight:400; color:var(--ink2)}
+  table.id{width:100%; border-collapse:collapse; margin:9px 0 2px; font-size:8.6pt}
+  table.id th,table.id td{border:1px solid var(--rule); padding:3.5px 6px; text-align:left; vertical-align:top}
+  table.id th{background:#f6f8fa; font-weight:600; color:var(--ink2); width:15%; white-space:nowrap}
+  .fill{color:var(--rust); font-family:"Segoe UI",sans-serif}
+
+  h3.sec{font-size:12.4pt; margin:16px 0 6px; font-weight:750; letter-spacing:-.01em;
+         border-left:4px solid var(--accent); padding-left:8px}
+  h4.sub{font-size:10.2pt; margin:11px 0 3px; font-weight:700; color:var(--accent)}
+  h5.mini{font-size:9.4pt; margin:9px 0 2px; font-weight:700; color:var(--ink2); text-transform:uppercase; letter-spacing:.06em}
+  p{margin:0 0 6px} .lead{font-size:10.4pt; color:var(--ink2)}
+  b{font-weight:700}
+  code{font-family:"Cascadia Code",Consolas,"SFMono-Regular",Menlo,monospace; font-size:8.6pt;
+       background:#f2f5f7; border:1px solid #e2e8ed; border-radius:2px; padding:0 2.5px; color:#123a52}
+  ul,ol{margin:0 0 6px; padding-left:16px} li{margin-bottom:2px}
+
+  table.d{width:100%; border-collapse:collapse; font-size:8.5pt; margin:5px 0 8px}
+  table.d caption{caption-side:top; text-align:left; font-size:8.2pt; color:var(--ink3);
+                  font-style:italic; padding-bottom:3px}
+  table.d th{background:var(--ink); color:#fff; text-align:left; padding:4px 6px; font-weight:600; font-size:8.1pt;
+             letter-spacing:.02em}
+  table.d td{border-bottom:1px solid #e4eaef; padding:4px 6px; vertical-align:top}
+  table.d tbody tr:nth-child(even){background:#f8fafb}
+  table.d td.n{white-space:nowrap; font-weight:700; color:var(--accent); font-size:8.2pt}
+  .mono{font-family:Consolas,monospace; font-size:8.1pt}
+
+  .fig{margin:8px 0 10px; break-inside:avoid}
+  .figcap{font-size:8.3pt; color:var(--ink2); margin-top:3px; border-top:1px solid var(--rule); padding-top:3px}
+  .figcap b{color:var(--ink); font-weight:700}
+  .dgm{width:100%; height:auto; display:block; background:#fff; border:1px solid var(--rule); border-radius:3px}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+
+  /* shared diagram vocabulary */
+  svg text{font-family:"Segoe UI",Inter,system-ui,sans-serif; font-size:9.2px; fill:var(--ink)}
+  svg text.b{font-weight:700}
+  svg text.ti{font-weight:750; font-size:10px}
+  svg text.sm{font-size:8.1px; fill:var(--ink2)}
+  svg text.xs{font-size:7.4px; fill:var(--ink3)}
+  svg text.f{font-size:8.1px; fill:var(--rust); font-weight:600}
+  svg text.mono{font-family:Consolas,monospace; font-size:8.1px; fill:var(--ink2); background:none; border:none}
+  svg .ent{fill:#fff; stroke:var(--ink); stroke-width:1.5}
+  svg .proc{fill:var(--accent-l); stroke:var(--accent); stroke-width:1.5}
+  svg .store{fill:#fff; stroke:var(--ink2); stroke-width:1.3}
+  svg .cl{fill:#fff; stroke:var(--ink); stroke-width:1.3}
+  svg .head{fill:#f0f4f7; stroke:var(--ink); stroke-width:1.3}
+  svg .uc{fill:#fff; stroke:var(--accent); stroke-width:1.3}
+  svg .state{fill:#eef4f8; stroke:var(--accent); stroke-width:1.3}
+  svg .act{fill:#fff; stroke:var(--ink2); stroke-width:1.2}
+  svg .band{fill:#f8fafb; stroke:var(--rule); stroke-width:1}
+  svg .ln{stroke:var(--ink2); stroke-width:1.15; fill:none; marker-end:url(#ar)}
+  svg .lnd{stroke:var(--ink2); stroke-width:1.15; fill:none; stroke-dasharray:4 3; marker-end:url(#ar)}
+  svg .lnp{stroke:var(--ink2); stroke-width:1.15; fill:none; marker-start:url(#ar); marker-end:url(#ar)}
+  svg .msg{stroke:var(--ink); stroke-width:1.3; fill:none; marker-end:url(#ar)}
+  svg .self{stroke:var(--rust); stroke-width:1.15; fill:none}
+  svg .life{stroke:var(--ink3); stroke-width:1; stroke-dasharray:3 3}
+  svg .gate{fill:#f8fafb; stroke:var(--rule); stroke-width:1}
+  svg .abox{fill:var(--ink); stroke:none}
+  svg .r{fill:var(--rust); stroke:none}
+  svg .g{fill:#1f7a4d; stroke:none}
+
+  .note{background:#fdf7f2; border-left:3px solid var(--rust); padding:6px 9px; font-size:8.6pt; color:#5d3a24; margin:7px 0}
+  .foot{margin-top:14px; padding-top:6px; border-top:1px solid var(--rule); font-size:7.9pt; color:var(--ink3);
+        display:flex; justify-content:space-between}
+  @media print{
+    @page{size:A4; margin:14mm 13mm 15mm}
+    .brk{break-before:page}
+    .foot{display:none}
+    #runfoot{display:block}
+  }
+  #runfoot{display:none; position:fixed; bottom:0; left:0; right:0; font-size:7.4pt; color:var(--ink3);
+           border-top:1px solid var(--rule); padding-top:2px;
+           display:none; justify-content:space-between}
+  @media print{ #runfoot{display:flex} }
+  #runfoot .pn::after{content:counter(page)}
+  #runfoot .pt::before{content:counter(page)}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#42525f"/></marker>
+  <marker id="ark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#16202b"/></marker>
+  <marker id="opentri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+    <path d="M0,1 L12,6 L0,11 z" fill="#ffffff" stroke="#42525f" stroke-width="1.1"/></marker>
+  <marker id="diamond" viewBox="0 0 14 8" refX="1" refY="4" markerWidth="9" markerHeight="6" orient="auto">
+    <path d="M0,4 L7,0 L14,4 L7,8 z" fill="#ffffff" stroke="#42525f" stroke-width="1.1"/></marker>
+</defs></svg>
+
+<div class="sheet">
+
+<!-- ══════════════════ MASTHEAD ══════════════════ -->
+<header class="mast">
+  <div class="kicker">Software Engineering Laboratory &middot; Submission I &middot; Requirements &amp; Design Models</div>
+  <h1>WALKABLE — Single-Pass Video to a Metric, Walkable 3D World</h1>
+  <h2>SRS &middot; Data Flow Diagrams (Levels 0–2) &middot; Class Diagram &middot; UML Model</h2>
+</header>
+
+<table class="id">
+  <tr><th>Course</th><td>Software Engineering Laboratory (SE Lab)</td>
+      <th>Batch / Section</th><td class="fill">____________________</td></tr>
+  <tr><th>Submitted by</th><td class="fill">______________________ &nbsp; (Roll No. ______________)</td>
+      <th>Project guide</th><td class="fill">____________________</td></tr>
+  <tr><th>Problem domain</th><td colspan="3">SIH26158 — “Single-Pass Drone Video to Accurate 3D Model Generation System” (NTRO). One pass of drone or phone video &rarr; a georeferenced, measurable, walkable 3D model of the site.</td></tr>
+  <tr><th>Due / mode</th><td>2 October 2026 — Google Classroom, single PDF</td>
+      <th>Date</th><td class="fill">____ / ____ / 2026</td></tr>
+</table>
+<p style="font-size:8.2pt;color:var(--ink3);margin-top:4px">
+Contents: §1 SRS &middot; §2 DFD Levels 0, 1, 2 &middot; §3 Class diagram &middot; §4 UML (use-case, sequence, activity, state machine) &middot; §5 Traceability. Print with Chrome &rarr; Save as PDF, A4, borders “None”, background graphics ON.</p>
+
+<!-- ══════════════════ 1. SRS ══════════════════ -->
+<h3 class="sec brk">1. Software Requirements Specification</h3>
+
+<h4 class="sub">1.1 Introduction</h4>
+<p><b>Purpose.</b> This SRS defines what the WALKABLE system must do, to what standard, and how each requirement is verified. It is written from the IEEE 830 / ISO 7301 outline and is the contract the DFDs (§2), class diagram (§3) and UML model (§4) are traced back to (§5).</p>
+<p><b>Scope.</b> The product accepts one or more video clips — a drone orbit or a walked phone scan — optionally with an AR pose log and flight telemetry, and produces (a) a camera-registered reconstruction, (b) a photorealistic 3D Gaussian splat, (c) a <b>metric</b> oriented frame, (d) a collision surface a character can stand on, and (e) survey deliverables in the formats the client brief names, opened in a browser-based viewer. It is a single-workstation, offline-capable tool: no cloud, no per-scene hand-tuning.</p>
+<p><b>Product perspective.</b> A pipelined, batch-sequential system of 17–18 dependency-ordered stages. Each stage is an independently invocable module writing typed artefacts under <code>work/&lt;scene&gt;/</code>; a code-hash completion marker makes every run resumable and re-runnable. Classical photogrammetry (COLMAP 4.1.1) supplies geometry, a neural renderer (gsplat 1.5.3 on PyTorch 2.4.1) supplies appearance, and everything downstream of the splat is deterministic computational geometry (voxelisation, rasterised heightfields, A*). Design rule: <i>the neural stage is permitted to be only an image-synthesis stage</i> — it is never trusted with geometry, with “down”, or with the metre.</p>
+<p><b>Definitions and acronyms.</b> SfM — Structure from Motion &middot; MVS — Multi-View Stereo &middot; GNSS / RTK — satellite positioning (centimetre-corrected) &middot; GSD — ground sample distance &middot; LoS — line of sight &middot; SRS — software requirements specification &middot; DoF — degrees of freedom &middot; <i>held-out checkpoint</i> — a camera pose deliberately excluded from training and used only to measure accuracy &middot; <i>gate</i> — <code>check_world.py</code>, the eleven-assertion build barrier.</p>
+
+<h4 class="sub">1.2 Overall description</h4>
+<p><b>Real-world context.</b> Mapping a site today means either slow, licensed photogrammetry that produces a model you can only <i>look at</i>, or a research demo that produces beautiful novel views with no surface, no scale, and no way in. The brief demands ≤ 1 m spatial accuracy and &lt; 15 min processing for a 10-minute video, in OBJ / PLY / LAS / GeoTIFF / GLB / glTF / FBX. A Gaussian splat satisfies none of the three criteria that carry 70 % of the score by itself; the geometry and evidence layers built around it do. The system therefore treats <i>provenance of every claimed number</i> as a first-class requirement, not documentation.</p>
+<p><b>User characteristics.</b> Three personas, no assumed CV background: <b>Surveyor</b> (operates the drone or walks the phone; supplies footage and one physical anchor number), <b>Analyst</b> (configures presets/quality, reads reports, exports deliverables), <b>Reviewer</b> (judge or client — inspects the model, the measurements, and the evidence behind each claim, in a browser, without installing anything).</p>
+<p><b>Typical operating scenarios.</b> (1) <i>Drone orbit</i> — 12 s clip of a boulder field, <code>run rocks --preset auto</code> &rarr; registered, trained, gated, 65 m autopilot walk. (2) <i>Phone room scan</i> — capture console on the phone streams coverage feedback, 90 s walk with AR pose log &rarr; priors rescue the rotation-heavy segment that SfM alone drops. (3) <i>Survey &amp; measurement</i> — RTK log aligns the reconstruction, ground control points are projected through the solved camera, and distances and heights come out in metres with their measurement basis attached.</p>
+<p><b>Constraints.</b> Windows 10/11 and NVIDIA CUDA 12.4 only (COLMAP and ffmpeg are vendored <code>.exe</code>) &middot; must run end-to-end on a 6 GB laptop GPU (peak 1.26 GiB measured at the default <code>high</code> preset) &middot; Python 3.12 for the pipeline and 3.10 for training, kept in separate virtual environments &middot; zero compilation on a fresh clone &middot; no per-scene magic constants — every threshold is derived from the scene or the GPU &middot; all third-party code MIT / BSD / Apache, with the AGPL alternative surveyed and excluded from shipped paths &middot; no network dependency at runtime.</p>
+<p><b>Assumptions and dependencies.</b> The operator supplies usable footage at ≥ 1080p with 60–70 % view overlap — the pipeline <i>refuses</i> sub-1080p input rather than silently degrading, and the capture console exists to prevent the failure upstream. At least one metric anchor exists per scene: GNSS, a surveyed control point, a cruise speed, or a camera height. A metre is <b>named</b>, not measured, when no GNSS is present, and the product must say so. COLMAP, gsplat and PlayCanvas are external artefacts pinned by the requirements in §3.1.</p>
+<p><b>Apportioning of requirements.</b> The viewer, the phone capture console and the combat/navigation layer are the same codebase deployed as an inspection tool for the survey outputs; requirements FR-01…FR-11 are core, FR-12…FR-15 are the survey and product layer, and FR-16…FR-19 are quality-of-evidence requirements that the client evaluation criteria impose.</p>
+
+<h4 class="sub">1.3 External interface requirements</h4>
+<table class="d"><caption>Table 1 — Interfaces to users, hardware, software and communications.</caption>
+<tr><th style="width:16%">Class</th><th style="width:26%">Interface</th><th>Requirement</th></tr>
+<tr><td class="n">GUI — analyst</td><td><code>pipeline.py</code> CLI &middot; <code>mvp.bat</code></td><td>Commands <code>run · view · scan · ui · status · coverage · benchmark · capture · doctor</code>, each accepting <code>&lt;scene&gt;</code>, <code>--preset room|drone|object|auto</code>, <code>--quality smoke|standard|high|ultra</code>, <code>--from &lt;step&gt;</code>, <code>--only a,b</code> and one anchor flag. Invalid combinations must be rejected before any GPU time is spent.</td></tr>
+<tr><td class="n">GUI — viewer</td><td><code>viewer/pc.html</code> (PlayCanvas, WebGL/WebXR)</td><td>Third-person character on the reconstructed physics shell; hotkeys for splats, collider wireframe, coverage overlay, COLMAP cameras, tie points, tour autoplay, reset. HUD telemetry line must be the harness’s own measurement, never a caption.</td></tr>
+<tr><td class="n">GUI — capture</td><td><code>viewer/capture.html</code> (WebXR on phone)</td><td>Live coverage shell with each surface patch coloured by number of distinct viewing directions; report horizontal FOV from the projection matrix (<code>P₀ = 1/tan(half-FOV)</code>) and flag &lt; 55° as telephoto. Recording begins only on explicit tap. Nothing may be drawn into the recorded pixels.</td></tr>
+<tr><td class="n">GUI — monitor</td><td><code>viewer/pipeline_gui.html</code> + <code>_serve.py</code></td><td>Streams per-stage logs through a byte-offset cursor, so a run started in a plain terminal appears identically in the browser and a page reload replays full history and keeps streaming.</td></tr>
+<tr><td class="n">Hardware</td><td>NVIDIA GPU ≥ 6 GB, camera, phone with ARCore/ARKit</td><td>Training budget derived from VRAM free <i>at that moment</i>; hard gaussian cap enforced; <code>nvidia-smi</code> presence verified by <code>doctor</code>.</td></tr>
+<tr><td class="n">Software</td><td>COLMAP 4.1.1 (CUDA) &middot; PyTorch 2.4.1 &middot; gsplat 1.5.3 &middot; ffmpeg 9.0.1 &middot; numpy + plyfile &middot; Node 18+ with <code>@playcanvas/splat-transform</code> &middot; <code>recast-navigation</code> &middot; Playwright + Chromium</td><td>All versions pinned in <code>requirements.txt</code> / <code>requirements-train.txt</code> / <code>tools/package.json</code>. Every COLMAP subcommand is probed, never assumed; a legacy vocab-tree asset must be reported as unsupported, not crashed on.</td></tr>
+<tr><td class="n">Communications</td><td>HTTPS on localhost; file transfer phone&rarr;laptop</td><td>WebXR requires a trusted origin, so <code>_serve.py</code> serves with a self-signed certificate and prints the address to open. No external calls; a fully offline installation must complete a run.</td></tr>
+<tr><td class="n">Compliance</td><td>Client brief SIH26158</td><td>Deliverables in OBJ / PLY / LAS / GeoTIFF / GLB / glTF / FBX, each carrying CRS and vertical datum, plus a web or desktop viewer.</td></tr>
+</table>
+
+<h4 class="sub brk">1.4 Functional requirements</h4>
+<table class="d"><caption>Table 2 — Functional requirements with method of verification. P = priority (H core / M desirable).</caption>
+<tr><th style="width:7%">ID</th><th style="width:20%">Requirement</th><th>Statement</th><th style="width:15%">Verification</th><th style="width:4%">P</th></tr>
+<tr><td class="n">FR-01</td><td>Ingest &amp; keyframe</td><td>Accept <i>n</i> ≥ 1 clips or a frame folder; decode with OpenCV/ffmpeg; score sharpness by variance-of-Laplacian; select across temporal bins; reject near-duplicates; refuse input below 1080p with a named reason.</td><td>E2E run + <code>scan</code> diagnostic</td><td>H</td></tr>
+<tr><td class="n">FR-02</td><td>Coverage feedback</td><td>During phone capture, mark a surface patch complete only after two observations separated by a real baseline; never paint overlays into recorded video.</td><td><code>test_coverage_map</code>, <code>test_ar_overlay</code></td><td>H</td></tr>
+<tr><td class="n">FR-03</td><td>Solve cameras</td><td>Recover intrinsics and 6-DoF poses by GPU SIFT + matching + mapping. A failing solve must walk a rescue ladder (alternate matcher, mapper, relaxed thresholds) before reporting failure.</td><td>registered-frame count in <code>report.json</code></td><td>H</td></tr>
+<tr><td class="n">FR-04</td><td>Consume pose priors</td><td>Inject ARCore/ARKit positions as native SfM pose priors so a degenerate, low-parallax segment still carries a metric translation and survives registration, and multiple clips share one world via spatial matching.</td><td><code>selftest_priors</code>: synthetic 12 m walk &rarr; scale 1.0000, max deviation 7 mm, 30/30 frames</td><td>H</td></tr>
+<tr><td class="n">FR-05</td><td>Train representation</td><td>Train a Gaussian splat with SH degree 3, SSIM+L1 and a hard gaussian cap; checkpoint to <code>splat.partial.ply</code> so a Windows-level kill (<code>0xC0000409</code>) that no handler can catch is still rescuable; refuse to start from a seedless reconstruction.</td><td>collapse guard exits 1 as <code>COLLAPSED at step N</code></td><td>H</td></tr>
+<tr><td class="n">FR-06</td><td>Establish metric frame</td><td>Take “up” from gimbal attitude, never from a RANSAC plane normal whose sign is arbitrary. Accept exactly one named ruler — <code>--speed-anchor</code> (m/s) or <code>--height-anchor</code> (m) — and refuse ambiguity. Emit <code>frame.json</code> as the single source of truth for orientation and scale.</td><td><code>test_reset_stability</code></td><td>H</td></tr>
+<tr><td class="n">FR-07</td><td>Derive geometry</td><td>From the splat cloud produce a ground heightfield with per-cell provenance, a voxelised collider shell (<code>cluster_shell</code>, 0.25 m voxels) as GLB, vertex colours, and semantic object boxes; cull sky and canopy by testing the height histogram for <b>bimodality, not sparseness</b>.</td><td><code>world_check.json</code></td><td>H</td></tr>
+<tr><td class="n">FR-08</td><td>Choose walkable surface by measurement</td><td>Build two candidate grounds (clipped shell top face vs exported heightfield), route the autopilot on <b>both</b>, ship whichever it walks further on, ties to the heightfield; re-run the router on the shipped mesh so physics surface, planned route and drawn underlay cannot disagree.</td><td>probe rays &rarr; median 0 cm to <code>ground.f32</code></td><td>H</td></tr>
+<tr><td class="n">FR-09</td><td>Gate the build</td><td>Run eleven severity-tiered falsifiable assertions before shipping. Hard rules (no measured ground, inverted floor, spawn in mid-air, collider has a ceiling slab) must name themselves and must never be downgraded to make a run green.</td><td><code>check_world.py</code> on 8 scenes</td><td>H</td></tr>
+<tr><td class="n">FR-10</td><td>Prove walkability</td><td>Drive the character headless through the real build in Chromium, sampling position, grounding and falls every 0.5 s; log a sampled trajectory and cross-check the claimed distance against the route actually walked.</td><td>65.3 m, 16/16 waypoints, 0 falls, foot gap +0.008 m</td><td>H</td></tr>
+<tr><td class="n">FR-11</td><td>Publish &amp; resume</td><td>Maintain a dependency-ordered step graph; each marker hashes the code that ran, so editing a step invalidates exactly that step and everything downstream. A stale cache must never hide a fix.</td><td><code>status</code> after editing one stage</td><td>H</td></tr>
+<tr><td class="n">FR-12</td><td>Georeference</td><td>Fit reconstruction to GNSS / RTK and surveyed control points; carry CRS and vertical datum into every exported product.</td><td>control-point residuals</td><td>H</td></tr>
+<tr><td class="n">FR-13</td><td>Measure the site</td><td>Compute distances, areas and heights from the registered cameras and reconstructed points, with a stated measurement basis per number.</td><td>reprojection test</td><td>H</td></tr>
+<tr><td class="n">FR-14</td><td>Veto moving objects</td><td>Reject a candidate dynamic object only when its appearance is <b>motion-consistent</b> across views; a static parallax artefact must not be labelled dynamic.</td><td><code>survey_dynamics</code></td><td>M</td></tr>
+<tr><td class="n">FR-15</td><td>Export formats</td><td>Emit the client-named formats from one reconstruction run, in both text and binary where the format allows, and label each file’s contents by what is actually stored, not by extension.</td><td>format conformance check</td><td>H</td></tr>
+<tr><td class="n">FR-16</td><td>Blind visual evidence</td><td>Render from held-out training poses, build real-photo / engine-render stacks in randomised order, keep the key in a separate file, and collect verdicts from a reviewer who never sees which is which.</td><td><code>results/blinded/</code> + <code>pair_key_&lt;take&gt;.json</code></td><td>M</td></tr>
+<tr><td class="n">FR-17</td><td>Report honestly</td><td>Any metric whose evidence is absent must render as <b>“not evaluated”</b>. A GPS alignment fit must never be presented as measured accuracy.</td><td>gate + report schema</td><td>H</td></tr>
+<tr><td class="n">FR-18</td><td>Guard the UI language</td><td>Extract the ~410 operator-visible strings and fail the build on banned jargon (<i>surfel, azimuth, voxel, 6-DoF, calibrating</i>); fail on a <code>getElementById</code> with no markup, a dead id, or a missing <code>src</code>.</td><td><code>test_element_ids</code> + jargon gate</td><td>M</td></tr>
+<tr><td class="n">FR-19</td><td>Authorize GPU use</td><td>Preparation, alignment, evaluation and dashboard actions must run on CPU only. GPU reconstruction requires an explicit <code>--allow-gpu</code> that no other path can imply or enable transitively.</td><td><code>survey.py reconstruct</code> refusal test</td><td>H</td></tr>
+</table>
+
+<h4 class="sub">1.5 Non-functional requirements</h4>
+<table class="d"><caption>Table 3 — Quality attributes. Every NFR carries the number that decides whether it is met.</caption>
+<tr><th style="width:7%">ID</th><th style="width:17%">Attribute</th><th style="width:34%">Requirement</th><th>Metric &amp; measured status</th></tr>
+<tr><td class="n">NFR-01</td><td>Accuracy</td><td>Spatial error ≤ 1 m against surveyed ground truth on a single-pass flight.</td><td>Held-out checkpoint reprojection error and control-point residuals. <b>Not yet provable locally</b> — no ≥ 1080p single-pass take with its GNSS log exists in the repository; reported as <i>not evaluated</i>, never inferred from a fit.</td></tr>
+<tr><td class="n">NFR-02</td><td>Throughput</td><td>Process a 10-minute video in &lt; 15 minutes.</td><td>CPU survey stages meet budget on the target card; full GPU reconstruction of the reference drone take measures ~14 min at <code>high</code>. Density profiles <code>survey</code>/<code>fast</code>/<code>budget</code> trade mesh density for the gate.</td></tr>
+<tr><td class="n">NFR-03</td><td>Resource ceiling</td><td>Complete every stage on a 6 GB RTX 3050 laptop with no cloud.</td><td>Peak VRAM 0.72 GiB (<code>standard</code>) / 1.26 GiB (<code>high</code>) / reserved for 8 GB+ (<code>ultra</code>). Budgets derive from live free VRAM.</td></tr>
+<tr><td class="n">NFR-04</td><td>Reliability &amp; failure policy</td><td>Any video produces an output, and every failure names itself.</td><td>Failures classified (<code>oom</code>, <code>voxel-overflow</code>, <code>unsupported-flag</code>, <code>crash</code>) with repair recorded in <code>report.json</code>; no bare tracebacks and no exit code 0 on a lost half of the footage.</td></tr>
+<tr><td class="n">NFR-05</td><td>Degradability</td><td>Evidence-gathering failures must still ship the world.</td><td>Matrix reports <code>evidence missing:</code> rather than failing the run; thin multi-view support degrades to bounding the region by flight path and ground, with a warning.</td></tr>
+<tr><td class="n">NFR-06</td><td>Maintainability</td><td>One module per stage, typed artefacts between stages.</td><td>35 modules in <code>scripts/</code> (~6 800 lines), <code>pipeline.py</code> runner, ~18 000 first-party lines; shared hardening centralised in <code>robust.py</code>.</td></tr>
+<tr><td class="n">NFR-07</td><td>Testability</td><td>No requirement verified by a human glance alone.</td><td>12 suites, ~550 assertions green (58 + 413 + 34 + 50 + 55), browser suites driving real scans, not fixtures; <code>check_all.py</code> in CI, <code>test_e2e.py</code> nightly (~30 min).</td></tr>
+<tr><td class="n">NFR-08</td><td>Portability</td><td>Zero compilation and zero configuration on a clean clone.</td><td>Prebuilt Windows gsplat wheel, vendored engine and physics WASM, <code>bootstrap.py --with-train</code> creates both environments and hands off to <code>doctor</code>. Windows-only is a declared limit, not an accident.</td></tr>
+<tr><td class="n">NFR-09</td><td>Usability</td><td>A non-specialist captures footage that reconstructs on the first attempt.</td><td>Coverage shell plus movement rules (arcs and orbits, three height passes, ≥ 60 % overlap) rather than expert settings; <code>--preset auto</code> diagnoses footage.</td></tr>
+<tr><td class="n">NFR-10</td><td>Integrity of claims</td><td>Provenance is part of the output.</td><td>Heightfield coverage split by how it was obtained (measured / camera-derived / none) — averaging them let a 30 %-measured grid report 98 %. Two of eight scenes fail the route-length rule today and the build says so.</td></tr>
+</table>
+
+<h4 class="sub">1.6 Software product features and design constraints</h4>
+<p>Four features carry the product, and each is the subject of a diagram below: <b>F1 Acquisition</b> (FR-01, FR-02), <b>F2 Reconstruction</b> (FR-03…FR-07), <b>F3 Walkable publication</b> (FR-08…FR-11, FR-15), <b>F4 Evidence and measurement</b> (FR-12…FR-14, FR-16…FR-19). Three design constraints follow from measured incidents rather than preference: <i>geometry may not come from the neural stage</i>; <i>scale must be a single named, auditable number</i>; <i>no claim ships without the measurement that produced it</i>. A capsule of radius 0.34 m meeting an axis-aligned voxel wall has no lift term at all — which is a physics fact the architecture is obliged to respect, and the reason FR-08 measures two candidate grounds instead of tuning one.</p>
+
+<!-- ══════════════════ 2. DFD ══════════════════ -->
+<h3 class="sec brk">2. Data Flow Diagrams</h3>
+<p class="lead">Notation: rounded rectangle = process &middot; square = external entity &middot; open-ended bar = data store &middot; labelled arrow = data flow. Gane–Sarson numbering, Levels 0 → 2.</p>
+
+<div class="fig">
+<svg class="dgm" viewBox="0 0 780 372" role="img" aria-label="DFD Level 0 context diagram">
+  <rect class="ent" x="16" y="30" width="150" height="46" rx="2"/><text class="b" x="91" y="50" text-anchor="middle">External Entity</text><text class="sm" x="91" y="64" text-anchor="middle">E1 · Surveyor / Analyst</text>
+  <rect class="ent" x="16" y="150" width="150" height="46" rx="2"/><text class="b" x="91" y="170" text-anchor="middle">External Entity</text><text class="sm" x="91" y="184" text-anchor="middle">E2 · Drone / AR phone</text>
+  <rect class="ent" x="16" y="270" width="150" height="46" rx="2"/><text class="b" x="91" y="290" text-anchor="middle">External Entity</text><text class="sm" x="91" y="304" text-anchor="middle">E3 · Reviewer / Judge</text>
+  <rect class="ent" x="614" y="30" width="150" height="46" rx="2"/><text class="b" x="689" y="50" text-anchor="middle">External Entity</text><text class="sm" x="689" y="64" text-anchor="middle">E4 · Browser Viewer</text>
+  <rect class="ent" x="614" y="150" width="150" height="46" rx="2"/><text class="b" x="689" y="163" text-anchor="middle">External Systems</text><text class="sm" x="689" y="176" text-anchor="middle">E5 · COLMAP · gsplat ·</text><text class="sm" x="689" y="188" text-anchor="middle">splat-transform · recast</text>
+  <rect class="ent" x="614" y="270" width="150" height="46" rx="2"/><text class="b" x="689" y="290" text-anchor="middle">External Entity</text><text class="sm" x="689" y="304" text-anchor="middle">E6 · GNSS / RTK base log</text>
+
+  <ellipse cx="390" cy="176" rx="132" ry="62" fill="#eaf1f7" stroke="#1f5f8b" stroke-width="2"/>
+  <text class="ti" x="390" y="152" text-anchor="middle">0</text>
+  <text class="b" x="390" y="172" text-anchor="middle">WALKABLE</text>
+  <text class="sm" x="390" y="186" text-anchor="middle">Single-Pass Video to</text>
+  <text class="sm" x="390" y="198" text-anchor="middle">Metric Walkable 3D World</text>
+  <text class="xs" x="390" y="214" text-anchor="middle">(requirements FR-01 … FR-19)</text>
+
+  <path class="ln" d="M166,53 L258,140"/><text class="f" x="150" y="106">scene name, preset,</text><text class="f" x="150" y="116">quality, one anchor value</text>
+  <path class="ln" d="M262,196 L166,240"/>
+  <path class="ln" d="M166,173 L258,173"/><text class="f" x="168" y="167">video .mp4 (n clips),</text><text class="f" x="168" y="167" dy="0">frames</text>
+  <path class="ln" d="M166,187 C230,214 236,214 262,212"/><text class="f" x="176" y="228">AR pose .jsonl · calibration .json</text>
+  <text class="f" x="300" y="248">run report · named failure · progress log</text>
+  <path class="ln" d="M340,222 C300,262 240,282 166,290"/>
+  <path class="ln" d="M522,300 L614,296"/><text class="f" x="526" y="292">deliverables + evidence pack</text>
+  <path class="ln" d="M614,278 L524,268"/><text class="f" x="556" y="262">verdict</text>
+  <path class="lnp" d="M522,168 L614,172"/><text class="f" x="528" y="158">jobs / artefacts</text><text class="xs" x="528" y="184">SfM project, seed pts ⇄ poses, splat PLY, collider GLB</text>
+  <path class="lnp" d="M512,120 L640,76"/><text class="f" x="536" y="88">viewer assets</text>
+  <path class="ln" d="M514,146 L668,76"/>
+  <path class="ln" d="M614,204 C560,230 540,236 500,226"/><text class="f" x="540" y="232">GNSS trajectory, control pts</text>
+
+  <line class="store" x1="330" y1="292" x2="450" y2="292" stroke-width="2.4"/>
+  <text class="b" x="330" y="286" >D1</text><text class="sm" x="352" y="286">work/&lt;scene&gt;/ — typed artefacts, markers, logs</text>
+  <path class="lnp" d="M390,238 L390,290"/>
+</svg>
+<div class="figcap"><b>Figure 1 — DFD Level 0 (context diagram).</b> One process, six external entities, one persistent store. The whole system is a transformation of footage plus one metric anchor into a walkable, measurable world and the evidence that certifies it.</div>
+</div>
+
+<div class="fig brk">
+<svg class="dgm" viewBox="0 0 780 468" role="img" aria-label="DFD Level 1">
+  <!-- entities -->
+  <rect class="ent" x="14" y="16" width="120" height="40" rx="2"/><text class="b" x="74" y="33" text-anchor="middle">E1 Surveyor</text><text class="xs" x="74" y="45" text-anchor="middle">/ Analyst operator</text>
+  <rect class="ent" x="14" y="70" width="120" height="34" rx="2"/><text class="b" x="74" y="84" text-anchor="middle">E2 Drone / phone</text><text class="xs" x="74" y="96" text-anchor="middle">footage + pose log</text>
+  <rect class="ent" x="646" y="16" width="120" height="40" rx="2"/><text class="b" x="706" y="33" text-anchor="middle">E4 Viewer</text><text class="xs" x="706" y="45" text-anchor="middle">browser / WebXR</text>
+  <rect class="ent" x="646" y="70" width="120" height="34" rx="2"/><text class="b" x="706" y="84" text-anchor="middle">E3 Reviewer</text><text class="xs" x="706" y="96" text-anchor="middle">blind A/B verdict</text>
+  <rect class="ent" x="646" y="118" width="120" height="40" rx="2"/><text class="b" x="706" y="135" text-anchor="middle">E5 Engines</text><text class="xs" x="706" y="147" text-anchor="middle">COLMAP · gsplat · node</text>
+
+  <!-- processes col A -->
+  <rect class="proc" x="186" y="20" width="176" height="52" rx="26"/><text class="b" x="274" y="40" text-anchor="middle">1.0 Acquire &amp; Ingest</text><text class="sm" x="274" y="53" text-anchor="middle">diagnose footage, presets</text><text class="sm" x="274" y="64" text-anchor="middle">keyframe, dedup, 1080p guard</text>
+  <rect class="proc" x="186" y="100" width="176" height="52" rx="26"/><text class="b" x="274" y="120" text-anchor="middle">2.0 Solve Cameras</text><text class="sm" x="274" y="133" text-anchor="middle">SIFT + matcher + mapper</text><text class="sm" x="274" y="144" text-anchor="middle">rescue ladder, AR priors</text>
+  <rect class="proc" x="186" y="180" width="176" height="52" rx="26"/><text class="b" x="274" y="200" text-anchor="middle">3.0 Train Splat</text><text class="sm" x="274" y="213" text-anchor="middle">gsplat, VRAM budget,</text><text class="sm" x="274" y="224" text-anchor="middle">cap, partial-Ply checkpoint</text>
+  <rect class="proc" x="186" y="260" width="176" height="52" rx="26"/><text class="b" x="274" y="280" text-anchor="middle">4.0 Metric Frame</text><text class="sm" x="274" y="293" text-anchor="middle">up from gimbal · scale from</text><text class="sm" x="274" y="304" text-anchor="middle">one named ruler → frame.json</text>
+  <rect class="proc" x="186" y="340" width="176" height="52" rx="26"/><text class="b" x="274" y="360" text-anchor="middle">5.0 Derive Geometry</text><text class="sm" x="274" y="373" text-anchor="middle">heightfield · collider · colours</text><text class="sm" x="274" y="384" text-anchor="middle">sky/canopy cull · see Fig. 3</text>
+
+  <!-- processes col B -->
+  <rect class="proc" x="424" y="120" width="176" height="52" rx="26"/><text class="b" x="512" y="140" text-anchor="middle">6.0 Verify World</text><text class="sm" x="512" y="153" text-anchor="middle">11-rule gate · autopilot walk</text><text class="sm" x="512" y="164" text-anchor="middle">blind A/B · route cross-check</text>
+  <rect class="proc" x="424" y="215" width="176" height="52" rx="26"/><text class="b" x="512" y="235" text-anchor="middle">7.0 Survey &amp; Measure</text><text class="sm" x="512" y="248" text-anchor="middle">CPU prepare · GNSS align</text><text class="sm" x="512" y="259" text-anchor="middle">measure · dynamics veto</text>
+  <rect class="proc" x="424" y="310" width="176" height="52" rx="26"/><text class="b" x="512" y="330" text-anchor="middle">8.0 Publish Products</text><text class="sm" x="512" y="343" text-anchor="middle">OBJ · PLY · LAS · GeoTIFF</text><text class="sm" x="512" y="354" text-anchor="middle">GLB / glTF / FBX + viewer</text>
+
+  <!-- stores -->
+  <line class="store" x1="188" y1="432" x2="300" y2="432" stroke-width="2.2"/><text class="b" x="192" y="425">D1 poses / SfM model</text>
+  <line class="store" x1="330" y1="432" x2="440" y2="432" stroke-width="2.2"/><text class="b" x="334" y="425">D2 splats + frame.json</text>
+  <line class="store" x1="470" y1="432" x2="580" y2="432" stroke-width="2.2"/><text class="b" x="474" y="425">D3 ground / collider GLB</text>
+  <line class="store" x1="606" y1="432" x2="766" y2="432" stroke-width="2.2"/><text class="b" x="610" y="425">D4 markers · logs · report.json</text>
+  <line class="store" x1="14" y1="432" x2="164" y2="432" stroke-width="2.2"/><text class="b" x="18" y="425">D0 videos / pose logs</text>
+
+  <!-- flows -->
+  <path class="ln" d="M134,36 L186,38"/><text class="xs" x="140" y="30">command + anchor</text>
+  <path class="ln" d="M134,87 C160,87 166,60 186,52"/><text class="xs" x="140" y="106">clips</text>
+  <path class="ln" d="M274,72 L274,100"/>
+  <path class="ln" d="M274,152 L274,180"/>
+  <path class="ln" d="M274,232 L274,260"/>
+  <path class="ln" d="M274,312 L274,340"/>
+  <path class="ln" d="M362,366 L424,160"/>
+  <path class="ln" d="M600,146 L646,140"/><text class="xs" x="602" y="136">renders</text>
+  <path class="ln" d="M600,241 L646,36"/><text class="xs" x="612" y="212">walkable world</text>
+  <path class="ln" d="M600,336 L646,100"/><text class="xs" x="606" y="330">evidence pack</text>
+  <path class="ln" d="M512,292 L512,310"/><text class="xs" x="518" y="306">verified mesh</text>
+  <path class="ln" d="M424,250 L362,286"/>
+  <path class="ln" d="M600,220 L646,152"/><text class="xs" x="606" y="216">GNSS fit</text>
+  <path class="ln" d="M240,404 L240,432"/><path class="ln" d="M400,404 L400,432"/><path class="ln" d="M540,382 C540,404 540,410 540,430"/>
+  <path class="ln" d="M274,404 C274,418 100,418 90,430"/><text class="xs" x="120" y="424">artefacts written / read, markers gate re-run</text>
+  <text class="sm" x="14" y="462" font-style="italic">GPU work is isolated to 3.0 and 5.0 (reconstruction) and requires explicit authorization; 1.0, 2.0, 4.0, 6.0 (routing), 7.0 and 8.0 run on CPU.</text>
+</svg>
+<div class="figcap"><b>Figure 2 — DFD Level 1.</b> Eight numbered processes over the shared work directory. The store bar D4 (<code>report.json</code> plus code-hash markers) is what makes the pipeline resumable: re-running a stage invalidates everything downstream (FR-11).</div>
+</div>
+
+<div class="fig brk">
+<svg class="dgm" viewBox="0 0 780 336" role="img" aria-label="DFD Level 2 decomposing process 5.0">
+  <rect class="proc" x="18" y="14" width="150" height="40" rx="20"/><text class="b" x="93" y="32" text-anchor="middle">5.0 Derive Geometry</text><text class="xs" x="93" y="44" text-anchor="middle">parent (Fig. 2), ref: splat PLY</text>
+  <line class="store" x1="620" y1="34" x2="766" y2="34" stroke-width="2.2"/><text class="b" x="624" y="27">D2 frame.json + splat</text>
+  <path class="ln" d="M620,34 C400,34 300,34 168,34"/>
+
+  <rect class="proc" x="18" y="86" width="164" height="46" rx="23"/><text class="b" x="100" y="105" text-anchor="middle">5.1 Reorient &amp; rescale</text><text class="sm" x="100" y="119" text-anchor="middle">apply frame to splat means</text>
+  <rect class="proc" x="212" y="86" width="164" height="46" rx="23"/><text class="b" x="294" y="105" text-anchor="middle">5.2 Sky / canopy cull</text><text class="sm" x="294" y="119" text-anchor="middle">histogram bimodality test</text>
+  <rect class="proc" x="406" y="86" width="164" height="46" rx="23"/><text class="b" x="488" y="105" text-anchor="middle">5.3 Rasterise heightfield</text><text class="sm" x="488" y="119" text-anchor="middle">cell + provenance per column</text>
+  <rect class="proc" x="600" y="86" width="164" height="46" rx="23"/><text class="b" x="682" y="105" text-anchor="middle">5.4 Voxel collider shell</text><text class="sm" x="682" y="119" text-anchor="middle">cluster_shell 0.25 m → GLB</text>
+
+  <rect class="proc" x="18" y="164" width="164" height="46" rx="23"/><text class="b" x="100" y="183" text-anchor="middle">5.5 Colour + objects</text><text class="sm" x="100" y="197" text-anchor="middle">vertex colours, semantic boxes</text>
+  <rect class="proc" x="212" y="164" width="164" height="46" rx="23"/><text class="b" x="294" y="180" text-anchor="middle">5.6 Build ground</text><text class="sm" x="294" y="193" text-anchor="middle">candidate A: clipped shell top</text><text class="sm" x="294" y="203" text-anchor="middle">candidate B: heightfield</text>
+  <path class="r" d="M444,187 L462,171 L480,187 L462,203 z"/><text class="b" x="462" y="191" text-anchor="middle" font-size="8">route</text>
+  <text class="xs" x="462" y="164" text-anchor="middle">both, by autopilot</text><text class="xs" x="462" y="214" text-anchor="middle">further wins, ties → B</text>
+  <rect class="proc" x="600" y="164" width="164" height="46" rx="23"/><text class="b" x="682" y="180" text-anchor="middle">5.7 Re-route &amp; ship</text><text class="sm" x="682" y="193" text-anchor="middle">plan, mesh and underlay</text><text class="sm" x="682" y="203" text-anchor="middle">read one array</text>
+
+  <line class="store" x1="60" y1="288" x2="200" y2="288" stroke-width="2.2"/><text class="b" x="64" y="281">D5 ground.f32 + coverage.u8</text>
+  <line class="store" x1="300" y1="288" x2="430" y2="288" stroke-width="2.2"/><text class="b" x="304" y="281">D3 collider.glb / route</text>
+  <line class="store" x1="520" y1="288" x2="660" y2="288" stroke-width="2.2"/><text class="b" x="524" y="281">D6 world_check.json</text>
+  <path class="ln" d="M100,210 L100,288"/><path class="ln" d="M376,206 C420,240 380,262 366,288"/>
+  <path class="ln" d="M682,210 L682,258 L590,288"/>
+  <path class="ln" d="M488,132 L488,171"/><path class="ln" d="M682,132 L682,164"/>
+  <path class="ln" d="M376,185 L444,185"/><path class="ln" d="M480,185 L600,185"/>
+  <path class="ln" d="M100,132 L100,164"/><path class="ln" d="M182,109 L212,109"/><path class="ln" d="M376,109 L406,109"/><path class="ln" d="M570,109 L600,109"/>
+  <path class="ln" d="M168,12 L176,86"/>
+  <text class="sm" x="18" y="326" font-style="italic">Every rasteriser indexes floor((x − ox)/cell), so a sample belongs at the cell centre ox + (j + 0.5)·cell. Three sites used the corner — one put the viewer’s ground 0.101 m from the physics surface. Corrected; invisible in every plot.</text>
+</svg>
+<div class="figcap"><b>Figure 3 — DFD Level 2</b>, decomposing 5.0. The diamond is a routing decision, not a data flow: the system ships whichever candidate ground the autopilot walks further on, so no roughness statistic is ever trusted to pick the surface.</div>
+</div>
+
+<!-- ══════════════════ 3. CLASS DIAGRAM ══════════════════ -->
+<h3 class="sec brk">3. Class Diagram</h3>
+<p class="lead">Static design view. Python is module-based, so a class is any unit carrying state plus operations: the runner, the step, the frame, the products and the browser runtime. Multiplicities are measured from a real run.</p>
+
+<div class="fig">
+<svg class="dgm" viewBox="0 0 780 552" role="img" aria-label="UML class diagram">
+  <!-- PipelineRunner -->
+  <rect class="cl" x="16" y="18" width="216" height="150" rx="3"/>
+  <rect class="head" x="16" y="18" width="216" height="30" rx="3"/><text class="b" x="124" y="31" text-anchor="middle">«control»</text><text class="b" x="124" y="43" text-anchor="middle">PipelineRunner</text>
+  <text class="sm" x="23" y="62">- cfg : dict</text><text class="sm" x="23" y="74">- sources : dict</text><text class="sm" x="23" y="86">- steps : list&lt;Step&gt;</text><text class="sm" x="23" y="98">- plan_digest : str</text>
+  <line x1="16" y1="106" x2="232" y2="106" stroke="#cfd8e0"/>
+  <text class="sm" x="23" y="119">+ main() : int</text><text class="sm" x="23" y="131">+ do_run() / do_status() / do_view()</text><text class="sm" x="23" y="143">+ do_scan() / do_doctor() / do_ui()</text><text class="sm" x="23" y="155">+ build_steps() / build_config()</text><text class="sm" x="23" y="165" font-style="italic">runner: pipeline.py, mvp.bat</text>
+
+  <!-- Step -->
+  <rect class="cl" x="278" y="18" width="196" height="128" rx="3"/>
+  <rect class="head" x="278" y="18" width="196" height="30" rx="3"/><text class="b" x="376" y="40" text-anchor="middle">Step</text>
+  <text class="sm" x="285" y="62">- id : int · name : str</text><text class="sm" x="285" y="74">- argv : list · needs : list</text><text class="sm" x="285" y="86">- rung : list (rescue ladder)</text><text class="sm" x="285" y="98">- kind : str (oom | crash | …)</text>
+  <line x1="278" y1="104" x2="474" y2="104" stroke="#cfd8e0"/>
+  <text class="sm" x="285" y="117">+ run(work, log_dir) : Exit</text><text class="sm" x="285" y="129">+ uptodate(marker) : bool</text><text class="sm" x="285" y="141">+ code_digest(argv) : str</text>
+
+  <!-- Marker -->
+  <rect class="cl" x="522" y="18" width="242" height="86" rx="3"/>
+  <rect class="head" x="522" y="18" width="242" height="30" rx="3"/><text class="b" x="643" y="40" text-anchor="middle">StepMarker  «entity»</text>
+  <text class="sm" x="529" y="62">- path : work/&lt;scene&gt;/.pipeline/&lt;NN&gt;-&lt;step&gt;.done</text><text class="sm" x="529" y="74">- digest : str (hash of code that ran)</text>
+  <line x1="522" y1="80" x2="764" y2="80" stroke="#cfd8e0"/>
+  <text class="sm" x="529" y="94">+ invalidate_downstream() · + write() / read()</text>
+
+  <!-- Report -->
+  <rect class="cl" x="522" y="122" width="242" height="66" rx="3"/>
+  <rect class="head" x="522" y="122" width="242" height="26" rx="3"/><text class="b" x="643" y="140" text-anchor="middle">RunReport  «artifact»</text>
+  <text class="sm" x="529" y="162">- per_step : exit + seconds + repairs</text><text class="sm" x="529" y="175">+ write(report.json) · + stream_logs(cursor)</text>
+
+  <!-- FrameSolution -->
+  <rect class="cl" x="16" y="216" width="216" height="128" rx="3"/>
+  <rect class="head" x="16" y="216" width="216" height="30" rx="3"/><text class="b" x="124" y="229" text-anchor="middle">«entity»</text><text class="b" x="124" y="241" text-anchor="middle">FrameSolution (frame.json)</text>
+  <text class="sm" x="23" y="260">- up : vector3  (from gimbal)</text><text class="sm" x="23" y="272">- scale : float  (one named ruler)</text><text class="sm" x="23" y="284">- anchor : speed | height | gnss</text><text class="sm" x="23" y="296">- region : bbox</text>
+  <line x1="16" y1="302" x2="232" y2="302" stroke="#cfd8e0"/>
+  <text class="sm" x="23" y="316">+ solve(ruler) — refuses ambiguity</text><text class="sm" x="23" y="330" font-style="italic">solve_frame.py</text>
+
+  <!-- Heightfield -->
+  <rect class="cl" x="278" y="216" width="196" height="128" rx="3"/>
+  <rect class="head" x="278" y="216" width="196" height="30" rx="3"/><text class="b" x="376" y="238" text-anchor="middle">Heightfield</text>
+  <text class="sm" x="285" y="260">- ox, oy : float · cell : float</text><text class="sm" x="285" y="272">- h : float32 grid (ground.f32)</text><text class="sm" x="285" y="284">- coverage : uint8 (coverage.u8)</text><text class="sm" x="285" y="296">- source : measured | camera | none</text>
+  <line x1="278" y1="302" x2="474" y2="302" stroke="#cfd8e0"/>
+  <text class="sm" x="285" y="316">+ sample(x, z) : h</text><text class="sm" x="285" y="330">+ coverage_split() : dict</text>
+
+  <!-- Collider -->
+  <rect class="cl" x="522" y="216" width="242" height="128" rx="3"/>
+  <rect class="head" x="522" y="216" width="242" height="30" rx="3"/><text class="b" x="643" y="238" text-anchor="middle">Collider  «interface»</text>
+  <text class="sm" x="529" y="260">&lt;&lt;uses&gt;&gt; mesh : GLB trimesh</text><text class="sm" x="529" y="272">+ walkable_distance(bot) : metres</text>
+  <line x1="522" y1="278" x2="764" y2="278" stroke="#cfd8e0"/>
+  <text class="sm" x="529" y="292">▲ ShellCandidate (clipped shell top)</text><text class="sm" x="529" y="305">▲ FieldCandidate (heightfield surface)</text><text class="sm" x="529" y="322" font-style="italic">build_collider.py · tune_collider.py</text><text class="sm" x="529" y="334" font-style="italic">measured: auditorium 51 vs 68 m · rocks 94 vs 69 m</text>
+  <path d="M556,286 L548,298 L564,298 z" fill="#fff" stroke="#42525f" stroke-width="1.1"/>
+  <path d="M556,299 L548,311 L564,311 z" fill="#fff" stroke="#42525f" stroke-width="1.1"/>
+
+  <!-- Gate -->
+  <rect class="cl" x="16" y="386" width="216" height="112" rx="3"/>
+  <rect class="head" x="16" y="386" width="216" height="30" rx="3"/><text class="b" x="124" y="408" text-anchor="middle">WorldGate</text>
+  <text class="sm" x="23" y="430">- rules : 11 (severity-tiered)</text><text class="sm" x="23" y="442">- hard : no measured ground,</text><text class="sm" x="23" y="453">&#160;&#160;inverted floor, spawn unsupported</text>
+  <line x1="16" y1="459" x2="232" y2="459" stroke="#cfd8e0"/>
+  <text class="sm" x="23" y="473">+ check() : Verdict  «never downgraded»</text><text class="sm" x="23" y="488" font-style="italic">check_world.py</text>
+
+  <!-- Autopilot -->
+  <rect class="cl" x="278" y="386" width="196" height="112" rx="3"/>
+  <rect class="head" x="278" y="386" width="196" height="30" rx="3"/><text class="b" x="376" y="408" text-anchor="middle">AutopilotCapsule</text>
+  <text class="sm" x="285" y="430">- radius : 0.34 m · waypoints : n</text><text class="sm" x="285" y="442">- walked : float · falls : int</text><text class="sm" x="285" y="454">- unstick_timer : float</text>
+  <line x1="278" y1="460" x2="474" y2="460" stroke="#cfd8e0"/>
+  <text class="sm" x="285" y="474">+ route(nav) · + step(dt) · + sample()</text><text class="sm" x="285" y="488" font-style="italic">drive_viewer.py · Playwright+ammo.js</text>
+
+  <!-- ProductExporter -->
+  <rect class="cl" x="522" y="386" width="242" height="112" rx="3"/>
+  <rect class="head" x="522" y="386" width="242" height="30" rx="3"/><text class="b" x="643" y="408" text-anchor="middle">ProductExporter</text>
+  <text class="sm" x="529" y="430">- formats : OBJ PLY LAS GeoTIFF</text><text class="sm" x="529" y="442">&#160;&#160;GLB glTF FBX  (text + binary)</text><text class="sm" x="529" y="454">- crs : str · datum : vertical</text><text class="sm" x="529" y="466">- verified : Evidence | NOT_EVALUATED</text>
+  <line x1="522" y1="472" x2="764" y2="472" stroke="#cfd8e0"/>
+  <text class="sm" x="529" y="486">+ emit(recon) : files  + measure() : dims</text><text class="sm" x="529" y="497" font-style="italic">survey_formats.py · survey_products.py</text>
+
+  <!-- relations -->
+  <path d="M232,90 L278,90" stroke="#42525f" stroke-width="1.2" fill="none" marker-start="url(#diamond)"/>
+  <text class="xs" x="238" y="84">1</text><text class="xs" x="266" y="84">*</text><text class="sm" x="236" y="106">composes</text>
+  <path d="M474,64 L522,60" stroke="#42525f" stroke-width="1.2" fill="none" marker-end="url(#diamond)"/>
+  <text class="xs" x="500" y="52">1:1</text>
+  <path class="lnd" d="M474,120 C500,120 500,150 522,150" marker-end="url(#ar)"/>
+  <text class="xs" x="478" y="146">«creates»</text>
+  <path class="lnd" d="M124,168 L124,216" marker-end="url(#ar)"/>
+  <text class="xs" x="130" y="196">«writes» stage 4</text>
+  <path class="lnd" d="M232,270 L278,270" marker-end="url(#ar)"/>
+  <text class="xs" x="236" y="264">«orients»</text>
+  <path class="lnd" d="M474,270 L522,270" marker-end="url(#ar)"/>
+  <text class="xs" x="478" y="264">«builds»</text>
+  <path class="lnd" d="M124,344 L124,386" marker-end="url(#ar)"/>
+  <text class="xs" x="130" y="368">«gates»</text>
+  <path class="lnd" d="M376,344 C376,366 250,366 200,386" marker-end="url(#ar)"/>
+  <text class="xs" x="252" y="360">«checks»</text>
+  <path class="lnd" d="M376,344 L376,386" marker-end="url(#ar)"/>
+  <text class="xs" x="382" y="368">«routes on»</text>
+  <path class="lnd" d="M570,344 L570,386" marker-end="url(#ar)"/>
+  <text class="xs" x="576" y="360">«exports»</text>
+  <path class="lnd" d="M643,344 C643,362 474,360 430,386" marker-end="url(#ar)"/>
+  <text class="xs" x="470" y="378" text-anchor="middle">«measured by»</text>
+  <path class="lnd" d="M232,430 C400,430 474,442 522,440" marker-end="url(#ar)"/>
+  <text class="xs" x="300" y="424">«refuses to certify an ungated build»</text>
+</svg>
+<div class="figcap"><b>Figure 4 — Class diagram.</b> Composition (filled diamond) at the runner/step/marker seam; dependency (dashed arrow) along the artefact chain; generalisation inside <i>Collider</i>, where two subclasses of one interface are resolved by measurement, not by opinion. Every class name maps to a real module.</div>
+</div>
+
+<!-- ══════════════════ 4. UML ══════════════════ -->
+<h3 class="sec brk">4. UML Diagrams</h3>
+
+<div class="fig">
+<svg class="dgm" viewBox="0 0 780 300" role="img" aria-label="UML use case diagram">
+  <rect class="band" x="196" y="10" width="400" height="282" rx="4"/>
+  <text class="b" x="396" y="26" text-anchor="middle">WALKABLE system</text>
+  <!-- actors -->
+  <g><circle cx="70" cy="52" r="8" fill="none" stroke="#16202b" stroke-width="1.4"/><path d="M70,60 L70,82 M70,68 L54,76 M70,68 L86,76 M70,82 L58,100 M70,82 L82,100" stroke="#16202b" stroke-width="1.4" fill="none"/><text class="b" x="70" y="115" text-anchor="middle">Surveyor</text></g>
+  <g><circle cx="70" cy="150" r="8" fill="none" stroke="#16202b" stroke-width="1.4"/><path d="M70,158 L70,180 M70,166 L54,174 M70,166 L86,174 M70,180 L58,198 M70,180 L82,198" stroke="#16202b" stroke-width="1.4" fill="none"/><text class="b" x="70" y="212" text-anchor="middle">Analyst</text></g>
+  <g><circle cx="710" cy="60" r="8" fill="none" stroke="#16202b" stroke-width="1.4"/><path d="M710,68 L710,90 M710,76 L694,84 M710,76 L726,84 M710,90 L698,108 M710,90 L722,108" stroke="#16202b" stroke-width="1.4" fill="none"/><text class="b" x="710" y="122" text-anchor="middle">Reviewer</text></g>
+  <g><circle cx="710" cy="168" r="8" fill="none" stroke="#16202b" stroke-width="1.4"/><path d="M710,176 L710,198 M710,184 L694,192 M710,184 L726,192 M710,198 L698,216 M710,198 L722,216" stroke="#16202b" stroke-width="1.4" fill="none"/><text class="b" x="710" y="230" text-anchor="middle">Viewer User</text></g>
+
+  <ellipse class="uc" cx="300" cy="58" rx="86" ry="22"/><text class="sm" x="300" y="55" text-anchor="middle">Capture footage with</text><text class="sm" x="300" y="67" text-anchor="middle">live coverage guidance</text>
+  <ellipse class="uc" cx="300" cy="112" rx="86" ry="20"/><text class="sm" x="300" y="116" text-anchor="middle">Configure preset / quality</text>
+  <ellipse class="uc" cx="300" cy="162" rx="86" ry="22"/><text class="sm" x="300" y="159" text-anchor="middle">Reconstruct world</text><text class="sm" x="300" y="171" text-anchor="middle">(one command, resumable)</text>
+  <ellipse class="uc" cx="300" cy="216" rx="86" ry="20"/><text class="sm" x="300" y="220" text-anchor="middle">Verify &amp; measure the site</text>
+  <ellipse class="uc" cx="530" cy="112" rx="72" ry="20"/><text class="sm" x="530" y="116" text-anchor="middle">Authorize GPU run</text>
+  <ellipse class="uc" cx="530" cy="162" rx="72" ry="20"/><text class="sm" x="530" y="166" text-anchor="middle">Pass 11-rule gate</text>
+  <ellipse class="uc" cx="530" cy="216" rx="72" ry="20"/><text class="sm" x="530" y="220" text-anchor="middle">Walk world as avatar</text>
+  <ellipse class="uc" cx="530" cy="58" rx="72" ry="20"/><text class="sm" x="530" y="62" text-anchor="middle">Review blind A/B</text>
+
+  <path class="ln" d="M80,70 L214,58" stroke="#6b7b88" marker-end="none"/>
+  <path class="ln" d="M80,168 L214,112" stroke="#6b7b88" marker-end="none"/>
+  <path class="ln" d="M80,180 L214,162" stroke="#6b7b88" marker-end="none"/>
+  <path class="ln" d="M80,190 L214,216" stroke="#6b7b88" marker-end="none"/>
+  <path class="ln" d="M700,80 L602,62" stroke="#6b7b88" marker-end="none"/>
+  <path class="ln" d="M700,196 L602,216" stroke="#6b7b88" marker-end="none"/>
+  <path class="lnd" d="M386,162 L458,118"/><text class="xs" x="392" y="132">«include»</text>
+  <path class="lnd" d="M386,166 L458,160"/><text class="xs" x="392" y="176">«include»</text>
+  <path class="lnd" d="M386,220 L458,220"/><text class="xs" x="392" y="212">«extend»</text>
+  <text class="xs" x="204" y="286">«include» on Reconstruct is conditional in intent: the GPU path may only be entered by an explicit authorization that no other use case can set transitively (FR-19).</text>
+</svg>
+<div class="figcap"><b>Figure 5 — Use case diagram.</b></div>
+</div>
+
+<div class="fig brk">
+<svg class="dgm" viewBox="0 0 780 372" role="img" aria-label="UML sequence diagram">
+  <!-- lifelines -->
+  <g>
+    <rect class="abox" x="18" y="12" width="112" height="26" rx="3"/><text class="b" x="74" y="29" text-anchor="middle" fill="#fff">: Surveyor</text>
+    <rect class="abox" x="152" y="12" width="112" height="26" rx="3"/><text class="b" x="208" y="29" text-anchor="middle" fill="#fff">: Runner</text>
+    <rect class="abox" x="286" y="12" width="112" height="26" rx="3"/><text class="b" x="342" y="29" text-anchor="middle" fill="#fff">: COLMAP</text>
+    <rect class="abox" x="420" y="12" width="112" height="26" rx="3"/><text class="b" x="476" y="29" text-anchor="middle" fill="#fff">: Trainer</text>
+    <rect class="abox" x="554" y="12" width="112" height="26" rx="3"/><text class="b" x="610" y="29" text-anchor="middle" fill="#fff">: Gate</text>
+    <rect class="abox" x="678" y="12" width="90" height="26" rx="3"/><text class="b" x="723" y="29" text-anchor="middle" fill="#fff">: Viewer</text>
+  </g>
+  <g stroke="#9aa8b4" stroke-dasharray="3 3"><line x1="74" y1="38" x2="74" y2="360"/><line x1="208" y1="38" x2="208" y2="360"/><line x1="342" y1="38" x2="342" y2="360"/><line x1="476" y1="38" x2="476" y2="360"/><line x1="610" y1="38" x2="610" y2="360"/><line x1="723" y1="38" x2="723" y2="360"/></g>
+
+  <path class="msg" d="M74,56 L208,56"/><text class="sm" x="80" y="50">run rocks --preset auto --speed-anchor 5</text>
+  <rect x="203" y="62" width="10" height="290" fill="#eaf1f7" stroke="#1f5f8b"/>
+  <path class="msg" d="M208,80 L342,80"/><text class="sm" x="214" y="74">extract keyframes + solve poses</text>
+  <path class="msg" d="M342,100 L208,100"/><text class="sm" x="214" y="96">partial solve (weak segment dropped)</text>
+  <path class="msg" d="M208,120 L342,120"/><text class="sm" x="214" y="114">retry rung 2: inject AR priors, spatial match</text>
+  <path class="msg" d="M342,140 L208,140"/><text class="sm" x="214" y="134">30/30 registered · metric translation</text>
+  <path class="msg" d="M208,162 L476,162"/><text class="sm" x="214" y="156">train(cap, SH3) [GPU — authorized]</text>
+  <rect x="471" y="166" width="10" height="40" fill="#eaf1f7" stroke="#1f5f8b"/>
+  <path class="msg" d="M476,180 L476,190"/><text class="xs" x="484" y="186">checkpoint splat.partial.ply</text>
+  <path class="msg" d="M476,210 L208,210"/><text class="sm" x="214" y="204">splat.ply (451k converged)</text>
+  <path class="msg" d="M208,232 L208,240"/><text class="sm" x="150" y="230" text-anchor="end">solve frame.json</text>
+  <path class="msg" d="M208,258 L476,258" transform="translate(0,0)"/><text class="sm" x="214" y="252">derive geometry: heightfield + 2 collider candidates</text>
+  <path class="msg" d="M476,278 L610,278"/><text class="sm" x="482" y="272">route autopilot on both</text>
+  <path class="msg" d="M610,296 L476,296"/><text class="sm" x="482" y="292">65.3 m vs 41.0 m → ship heightfield</text>
+  <rect x="605" y="300" width="10" height="34" fill="#eaf1f7" stroke="#1f5f8b"/>
+  <path class="msg" d="M610,312 L610,326"/><text class="xs" r="1" x="620" y="322">11 assertions</text>
+  <path class="msg" d="M610,340 L208,340"/><text class="sm" x="214" y="336">Verdict PASS → viewer_assets published</text>
+  <path class="msg" d="M208,352 L723,352"/><text class="sm" x="214" y="348">serve + open world</text>
+  <text class="xs" x="290" y="368" font-style="italic">alt  [gate fails a hard rule]  : world still ships, report names the rule, status = partial (never silently green)</text>
+</svg>
+<div class="figcap"><b>Figure 6 — Sequence diagram</b> for one <code>run</code>. Note the two rescues that a naive pipeline would have missed: the pose-prior rung that recovers a dropped segment, and the measured choice between candidate grounds.</div>
+</div>
+
+<div class="fig brk">
+<svg class="dgm" viewBox="0 0 780 322" role="img" aria-label="UML activity diagram">
+  <circle class="abox" cx="40" cy="40" r="7"/>
+  <rect class="act" x="66" y="24" width="130" height="32" rx="15"/><text class="sm" x="131" y="38" text-anchor="middle">scan &amp; diagnose</text><text class="xs" x="131" y="49" text-anchor="middle">footage, VRAM, scale</text>
+  <path class="ln" d="M196,40 L232,40"/>
+  <path d="M258,40 L278,20 L298,40 L278,60 z" fill="#fff" stroke="#16202b" stroke-width="1.3"/><text class="xs" x="278" y="44" text-anchor="middle">≥1080p?</text>
+  <path class="ln" d="M196,40 L236,40"/>
+  <rect class="act" x="240" y="94" width="176" height="30" rx="4"/><text class="sm" x="328" y="108" text-anchor="middle">refuse: name resolution deficit</text><text class="xs" x="328" y="119" text-anchor="middle">exit 2, zero GPU spent</text>
+  <path class="ln" d="M278,60 L278,94"/><text class="xs" x="284" y="80">no</text>
+  <path class="ln" d="M298,40 L356,40"/><text class="xs" x="316" y="34">yes</text>
+  <rect class="act" x="356" y="24" width="118" height="32" rx="15"/><text class="sm" x="415" y="38" text-anchor="middle">keyframes → SfM</text><text class="xs" x="415" y="49" text-anchor="middle">+ AR pose priors</text>
+  <path class="ln" d="M474,40 L512,40"/>
+  <path d="M540,40 L560,20 L580,40 L560,60 z" fill="#fff" stroke="#16202b" stroke-width="1.3"/><text class="xs" x="560" y="44" text-anchor="middle">registered?</text>
+  <path class="ln" d="M580,40 L640,40"/><text class="xs" x="592" y="34">yes</text>
+  <rect class="act" x="640" y="24" width="128" height="32" rx="15"/><text class="sm" x="704" y="38" text-anchor="middle">train splat</text><text class="xs" x="704" y="49" text-anchor="middle">budget ← free VRAM</text>
+  <path class="ln" d="M560,60 L560,96"/>
+  <rect class="act" x="470" y="96" width="180" height="30" rx="4"/><text class="sm" x="560" y="110" text-anchor="middle">walk rescue ladder: matcher → mapper</text><text class="xs" x="560" y="121" text-anchor="middle">→ relaxed thresholds → alt mapper</text>
+  <path class="ln" d="M470,111 C420,111 420,60 416,56"/><text class="xs" x="424" y="88">retry</text>
+  <path class="ln" d="M415,56 L415,24" transform="translate(0,0)"/>
+  <line x1="404" y1="150" x2="772" y2="150" stroke="#16202b" stroke-width="2.4"/>
+  <path class="ln" d="M704,56 C704,110 704,120 704,148"/>
+  <text class="xs" x="712" y="140">fork: parallel where the DAG allows</text>
+  <rect class="act" x="404" y="166" width="112" height="30" rx="4"/><text class="sm" x="460" y="180" text-anchor="middle">metric frame</text><text class="xs" x="460" y="191" text-anchor="middle">up · scale · region</text>
+  <rect class="act" x="534" y="166" width="112" height="30" rx="4"/><text class="sm" x="590" y="180" text-anchor="middle">heightfield</text><text class="xs" x="590" y="191" text-anchor="middle">+ collider shell</text>
+  <rect class="act" x="664" y="166" width="108" height="30" rx="4"/><text class="sm" x="718" y="180" text-anchor="middle">georeference</text><text class="xs" x="718" y="191" text-anchor="middle">CRS + datum</text>
+  <line x1="404" y1="214" x2="772" y2="214" stroke="#16202b" stroke-width="2.4"/>
+  <path class="ln" d="M460,196 L460,214"/><path class="ln" d="M590,196 L590,214"/><path class="ln" d="M718,196 L718,214"/>
+  <path class="ln" d="M588,214 L588,236"/>
+  <path d="M612,252 L632,232 L652,252 L632,272 z" fill="#fff" stroke="#16202b" stroke-width="1.3"/><text class="xs" x="632" y="256" text-anchor="middle">11 rules pass?</text>
+  <rect class="act" x="430" y="236" width="150" height="30" rx="15"/><text class="sm" x="505" y="250" text-anchor="middle">publish + walk test</text><text class="xs" x="505" y="261" text-anchor="middle">route vs telemetry cross-check</text>
+  <path class="ln" d="M588,244 L580,250"/><text class="xs" x="596" y="228">ship partial</text>
+  <path class="ln" d="M632,272 L632,296"/><text class="xs" x="638" y="288">yes</text>
+  <circle cx="658" cy="296" r="11" fill="none" stroke="#16202b" stroke-width="1.4"/><circle class="abox" cx="658" cy="296" r="6"/>
+  <path class="ln" d="M505,266 C505,296 520,296 646,296"/>
+  <text class="xs" x="16" y="252" font-style="italic">Exit-0-with-lost-footage is the defect</text>
+  <text class="xs" x="16" y="264" font-style="italic">this graph exists to prevent: every</text>
+  <text class="xs" x="16" y="276" font-style="italic">failure edge terminates on a named</text>
+  <text class="xs" x="16" y="288" font-style="italic">report line, never a silent success.</text>
+</svg>
+<div class="figcap"><b>Figure 7 — Activity diagram</b> with decision diamonds, a fork/join bar over the geometry and georeferencing branches, and a retry self-loop on the rescue ladder.</div>
+</div>
+
+<div class="fig brk">
+<svg class="dgm" viewBox="0 0 780 268" role="img" aria-label="UML state machine diagram">
+  <circle class="abox" cx="34" cy="134" r="7"/>
+  <rect class="state" x="58" y="112" width="98" height="42" rx="7"/><text class="b" x="107" y="130" text-anchor="middle">Idle</text><text class="xs" x="107" y="143" text-anchor="middle">plan shown, not run</text>
+  <rect class="state" x="196" y="112" width="110" height="42" rx="7"/><text class="b" x="251" y="130" text-anchor="middle">Diagnosing</text><text class="xs" x="251" y="143" text-anchor="middle">scan · VRAM · preset</text>
+  <rect class="state" x="346" y="112" width="118" height="42" rx="7"/><text class="b" x="405" y="130" text-anchor="middle">Executing</text><text class="xs" x="405" y="143" text-anchor="middle">step i of 17/18</text>
+  <rect class="state" x="506" y="112" width="112" height="42" rx="7"/><text class="b" x="562" y="130" text-anchor="middle">Verifying</text><text class="xs" x="562" y="143" text-anchor="middle">gate + walk test</text>
+  <rect class="state" x="660" y="60" width="106" height="42" rx="7"/><text class="b" x="713" y="78" text-anchor="middle">Certified</text><text class="xs" x="713" y="91" text-anchor="middle">all hard rules green</text>
+  <rect class="state" x="660" y="122" width="106" height="42" rx="7"/><text class="b" x="713" y="140" text-anchor="middle">Degraded</text><text class="xs" x="713" y="153" text-anchor="middle">shipped, not certified</text>
+  <rect class="state" x="506" y="196" width="112" height="42" rx="7"/><text class="b" x="562" y="214" text-anchor="middle">Repairing</text><text class="xs" x="562" y="227" text-anchor="middle">rescue rung, retry</text>
+  <rect class="state" x="300" y="196" width="140" height="42" rx="7"/><text class="b" x="370" y="214" text-anchor="middle">Failed (named)</text><text class="xs" x="370" y="227" text-anchor="middle">kind + fix: line in report</text>
+
+  <path class="ln" d="M41,134 L58,133"/><text class="xs" x="44" y="126">run</text>
+  <path class="ln" d="M156,133 L196,133"/>
+  <path class="ln" d="M306,133 L346,133"/>
+  <path class="ln" d="M464,133 L506,133"/>
+  <path class="ln" d="M618,128 C650,100 654,88 660,82"/><text class="xs" x="628" y="96">pass</text>
+  <path class="ln" d="M618,140 L660,142"/><text class="xs" x="622" y="136">hard rule fails</text>
+  <path class="ln" d="M562,154 L562,196"/><text class="xs" x="568" y="180">retryable</text>
+  <path class="ln" d="M506,208 C440,214 430,180 420,154"/><text class="xs" x="440" y="176">next rung</text>
+  <path class="ln" d="M506,224 C470,232 456,230 440,222"/><text class="xs" x="466" y="240">ladder exhausted</text>
+  <path class="ln" d="M405,154 C405,180 396,190 386,196"/><text class="xs" x="340" y="176">unrecoverable</text>
+  <path class="ln" d="M251,154 C251,196 260,212 300,216"/><text class="xs" x="256" y="196">input rejected</text>
+  <circle cx="200" cy="46" r="11" fill="none" stroke="#16202b" stroke-width="1.4"/><circle class="abox" cx="200" cy="46" r="6"/>
+  <path class="ln" d="M713,102 C713,46 260,46 211,46"/><text class="xs" x="470" y="40">deliverables + evidence pack written · resume via markers</text>
+  <path class="ln" d="M660,140 C600,60 340,44 211,44"/>
+  <text class="xs" x="52" y="46">Invariant: Certified is reachable only through the gate. A run may end Degraded</text>
+  <text class="xs" x="52" y="58">because the hard rules refused to be downgraded — that is the intended outcome.</text>
+</svg>
+<div class="figcap"><b>Figure 8 — State machine diagram</b> for a reconstruction run. The difference between <i>Degraded</i> and <i>Failed</i> is the product’s honesty guarantee: a world can ship without a certificate, but never with a false one.</div>
+</div>
+
+<!-- ══════════════════ 5. TRACEABILITY ══════════════════ -->
+<h3 class="sec brk">5. Traceability and Conclusion</h3>
+<table class="d">
+<tr><th style="width:26%">Model</th><th style="width:30%">Satisfies</th><th>Note</th></tr>
+<tr><td>DFD Level 0 (Fig. 1)</td><td>§1.1 scope, §1.2 context, FR-01, FR-12, FR-15</td><td>Fixes system boundaries and the six external contracts.</td></tr>
+<tr><td>DFD Level 1 (Fig. 2)</td><td>§1.3 interfaces, FR-01…FR-11, FR-19</td><td>Each process is one CLI entry point; each store is a typed artefact directory.</td></tr>
+<tr><td>DFD Level 2 (Fig. 3)</td><td>FR-06…FR-08</td><td>The only place a design decision is made by measurement rather than a threshold.</td></tr>
+<tr><td>Class diagram (Fig. 4)</td><td>FR-05, FR-06, FR-09, FR-11, FR-15, FR-17 · NFR-03, NFR-06</td><td>Runner / Step / Marker is the resumability spine; the Collider generalisation is FR-08.</td></tr>
+<tr><td>Use case (Fig. 5)</td><td>§1.2 personas, FR-02, FR-16, FR-19</td><td>Separates Surveyor, Analyst, Reviewer and Viewer User duties.</td></tr>
+<tr><td>Sequence (Fig. 6)</td><td>FR-03, FR-04, FR-08, FR-09, FR-10</td><td>Timed ordering of the two rescues the failure policy depends on.</td></tr>
+<tr><td>Activity (Fig. 7)</td><td>FR-01, FR-03, FR-07, NFR-04, NFR-05</td><td>Decision, fork/join and retry paths; refusal before GPU expenditure.</td></tr>
+<tr><td>State machine (Fig. 8)</td><td>FR-09, FR-11, FR-17, NFR-10</td><td>Certified vs Degraded vs Failed — the claim-integrity requirement drawn as states.</td></tr>
+</table>
+<p><b>Conclusion.</b> The requirements above are not aspirational: every “H” row in Table 2 is implemented and exercised by ~550 assertions across 12 suites, and the two rows that fail today are reported as failing. The defining engineering result is that the intuitive fix was usually wrong and the log was usually right — a scene exported upside down because a RANSAC normal’s sign is arbitrary, a character standing on the sky because a raycast hit a canopy crust 20 m up, a crash attributed to landscape video that was really a zero-gaussian cloud, and three half-cell indexing errors that put the viewer’s ground 0.101 m from the physics surface. Each is now a named assertion, which is the point of specifying them here: a requirement you cannot measure is a claim, and a claim this system makes is required to carry the number that made it.</p>
+
+<div class="foot"><span>WALKABLE · SE Lab Submission I · SRS + DFD + Class + UML</span><span>Prepared 2026 · convert to PDF via Chrome → Save as PDF</span></div>
+</div>
+
+<div id="runfoot"><span>SE Lab — WALKABLE: SRS, DFD, Class &amp; UML</span><span class="pt">Page </span><span class="pn"> of 6</span></div>
+
+</body>
+</html>

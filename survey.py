@@ -18,6 +18,8 @@ def main(argv=None):
             command.add_argument("--allow-gpu", action="store_true", help="Explicitly authorize GPU reconstruction; never enabled by preparation or the dashboard.")
             command.add_argument("--dense-profile", choices=sorted(survey.DENSE_PROFILES), default="survey",
                                  help="survey keeps geometric consistency (cleanest, slowest); fast/budget trade density for the <15 min target.")
+            command.add_argument("--progressive", action="store_true",
+                                 help="Also execute the streaming window plan after the sparse solve: per-window submaps merged into an accumulated model, publishing progressive/checkpoints.json with measured per-window seconds. Diagnostic; a failed window never endangers the reconstruction.")
         if name == "inputs":
             command.add_argument("--telemetry", required=True, type=Path)
             command.add_argument("--metadata", required=True, type=Path)
@@ -25,7 +27,8 @@ def main(argv=None):
     try:
         if args.command == "reconstruct":
             result = survey.reconstruct_scene(ROOT, args.scene, allow_gpu=args.allow_gpu,
-                                          dense_profile=args.dense_profile)
+                                          dense_profile=args.dense_profile,
+                                          progressive=args.progressive)
         elif args.command == "inputs":
             result = survey.save_inputs(ROOT, args.scene, args.telemetry.read_text(encoding="utf-8-sig"), survey.read_json(args.metadata))
         else:

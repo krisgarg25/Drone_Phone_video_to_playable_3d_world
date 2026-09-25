@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drone3D Studio · Investor Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SIGNAL DESIGN SYSTEM  ·  fixed 1920x1080 stage
+   Self-contained: no framework, no build, no CDN.
+   ============================================================ */
+:root{
+  --navy:#1C2644; --navy-alt:#232F55;
+  --cream:#F0ECE3; --cream-alt:#E6E0D4;
+  --warm:#E2DCD0; --ink:#1A2030;
+  --gold:#C8A870;
+  --bd:#2E3D5C; --bl:#CAC4B4;
+  --mutedD:#8A96A8; --hintD:#4E5A6E;
+  --mutedL:#5A6270; --hintL:#9AA0A8;
+  --stage-bg:#0B1020;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --sans:"DM Sans",system-ui,"Helvetica Neue",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box;}
+
+/* ---------- stage mechanics (viewport-base.css, verbatim) ---------- */
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--stage-bg);
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.deck-viewport{position:fixed;inset:0;overflow:hidden;background:var(--stage-bg);}
+.deck-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;
+  transform-origin:0 0;background:var(--navy);}
+.slide{position:absolute !important;inset:0;width:1920px;height:1080px;overflow:hidden;
+  display:block;visibility:hidden;opacity:0;pointer-events:none;background:var(--cream);}
+.slide.active,.slide.visible{visibility:visible;opacity:1;pointer-events:auto;z-index:1;}
+img,video,canvas,svg{max-width:100%;max-height:100%;}
+.deck-controls{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:1000;}
+@media print{
+  html,body{width:1920px;height:auto;overflow:visible;background:#fff;}
+  .deck-viewport{position:static;overflow:visible;background:#fff;}
+  .deck-stage{position:static;width:auto;height:auto;transform:none !important;background:none;}
+  .slide{position:relative !important;display:block !important;visibility:visible !important;
+    opacity:1 !important;pointer-events:auto !important;width:1920px;height:1080px;
+    break-after:page;page-break-after:always;}
+  .slide:last-child{break-after:auto;page-break-after:auto;}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.2s !important;}
+}
+
+/* ---------- surfaces ---------- */
+.slide.dk{background:var(--navy);color:var(--warm);}
+.slide.lt{background:var(--cream);color:var(--ink);}
+.slide.dk::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+             linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:80px 80px;}
+.slide > *{position:relative;z-index:1;}
+
+/* ---------- slide skeleton ---------- */
+.slide{display:grid;grid-template-rows:auto 1fr auto;padding:56px 144px 54px;}
+.chrome{display:flex;align-items:flex-end;justify-content:space-between;
+  padding-bottom:12px;border-bottom:1px solid var(--bd);}
+.lt .chrome{border-bottom-color:var(--bl);}
+.foot{padding-top:18px;border-top:1px solid var(--bd);}
+.lt .foot{border-top-color:var(--bl);}
+.body{display:flex;flex-direction:column;min-height:0;padding:28px 0 20px;}
+
+/* ---------- typography ---------- */
+.kicker{font-family:var(--mono);font-weight:500;font-size:13px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--gold);line-height:1.2;}
+.kicker.dim{color:var(--hintD);} .lt .kicker.dim{color:var(--hintL);}
+.rule{width:36px;height:1px;background:var(--gold);flex:0 0 auto;}
+.hair{height:1px;background:var(--bd);border:0;}
+.lt .hair{background:var(--bl);}
+
+.h-display{font-family:var(--serif);font-weight:600;font-size:104px;line-height:.98;letter-spacing:-.022em;}
+.h2{font-family:var(--serif);font-weight:600;font-size:58px;line-height:1.09;letter-spacing:-.012em;}
+.h2.sm{font-size:50px;} .h2.xs{font-size:44px;line-height:1.12;}
+.h3{font-family:var(--serif);font-weight:500;font-size:29px;line-height:1.2;}
+.h4{font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.24;}
+.lead{font-family:var(--sans);font-weight:400;font-size:25px;line-height:1.52;}
+.tx{font-family:var(--sans);font-weight:400;font-size:20px;line-height:1.58;}
+.sm{font-family:var(--sans);font-size:18px;line-height:1.5;}
+.cap{font-family:var(--sans);font-size:16px;line-height:1.5;}
+.dk .tx,.dk .lead,.dk .sm,.dk .cap{color:var(--mutedD);}
+.lt .tx,.lt .lead,.lt .sm,.lt .cap{color:var(--mutedL);}
+.dk .h-display,.dk .h2,.dk .h3,.dk .h4{color:var(--warm);}
+.lt .h2,.lt .h3,.lt .h4{color:var(--ink);}
+.mutD{color:var(--mutedD);} .mutL{color:var(--mutedL);}
+.hinD{color:var(--hintD);} .hinL{color:var(--hintL);}
+
+h1 em,h2 em,h3 em,.h2 em,.h3 em,.h-display em{
+  font-family:var(--serif);font-style:italic;font-weight:inherit;color:var(--gold);}
+.lead em,.tx em,.sm em,.cap em{
+  font-family:var(--serif);font-style:italic;color:var(--gold);}
+
+/* ---------- stats ---------- */
+.stat{font-family:var(--serif);font-weight:600;color:var(--gold);letter-spacing:-.02em;line-height:1;}
+.s-xl{font-size:106px;} .s-lg{font-size:78px;} .s-md{font-size:54px;}
+.s-sm{font-size:44px;} .s-xs{font-size:34px;}
+
+/* ---------- gold em-dash bullets ---------- */
+ul.dash{list-style:none;margin:0;padding:0;}
+ul.dash li{display:flex;gap:13px;align-items:flex-start;font-family:var(--sans);font-size:19px;line-height:1.45;}
+.dk ul.dash li{color:var(--mutedD);} .lt ul.dash li{color:var(--mutedL);}
+ul.dash li::before{content:'\2014';flex:0 0 auto;color:var(--gold);font-family:var(--mono);}
+ul.dash.sp li + li{margin-top:11px;}
+
+/* ---------- hairline grids ---------- */
+.row{display:grid;gap:0;}
+.c2{grid-template-columns:repeat(2,1fr);} .c3{grid-template-columns:repeat(3,1fr);}
+.c4{grid-template-columns:repeat(4,1fr);} .c5{grid-template-columns:repeat(5,1fr);}
+.vd > * + *{border-left:1px solid var(--bd);padding-left:44px;}
+.lt .vd > * + *{border-left-color:var(--bl);}
+.vd > *{padding-right:44px;} .vd > *:last-child{padding-right:0;}
+.hd > *{border-top:1px solid var(--bd);padding-top:20px;}
+.lt .hd > *{border-top-color:var(--bl);}
+.step{border-top:2px solid var(--gold);padding-top:20px;}
+.tile{border:1px solid var(--bd);padding:22px 24px;}
+.lt .tile{border-color:var(--bl);}
+.tile.gold{border-color:var(--gold);}
+.panel{background:var(--navy);padding:26px 28px;}
+.panel .tx,.panel .lead,.panel .sm,.panel .cap{color:var(--warm);}
+.edgeL{border-left:2px solid var(--gold);padding-left:24px;}
+.bT{border-top:1px solid var(--bd);} .lt .bT{border-top-color:var(--bl);}
+.bB{border-bottom:1px solid var(--bd);} .lt .bB{border-bottom-color:var(--bl);}
+
+/* ---------- tables ---------- */
+table.t{border-collapse:collapse;width:100%;}
+table.t th{font-family:var(--mono);font-weight:500;font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;text-align:left;padding-bottom:11px;border-bottom:1px solid var(--bd);color:var(--hintD);}
+.lt table.t th{border-bottom-color:var(--bl);color:var(--hintL);}
+table.t td{padding:11px 0;border-bottom:1px solid var(--bd);font-family:var(--sans);font-size:19px;}
+.lt table.t td{border-bottom-color:var(--bl);}
+.dk table.t td{color:var(--warm);} .lt table.t td{color:var(--ink);}
+table.t tr:last-child td{border-bottom:0;}
+.num{font-family:var(--mono);font-size:17px;text-align:right;white-space:nowrap;}
+table.t tr.total td{border-top:1px solid var(--gold);border-bottom:0;padding-top:15px;}
+table.t b{font-weight:500;}
+table.t.tight td{padding:6px 0;font-size:17px;line-height:1.3;}
+table.t.tight th{padding-bottom:8px;}
+table.t.tight tr.total td{padding-top:11px;}
+table.t.tight .num{font-size:16px;}
+
+/* ---------- figures ---------- */
+.fig{border:1px solid var(--bd);overflow:hidden;}
+.lt .fig{border-color:var(--bl);}
+.fig img{display:block;width:100%;height:100%;object-fit:cover;}
+
+/* ---------- cover ---------- */
+.slide.cover{display:flex;flex-direction:column;justify-content:space-between;padding:126px 144px 88px;}
+.cover-bg{position:absolute;inset:0;z-index:0;}
+.cover-bg img{width:100%;height:100%;object-fit:cover;opacity:.36;}
+.scrim{position:absolute;inset:0;z-index:0;}
+.scrim.a{background:linear-gradient(100deg,#1C2644 0%,#1C2644 34%,rgba(28,38,68,.74) 62%,rgba(28,38,68,.40) 100%);}
+.scrim.b{background:linear-gradient(0deg,rgba(11,16,32,.94) 0%,rgba(11,16,32,.28) 40%,transparent 70%);}
+.slide.cover > *{position:relative;z-index:2;}
+.slide.cover .cover-bg,.slide.cover .scrim{position:absolute;}
+
+/* ---------- choreography ---------- */
+.reveal{opacity:0;transform:translateY(24px);
+  transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1);}
+.slide.visible .reveal{opacity:1;transform:none;}
+.slide.visible .reveal:nth-child(1){transition-delay:.04s}
+.slide.visible .reveal:nth-child(2){transition-delay:.11s}
+.slide.visible .reveal:nth-child(3){transition-delay:.18s}
+.slide.visible .reveal:nth-child(4){transition-delay:.25s}
+.slide.visible .reveal:nth-child(5){transition-delay:.32s}
+.slide.visible .reveal:nth-child(6){transition-delay:.39s}
+.ken{animation:ken 24s ease-out forwards;}
+@keyframes ken{from{transform:scale(1.07)}to{transform:scale(1)}}
+@media print{.reveal{opacity:1 !important;transform:none !important}.ken{animation:none}}
+
+/* ---------- deck chrome ---------- */
+.deck-controls{display:flex;align-items:center;gap:14px;font-family:var(--mono);
+  font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mutedD);}
+.deck-controls button{font:inherit;color:inherit;background:transparent;border:1px solid var(--bd);
+  padding:6px 12px;cursor:pointer;}
+.deck-controls button:hover{color:var(--gold);border-color:var(--gold);}
+@media print{.deck-controls{display:none !important}}
+</style>
+</head>
+<body>
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- ================= 01 · COVER ================= -->
+<section class="slide active cover dk">
+  <div class="cover-bg"><img class="ken" src="img/hall-crop.jpg" alt="A rebuilt lecture hall seen from inside with a character standing in the aisle"></div>
+  <div class="scrim a"></div><div class="scrim b"></div>
+
+  <div>
+    <div class="row" style="grid-template-columns:1fr auto 1fr;align-items:center;gap:26px">
+      <span class="kicker">Drone3D Studio</span>
+      <span class="hair" style="width:520px"></span>
+      <span class="kicker dim" style="text-align:right">September 2026</span>
+    </div>
+  </div>
+
+  <div style="max-width:1440px">
+    <h1 class="h-display">Any video of a place,<br>turned into a place<br>you can <em>walk inside.</em></h1>
+    <p class="lead" style="margin-top:34px;max-width:1080px">
+      One command on a laptop. No settings to tune. It does not stop at a pretty render.
+      It hands back a room with a floor that holds you, walls that stop you, and a
+      <em>machine-checked proof</em> that you can get from one end to the other.
+    </p>
+  </div>
+
+  <div>
+    <div class="hair" style="margin-bottom:22px"></div>
+    <div class="row" style="grid-template-columns:1fr auto;align-items:end">
+      <div class="row" style="grid-template-columns:auto auto;gap:70px">
+        <div><div class="kicker dim" style="font-size:11px">What it is</div>
+          <div class="h4" style="margin-top:8px">Video to walkable 3D world</div></div>
+        <div><div class="kicker dim" style="font-size:11px">Built by</div>
+          <div class="h4" style="margin-top:8px">Kris Garg</div></div>
+      </div>
+      <div class="kicker dim" style="font-size:11px">Private circulation</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 · PROBLEM ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">The problem</span><span class="kicker dim">02</span></header>
+  <div class="body">
+    <h2 class="h2 reveal" style="max-width:1580px">We film the whole world now. We can barely <em>use</em> a single minute of it.</h2>
+    <p class="lead reveal" style="margin-top:20px;max-width:1340px">
+      Cameras, software and compute all crossed a threshold at once. The bottleneck moved, and it is not
+      where the industry is spending.
+    </p>
+
+    <div class="row vd c3 reveal" style="margin-top:46px;flex:1;align-items:start">
+      <div>
+        <div class="kicker">Step one</div>
+        <div class="h3" style="margin-top:14px">Capture</div>
+        <div class="hair" style="margin:12px 0 22px"></div>
+        <p class="tx">A drone crosses a site in eight minutes. A phone walks an apartment in ninety
+          seconds. The camera everyone already owns is a survey instrument.</p>
+        <div class="stat s-md" style="margin-top:26px">Solved</div>
+        <div class="kicker dim" style="font-size:11px;margin-top:8px">Cheap, fast, everywhere</div>
+      </div>
+      <div>
+        <div class="kicker">Step two</div>
+        <div class="h3" style="margin-top:14px">Reconstruct</div>
+        <div class="hair" style="margin:12px 0 22px"></div>
+        <p class="tx">Turning footage into a 3D model still means a specialist, a workstation, and a
+          wall of settings re-guessed for every new scene. It fails quietly, and it fails differently
+          each time.</p>
+        <div class="stat s-md" style="margin-top:26px">The choke point</div>
+        <div class="kicker dim" style="font-size:11px;margin-top:8px">Days of expert attention</div>
+      </div>
+      <div>
+        <div class="kicker">Step three</div>
+        <div class="h3" style="margin-top:14px">Use it</div>
+        <div class="hair" style="margin:12px 0 22px"></div>
+        <p class="tx">A model nobody can open is not an asset. Almost every reconstruction dies as a
+          file on a drive, because the person who needs it has no way to stand inside it.</p>
+        <div class="stat s-md" style="margin-top:26px">Where value dies</div>
+        <div class="kicker dim" style="font-size:11px;margin-top:8px">No delivery, no reuse</div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot">
+    <p class="lead">The consequence of a broken middle: a decade of cheap 3D capture produced almost no reusable
+      3D places. <em>We built the middle step.</em></p>
+  </footer>
+</section>
+
+<!-- ================= 03 · WHERE TOOLS STOP ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">Where today's tools stop</span><span class="kicker dim">03</span></header>
+  <div class="body">
+    <div class="row reveal" style="grid-template-columns:1fr 540px;gap:60px;align-items:start">
+      <div>
+        <h2 class="h2">A beautiful point cloud is not a <em>place.</em></h2>
+        <p class="lead" style="margin-top:24px">Every consumer scanner and every research demo optimises one thing:
+          how the render looks from the camera it was trained on. Four things break the moment a person has to be
+          inside it.</p>
+      </div>
+      <div>
+        <div class="fig" style="height:284px"><img src="img/shot-hall-shell.jpg" alt="The physics shell of a rebuilt hall drawn as wireframe with a character standing inside"></div>
+        <p class="cap" style="margin-top:12px">What a scanner gives you: a surface you cannot stand on.</p>
+      </div>
+    </div>
+
+    <div class="row vd c2 reveal" style="margin-top:40px;gap:32px 60px">
+      <div>
+        <div style="display:flex;gap:18px;align-items:baseline">
+          <span class="kicker">01</span><h3 class="h3">There is no floor you can trust</h3></div>
+        <p class="tx" style="margin-top:12px;padding-left:52px">A cloud of light samples has no underside and no
+          inside. Walkers fall through it or stand on air, and nothing in the file says which way is down.</p>
+      </div>
+      <div>
+        <div style="display:flex;gap:18px;align-items:baseline">
+          <span class="kicker">02</span><h3 class="h3">There is no metre</h3></div>
+        <p class="tx" style="margin-top:12px;padding-left:52px">Reconstruction from images recovers shape up to an
+          unknown scale. A corridor can come out four centimetres long or four hundred, so nothing you measure is
+          real until that is pinned.</p>
+      </div>
+      <div>
+        <div style="display:flex;gap:18px;align-items:baseline">
+          <span class="kicker">03</span><h3 class="h3">Nobody checks the claim</h3></div>
+        <p class="tx" style="margin-top:12px;padding-left:52px">Quality scores measure pixels against photographs.
+          A scene can score well and still be impossible to cross. No tool in this market reports that.</p>
+      </div>
+      <div>
+        <div style="display:flex;gap:18px;align-items:baseline">
+          <span class="kicker">04</span><h3 class="h3">Every scene needs new settings</h3></div>
+        <p class="tx" style="margin-top:12px;padding-left:52px">The knobs are tuned by hand, per site, by someone who
+          has done it before. That is a consultancy, not a product. It does not scale and it does not repeat.</p>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><p class="lead">Closing these four is not a polish task. It is <em>most of the engineering</em> in this company.</p></footer>
+</section>
+
+<!-- ================= 04 · THE FLOW ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">What we built</span><span class="kicker dim">04</span></header>
+  <div class="body" style="padding-top:22px">
+    <h2 class="h2 sm reveal">Video in. A walkable world out. <em>Fifteen steps, no hands on the wheel.</em></h2>
+    <p class="tx reveal" style="margin-top:14px;max-width:1440px">You point a camera at a place and run one command.
+      The system diagnoses the footage, chooses its own settings, builds the model, gives it physics, then sends a
+      character through the result to check that the place is real enough to walk.</p>
+
+    <div class="row vd c5 reveal" style="margin-top:32px;gap:0 24px">
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Phase 01</div>
+        <h4 class="h4" style="margin:9px 0 13px">Read the footage</h4>
+        <ul class="dash sp"><li style="font-size:17px">Keeps the sharpest frames, drops the blurred ones</li>
+          <li style="font-size:17px">Uses the phone's recorded positions when present</li>
+          <li style="font-size:17px">Reads the real lens instead of guessing it</li></ul>
+      </div>
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Phase 02</div>
+        <h4 class="h4" style="margin:9px 0 13px">Solve the cameras</h4>
+        <ul class="dash sp"><li style="font-size:17px">Works out where every frame was shot from</li>
+          <li style="font-size:17px">Fuses separate clips into one space</li>
+          <li style="font-size:17px">A failed solve climbs a rescue ladder, not a crash</li></ul>
+      </div>
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Phase 03</div>
+        <h4 class="h4" style="margin:9px 0 13px">Train the model</h4>
+        <ul class="dash sp"><li style="font-size:17px">Fits millions of 3D light samples to the photos</li>
+          <li style="font-size:17px">Sizes the job to memory free at that moment</li>
+          <li style="font-size:17px">Checkpoints, so a killed run still ships something</li></ul>
+      </div>
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Phase 04</div>
+        <h4 class="h4" style="margin:9px 0 13px">Give it physics</h4>
+        <ul class="dash sp"><li style="font-size:17px">Finds which way is up and what a metre is</li>
+          <li style="font-size:17px">Builds a solid shell you can stand on</li>
+          <li style="font-size:17px">Chooses the ground by measurement, not by rule</li></ul>
+      </div>
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Phase 05</div>
+        <h4 class="h4" style="margin:9px 0 13px">Prove it walks</h4>
+        <ul class="dash sp"><li style="font-size:17px">Thirteen rules the world has to pass</li>
+          <li style="font-size:17px">A pilot character is driven through it unattended</li>
+          <li style="font-size:17px">Rebuilds are set against the real photographs</li></ul>
+      </div>
+    </div>
+
+    <div class="kicker dim reveal" style="margin:36px 0 4px;font-size:11px">What comes out</div>
+    <div class="row hd c4 reveal" style="margin-top:16px;gap:0 24px">
+      <div><div class="h4">A browser world</div><p class="sm mutL" style="margin-top:7px">Third-person walking with real collisions. No plug-in and no install for the person viewing it.</p></div>
+      <div><div class="h4">A solid surface</div><p class="sm mutL" style="margin-top:7px">A collision mesh of the actual room, plus boxes for the furniture inside it.</p></div>
+      <div><div class="h4">A measured ground</div><p class="sm mutL" style="margin-top:7px">A height map in real metres, so distances and clearances mean something.</p></div>
+      <div><div class="h4">A signed report</div><p class="sm mutL" style="margin-top:7px">Every step timed, every failure named, every verdict written down.</p></div>
+    </div>
+  </div>
+  <footer class="foot"><p class="tx">Phases one to three are what good research tools already do. Phases four and five
+    are <em>the reason this is a product and not a paper.</em></p></footer>
+</section>
+
+<!-- ================= 05 · FOUR HARD PROBLEMS ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">The hard part</span><span class="kicker dim">05</span></header>
+  <div class="body" style="padding-top:20px">
+    <h2 class="h2 sm reveal">Four problems that only appear when you insist on <em>a walker.</em></h2>
+
+    <div class="row vd c2 reveal" style="margin-top:32px;gap:34px 66px">
+      <div style="display:flex;gap:24px;align-items:flex-start">
+        <span class="stat s-md" style="width:52px;flex:0 0 auto">1</span>
+        <div><h3 class="h3">A reconstruction has no metre</h3>
+          <p class="tx" style="margin-top:11px">We recover scale from physics instead of asking the operator. A drone
+            holds roughly five metres a second. A hand holding a phone sits about 1.6 metres above the floor. Those two
+            facts, read off the solved cameras, pin the world to centimetres.</p></div>
+      </div>
+      <div style="display:flex;gap:24px;align-items:flex-start">
+        <span class="stat s-md" style="width:52px;flex:0 0 auto">2</span>
+        <div><h3 class="h3">Light samples are not surfaces</h3>
+          <p class="tx" style="margin-top:11px">So we build a solid shell underneath them, voxel by voxel, where every
+            change in height becomes a vertical wall. A body 34 centimetres wide cannot climb a 35 centimetre step at
+            all. Walkability stops being an opinion and becomes a routing question.</p></div>
+      </div>
+      <div style="display:flex;gap:24px;align-items:flex-start">
+        <span class="stat s-md" style="width:52px;flex:0 0 auto">3</span>
+        <div><h3 class="h3">The truth depends on the machine</h3>
+          <p class="tx" style="margin-top:11px">The same clip yields 7,500 or 30,000 model elements depending on what
+            else is using the graphics card. So no check downstream counts anything. Every threshold is a share of the
+            cloud, a spread across the camera path, or the scene's own size.</p></div>
+      </div>
+      <div style="display:flex;gap:24px;align-items:flex-start">
+        <span class="stat s-md" style="width:52px;flex:0 0 auto">4</span>
+        <div><h3 class="h3">A number can be right while the claim is wrong</h3>
+          <p class="tx" style="margin-top:11px">"Walked 22 metres, zero falls" reads perfectly while the character
+            drifts an inch above the floor. So we log a sampled route and cross-check it against the distance reported.
+            That is how we caught our own test lying to us.</p></div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot">
+    <div class="row" style="grid-template-columns:1fr auto;gap:44px;align-items:end">
+      <p class="lead">None of this shows up in a screenshot. It shows up as <em>the run finishing on footage nobody
+        has tuned for.</em></p>
+      <div class="row" style="grid-template-columns:repeat(3,auto);gap:46px">
+        <div><div class="stat s-sm">9</div><div class="kicker dim" style="font-size:11px;margin-top:5px">Capture profiles</div></div>
+        <div><div class="stat s-sm">13</div><div class="kicker dim" style="font-size:11px;margin-top:5px">Acceptance rules</div></div>
+        <div><div class="stat s-sm">0</div><div class="kicker dim" style="font-size:11px;margin-top:5px">Per-scene settings</div></div>
+      </div>
+    </div>
+  </footer>
+</section>
+
+<!-- ================= 06 · PHYSICS ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">The differentiator</span><span class="kicker dim">06</span></header>
+  <div class="body" style="padding-top:22px">
+    <div class="row" style="grid-template-columns:1fr 780px;gap:60px;align-items:start;flex:1">
+      <div>
+        <h2 class="h2 sm">We do not render a picture of a room.<br>We build <em>the floor of it.</em></h2>
+        <p class="tx" style="margin-top:22px">The reconstruction gives you a photograph you can orbit. What we add
+          underneath it is a solid shell with an inside and an outside, generated from the model and checked against
+          the ground we measured.</p>
+
+        <div class="edgeL" style="margin-top:28px">
+          <div class="h4">Two candidate grounds, and a race</div>
+          <p class="sm" style="margin-top:8px">We build the floor two ways, drive the pilot character on both, and ship
+            whichever it walks further across. In our own scenes the winner flips: 68 metres against 51 in a hall, 69
+            against 94 in a rock field. No statistic predicts it, so the walk is the judge.</p>
+        </div>
+        <div class="edgeL" style="margin-top:22px">
+          <div class="h4">Furniture is solid too</div>
+          <p class="sm" style="margin-top:8px">Desks, seats and bins get their own boxes, so the walker is stopped by
+            what should stop it rather than sliding through a wall of light.</p>
+        </div>
+        <div class="edgeL" style="margin-top:22px">
+          <div class="h4">The same shell answers the useful questions</div>
+          <p class="sm" style="margin-top:8px">Where can a person stand, how far is it to the exit, what blocks the
+            view of the damage. Those become measurements instead of arguments.</p>
+        </div>
+      </div>
+
+      <div>
+        <div class="fig" style="height:438px"><img src="img/shot-hall-collider.jpg" alt="A rebuilt lecture hall with the physics surface overlaid as a wire mesh and a character in the aisle"></div>
+        <div style="display:flex;justify-content:space-between;margin-top:10px">
+          <span class="kicker dim" style="font-size:11px">The rebuilt hall</span>
+          <span class="kicker dim" style="font-size:11px">Solid surface overlaid</span>
+        </div>
+        <div class="row hd c3" style="margin-top:26px;gap:0 24px">
+          <div><div class="stat s-sm">1,049</div><div class="kicker dim" style="font-size:11px;margin-top:6px">Surface points, one scene</div></div>
+          <div><div class="stat s-sm">1,288</div><div class="kicker dim" style="font-size:11px;margin-top:6px">Square metres routed</div></div>
+          <div><div class="stat s-sm">3.5s</div><div class="kicker dim" style="font-size:11px;margin-top:6px">To build the shell</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><p class="tx">This layer is what turns a scan into something a robot, a game engine, a trainee
+    or an insurer could actually <em>move through.</em></p></footer>
+</section>
+
+<!-- ================= 07 · AUTOMATION ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">Automation</span><span class="kicker dim">07</span></header>
+  <div class="body" style="padding-top:20px">
+    <h2 class="h2 sm reveal">Nothing is tuned per scene. <em>Everything is measured.</em></h2>
+    <p class="tx reveal" style="margin-top:12px;max-width:1460px">The classic failure mode of this whole field is a run
+      that dies for no reason until an expert changes three numbers. We treated that as the defect, not the workflow.</p>
+
+    <div class="row reveal" style="grid-template-columns:1fr 580px;gap:60px;margin-top:28px;flex:1;align-items:start">
+      <div>
+        <div class="kicker" style="font-size:11px">It reads the footage first</div>
+        <p class="sm mutL" style="margin-top:10px">One command diagnoses motion, blur and how much of the clip is pure
+          rotation, then picks one of nine capture profiles. A recorded phone position log counts as proof a person
+          walked it, so a living-room orbit is never sent down the aerial pipeline and handed a ceiling that is actually
+          a floor.</p>
+        <table class="t" style="margin-top:18px">
+          <thead><tr><th>Profile</th><th>What it assumes about the walk</th></tr></thead>
+          <tbody>
+            <tr><td>Handheld indoor room or flat</td><td class="mutL">Arcs and orbits at three heights</td></tr>
+            <tr><td>Large indoor: halls, warehouses</td><td class="mutL">Serpentine grid with cross passes</td></tr>
+            <tr><td>Outdoor building or facade</td><td class="mutL">Circle the structure at several levels</td></tr>
+            <tr><td>Aerial drone orbit or push-forward</td><td class="mutL">Continuous orbits at steady speed</td></tr>
+            <tr><td>Drone nadir and terrain mapping</td><td class="mutL">Lawnmower pattern, 75% forward overlap</td></tr>
+            <tr><td>Linear street or long hallway</td><td class="mutL">Forward path, corners held longer</td></tr>
+            <tr><td>Close-up object, turntable</td><td class="mutL">Two elevation rings around one thing</td></tr>
+          </tbody>
+        </table>
+        <p class="cap hinL" style="margin-top:12px">Seven of nine shown. The remaining two: automatic, and bright open sky.</p>
+      </div>
+
+      <div>
+        <div class="kicker" style="font-size:11px">It sizes itself to the machine</div>
+        <div style="margin-top:12px">
+          <div class="bT" style="padding:12px 0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span class="h4">Image detail</span><span class="kicker dim" style="font-size:11px">from free memory</span></div>
+            <p class="sm mutL" style="margin-top:5px">Pixel count is decided before anything else, from what the graphics card has spare at that second.</p></div>
+          <div class="bT" style="padding:12px 0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span class="h4">Model size</span><span class="kicker dim" style="font-size:11px">from free memory</span></div>
+            <p class="sm mutL" style="margin-top:5px">The element cap follows, and the image cache decides whether it stays resident or has to stream.</p></div>
+          <div class="bT" style="padding:12px 0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span class="h4">Surface coarseness</span><span class="kicker dim" style="font-size:11px">from the scene</span></div>
+            <p class="sm mutL" style="margin-top:5px">The grid coarsens until the room's own footprint fits inside what the builder can hold.</p></div>
+          <div class="bT bB" style="padding:12px 0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span class="h4">Failures</span><span class="kicker dim" style="font-size:11px">ten named kinds</span></div>
+            <p class="sm mutL" style="margin-top:5px">Out of memory, grid overflow, unsupported option, hard kill. Repairable ones are repaired and recorded.</p></div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="kicker" style="font-size:11px">The rule we hold</div>
+          <p class="sm" style="margin-top:8px">A new fixed number has to argue why it cannot be measured. If it can be,
+            it is. <em>That rule is most of the reliability.</em></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 08 · MEASURED RUN ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">Proof · one real run, start to finish</span><span class="kicker dim">08</span></header>
+  <div class="body" style="padding-top:16px">
+    <h2 class="h2 sm reveal">Thirty-nine minutes, top to bottom, on a <em>six-gigabyte laptop.</em></h2>
+    <div class="row reveal" style="grid-template-columns:1fr 500px;gap:56px;margin-top:20px;flex:1;align-items:start">
+      <table class="t tight">
+        <thead><tr><th>Step</th><th>What it decides</th><th style="text-align:right">Time</th></tr></thead>
+        <tbody>
+          <tr><td>Read the footage</td><td class="mutL">Sharpest frames, blur floor, duplicates</td><td class="num">28s</td></tr>
+          <tr><td>Import phone positions</td><td class="mutL">Real metric anchors for the solve</td><td class="num">0.3s</td></tr>
+          <tr><td><b>Solve where every camera was</b></td><td class="mutL">480 of 487 frames registered</td><td class="num" style="color:var(--gold)">19m 50s</td></tr>
+          <tr><td><b>Train the model</b></td><td class="mutL">486,474 light samples fitted</td><td class="num" style="color:var(--gold)">15m 18s</td></tr>
+          <tr><td>Find up, the metre, the room</td><td class="mutL">Gravity and scale from the cameras</td><td class="num">4.8s</td></tr>
+          <tr><td>Export viewer assets</td><td class="mutL">Reoriented, pruned, in metres</td><td class="num">16.0s</td></tr>
+          <tr><td>Paint the ground colours</td><td class="mutL">Underlay beneath the model</td><td class="num">0.5s</td></tr>
+          <tr><td>Build the collision shell</td><td class="mutL">Solid surface from the cloud</td><td class="num">3.5s</td></tr>
+          <tr><td>Make furniture solid</td><td class="mutL">Boxes that stop the walker</td><td class="num">0.5s</td></tr>
+          <tr><td>Choose the ground by measurement</td><td class="mutL">Two candidates raced, better one ships</td><td class="num">3.6s</td></tr>
+          <tr><td>Run the thirteen-rule gate</td><td class="mutL">Is this a world we would hand over</td><td class="num">0.4s</td></tr>
+          <tr><td>Render comparison views</td><td class="mutL">Rebuilds from the original cameras</td><td class="num">6.1s</td></tr>
+          <tr><td>Assemble the blind comparison set</td><td class="mutL">Photo against rebuild, order hidden</td><td class="num">1.0s</td></tr>
+          <tr><td>Drive the pilot walk</td><td class="mutL">Unattended character, logged twice a second</td><td class="num">3m 17s</td></tr>
+          <tr class="total"><td style="font-family:var(--serif);font-size:23px;font-weight:600">Total</td>
+            <td class="mutL" style="font-size:17px">Fifteen steps, no settings changed by hand</td>
+            <td class="num" style="font-family:var(--serif);font-size:26px;font-weight:600;color:var(--gold)">39m 32s</td></tr>
+        </tbody>
+      </table>
+
+      <div>
+        <div class="bT" style="padding-top:16px">
+          <div class="stat s-lg">89%</div>
+          <div class="kicker dim" style="font-size:11px;margin-top:6px">Of the time is two steps</div>
+          <p class="sm mutL" style="margin-top:10px">Camera solving and training dominate everything. The physics and
+            verification layer costs about 26 seconds a scene.</p>
+        </div>
+        <div class="bT" style="padding-top:16px;margin-top:22px">
+          <div class="stat s-lg">31m</div>
+          <div class="kicker dim" style="font-size:11px;margin-top:6px">Second measured scene</div>
+          <p class="sm mutL" style="margin-top:10px">A different room, same machine, same single command. Both runs
+            completed all fifteen steps.</p>
+        </div>
+        <div class="panel" style="margin-top:22px">
+          <div class="kicker" style="font-size:11px">What this is not</div>
+          <p class="sm" style="margin-top:9px">These are the only two complete timed runs recorded so far, both on
+            indoor phone footage. Larger sites take longer. We show the number because it is measured, not because it
+            is impressive yet.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot">
+    <div class="row" style="grid-template-columns:1fr auto;gap:40px;align-items:center">
+      <p class="tx">The two slow steps are the ones the whole industry is racing to make cheaper. Ours is a hardware
+        curve, not a rewrite.</p>
+      <div class="row" style="grid-template-columns:repeat(3,auto);gap:38px">
+        <div><div class="stat s-sm">15</div><div class="kicker dim" style="font-size:11px;margin-top:4px">Steps, one command</div></div>
+        <div><div class="stat s-sm">6GB</div><div class="kicker dim" style="font-size:11px;margin-top:4px">Laptop graphics card</div></div>
+        <div><div class="stat s-sm">0</div><div class="kicker dim" style="font-size:11px;margin-top:4px">Manual overrides</div></div>
+      </div>
+    </div>
+  </footer>
+</section>
+
+<!-- ================= 09 · THE GATE ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">Proof · self-verification</span><span class="kicker dim">09</span></header>
+  <div class="body" style="padding-top:16px">
+    <h2 class="h2 sm reveal">The build <em>refuses</em> to ship a world it does not trust.</h2>
+    <p class="tx reveal" style="margin-top:12px;max-width:1480px">After fifteen steps, thirteen rules decide whether the
+      result is certified. The strict ones are never relaxed to make a run look green. Two of our ten scenes were turned
+      away by them, including the drone shot we use in the demo.</p>
+
+    <div class="row reveal" style="grid-template-columns:1fr 520px;gap:60px;margin-top:26px;flex:1;align-items:start">
+      <div>
+        <div class="kicker" style="font-size:11px">The strict rules, in plain words</div>
+        <div class="row vd c2" style="margin-top:14px;gap:0 40px">
+          <div class="bT" style="padding:14px 0">Is there measured ground at all?</div>
+          <div class="bT" style="padding:14px 0">Is the terrain a floor, not a ceiling?</div>
+          <div class="bT" style="padding:14px 0">Does the walker start on something solid?</div>
+          <div class="bT" style="padding:14px 0">Is there a route long enough to be worth walking?</div>
+          <div class="bT" style="padding:14px 0">Is the solid shell the surface the route was planned on?</div>
+          <div class="bT" style="padding:14px 0">Did the shell come out with any geometry at all?</div>
+        </div>
+        <p class="sm" style="margin-top:20px">Seven further rules grade quality rather than safety: how much of the
+          ground was measured against inferred, whether the cameras sat above the surface they filmed, how flat the
+          start point is, and whether the shell drifts from the ground we mapped.</p>
+        <p class="lead" style="margin-top:20px">A pipeline that never fails is usually a pipeline that never checks.
+          <em>Ours loses a quarter of its own work on purpose.</em></p>
+      </div>
+
+      <div>
+        <div class="kicker" style="font-size:11px">Ten scenes, as graded</div>
+        <div style="margin-top:14px">
+          <div class="tile" style="display:flex;gap:20px;align-items:center;padding:15px 20px">
+            <div class="stat s-md" style="width:66px;flex:0 0 auto">6</div>
+            <div><div class="h4">Certified</div><p class="cap" style="margin-top:3px">Passed every strict rule and shipped</p></div>
+          </div>
+          <div class="tile" style="display:flex;gap:20px;align-items:center;padding:15px 20px;margin-top:11px">
+            <div class="stat s-md" style="width:66px;flex:0 0 auto">2</div>
+            <div><div class="h4">Shipped with warnings</div><p class="cap" style="margin-top:3px">Usable, with the limit stated on the record</p></div>
+          </div>
+          <div class="tile gold" style="display:flex;gap:20px;align-items:center;padding:15px 20px;margin-top:11px">
+            <div class="stat s-md" style="width:66px;flex:0 0 auto">2</div>
+            <div><div class="h4" style="color:var(--gold)">Refused certification</div><p class="cap" style="margin-top:3px">The world exists. The gate said it is not safe to hand over.</p></div>
+          </div>
+        </div>
+        <p class="cap" style="margin-top:14px">Both refusals are the same rule: the pilot character would start somewhere
+          the ground does not support it. That is precisely the defect a client would find first.</p>
+      </div>
+    </div>
+  </div>
+  <footer class="foot">
+    <div class="row c4" style="gap:0 40px">
+      <div><div class="stat s-sm">232</div><div class="kicker dim" style="font-size:11px;margin-top:5px">Automated checks, five suites</div></div>
+      <div><div class="stat s-sm">7</div><div class="kicker dim" style="font-size:11px;margin-top:5px">Real takes run end to end</div></div>
+      <div><div class="stat s-sm">0.5s</div><div class="kicker dim" style="font-size:11px;margin-top:5px">Walk logged twice a second</div></div>
+      <div><div class="stat s-sm">1</div><div class="kicker dim" style="font-size:11px;margin-top:5px">Command to run the whole thing</div></div>
+    </div>
+  </footer>
+</section>
+
+<!-- ================= 10 · FIDELITY ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">Proof · how close the rebuild is</span><span class="kicker dim">10</span></header>
+  <div class="body" style="padding-top:14px">
+    <h2 class="h2 sm reveal">Same camera, same second. One is the <em>photograph.</em></h2>
+    <div class="row c2 reveal" style="gap:0 40px;margin-top:18px;flex:1;align-items:start">
+      <div>
+        <div class="kicker" style="font-size:11px">The drone's own frame</div>
+        <div class="fig" style="margin-top:10px;height:388px"><img src="img/ab-real.jpg" alt="Aerial photograph of a rock outcrop in a grass field"></div>
+      </div>
+      <div>
+        <div class="kicker" style="font-size:11px">Rebuilt from that footage</div>
+        <div class="fig" style="margin-top:10px;height:388px"><img src="img/ab-render.jpg" alt="The same rock outcrop rendered from the reconstructed model"></div>
+      </div>
+    </div>
+    <div class="row hd c3 reveal" style="gap:0 46px;margin-top:24px">
+      <div><div class="h4">Judged blind</div><p class="sm mutL" style="margin-top:7px">One hundred pairs across ten scenes. The reviewer was not told which panel was real, and the answer key lives in a separate file.</p></div>
+      <div><div class="h4">Where it loses</div><p class="sm mutL" style="margin-top:7px">Uniform softness, a smeared band where the sky was, and nearby rocks merging into one another. Named, not hidden.</p></div>
+      <div><div class="h4">Why we skip the score</div><p class="sm mutL" style="margin-top:7px">Our pixel scores sit below published norms for this technique. We would rather show you the pair than argue about a number.</p></div>
+    </div>
+  </div>
+  <footer class="foot"><p class="lead">Visual fidelity is the crowded part of this market. What we sell is
+    <em>the eight seconds after the render: can a body get across it, and can we prove it.</em></p></footer>
+</section>
+
+<!-- ================= 11 · MARKET ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">The money</span><span class="kicker dim">11</span></header>
+  <div class="body" style="padding-top:18px">
+    <h2 class="h2 sm reveal">Three markets, one missing layer that <em>sits between them.</em></h2>
+    <p class="tx reveal" style="margin-top:12px;max-width:1460px">We are not building another scanner. We sell the step that
+      turns a scan into something a business can put a person inside, and that step is what the layers
+      above it have been waiting on.</p>
+
+    <div class="row c3 reveal" style="gap:0 44px;margin-top:34px">
+      <div class="bT" style="padding-top:22px">
+        <div class="stat s-lg">$49.2B</div>
+        <div class="kicker" style="font-size:11px;margin-top:10px">Digital twins, 2026</div>
+        <p class="sm" style="margin-top:12px">Headed to $228B by 2031, a 36% yearly climb. The fastest-growing of the
+          three, and the one that still cannot get its geometry cheaply.</p>
+        <p class="cap hinD" style="margin-top:10px">Mordor Intelligence, 2026</p>
+      </div>
+      <div class="bT" style="padding-top:22px">
+        <div class="stat s-lg">$2.4B</div>
+        <div class="kicker" style="font-size:11px;margin-top:10px">Drone surveying, 2026</div>
+        <p class="sm" style="margin-top:12px">Forecast at $13.7B by 2036 on a 19% yearly rate. Engineering firms, mining,
+          agriculture and government. Our most obvious first buyer.</p>
+        <p class="cap hinD" style="margin-top:10px">Fact.MR, 2026</p>
+      </div>
+      <div class="bT" style="padding-top:22px">
+        <div class="stat s-lg">$1.86B</div>
+        <div class="kicker" style="font-size:11px;margin-top:10px">3D reconstruction, 2026</div>
+        <p class="sm" style="margin-top:12px">To $3.19B by 2031 at 11%. Smaller and slower, and it is the layer we
+          actually replace, so we treat it as the floor rather than the prize.</p>
+        <p class="cap hinD" style="margin-top:10px">Mordor Intelligence, 2026</p>
+      </div>
+    </div>
+
+    <div class="panel reveal" style="margin-top:34px">
+      <div class="row" style="grid-template-columns:auto 1fr;gap:38px;align-items:center">
+        <div style="text-align:center;padding-right:34px;border-right:1px solid var(--bd)">
+          <div class="stat s-lg">212</div>
+          <div class="kicker" style="font-size:11px;margin-top:8px">Products on this technique</div>
+        </div>
+        <div>
+          <div class="kicker" style="font-size:11px">The capital has already arrived</div>
+          <p class="tx" style="margin-top:10px">Around <em>$1.5 billion</em> has gone into spatial and reconstruction
+            companies, of which roughly $480 million is directly on this technique. Named rounds include Niantic Spatial
+            at $250M, World Labs at $100M plus, Luma AI at $68.5M, Pico at $62M and Polycam at $22.1M. Research output
+            reached 3,333 papers, 749 of them this year alone.</p>
+          <p class="cap hinD" style="margin-top:10px">Radiance Fields industry survey, July 2026</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><p class="tx">Money is chasing capture and generation. Almost none of it has landed on
+    <em>making the result dependable enough to hand to a customer.</em></p></footer>
+</section>
+
+<!-- ================= 12 · WHO PAYS ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">Who pays, and what they already pay</span><span class="kicker dim">12</span></header>
+  <div class="body" style="padding-top:18px">
+    <h2 class="h2 xs reveal">They already pay for the file. <em>None of it buys a place you can walk.</em></h2>
+    <p class="tx reveal" style="margin-top:12px;max-width:1440px">These are published prices from the incumbents, not our
+      guesses.</p>
+
+    <table class="t tight reveal" style="margin-top:22px">
+      <thead><tr><th>Segment</th><th>Who signs</th><th>What they pay today</th><th>What they actually receive</th></tr></thead>
+      <tbody>
+        <tr><td style="width:23%">Drone survey and mapping</td><td class="mutL" style="width:19%">Firm owner, survey lead</td>
+          <td style="width:25%"><b style="font-weight:500;color:var(--gold)">$1,290 to $4,990</b> per user, per year</td>
+          <td class="mutL" style="width:33%">A map, a point cloud, and a report. Nobody outside the team can enter it.</td></tr>
+        <tr><td>Real estate and space</td><td class="mutL">Broker, listing team</td>
+          <td><b style="font-weight:500;color:var(--gold)">$69 to $309</b> per month, plus $20 per tour</td>
+          <td class="mutL">A shareable walkthrough, but only of rooms shot on their own camera.</td></tr>
+        <tr><td>Consumer and pro scanning</td><td class="mutL">Individual, small studio</td>
+          <td><b style="font-weight:500;color:var(--gold)">$0 to $100</b> per month</td>
+          <td class="mutL">A mesh or a splat to download. Scale, floor and walkability are your problem.</td></tr>
+        <tr><td>Facilities and digital twins</td><td class="mutL">Site owner, operations</td>
+          <td><b style="font-weight:500;color:var(--gold)">Six figures</b> per site, integrated</td>
+          <td class="mutL">A bespoke twin built by a contractor over months, then maintained by that contractor.</td></tr>
+      </tbody>
+    </table>
+    <p class="cap hinL reveal" style="margin-top:12px">Published plan prices, 2026: Pix4D, DroneDeploy, Matterport, and enterprise twin integrators.</p>
+
+    <div class="row vd c3 reveal" style="margin-top:30px;flex:1;align-items:start">
+      <div><div class="kicker" style="font-size:11px">Where we start</div>
+        <div class="h4" style="margin-top:11px">The survey firm</div>
+        <p class="sm mutL" style="margin-top:9px">Already paying, already buying annually, already complaining that the
+          deliverable cannot be shown to a client without a specialist present. One command and a browser link fits their
+          week exactly.</p></div>
+      <div><div class="kicker" style="font-size:11px">Then</div>
+        <div class="h4" style="margin-top:11px">Insurance and inspection</div>
+        <p class="sm mutL" style="margin-top:9px">A claim needs a room reconstructed from a phone, with distances that
+          hold up under challenge. That is a measured ground and a scale that is not guessed, which is the part nobody
+          else ships.</p></div>
+      <div><div class="kicker" style="font-size:11px">Finally</div>
+        <div class="h4" style="margin-top:11px">Twin, robot and game</div>
+        <p class="sm mutL" style="margin-top:9px">Anything that needs a real space a body can move through, without a
+          contractor. Largest market, longest sale, and it comes after the first two pay for it.</p></div>
+    </div>
+  </div>
+  <footer class="foot"><p class="lead">We price against the file they buy today, not against a scanner.
+    <em>The difference we charge for is that the file can be walked.</em></p></footer>
+</section>
+
+<!-- ================= 13 · COMPETITION ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">Position</span><span class="kicker dim">13</span></header>
+  <div class="body" style="padding-top:16px">
+    <h2 class="h2 sm reveal">The incumbents are <em>ahead</em> on everything except the last step.</h2>
+
+    <table class="t reveal" style="margin-top:22px">
+      <thead><tr><th>Capability</th><th>Consumer scanners</th><th>Survey platforms</th><th style="color:var(--gold)">Drone3D</th></tr></thead>
+      <tbody>
+        <tr><td>Reconstructs from any ordinary video</td><td class="mutD">Partly</td><td class="mutD">Drone only</td><td style="color:var(--gold)">Yes, phone or drone</td></tr>
+        <tr><td>Real-world scale without a manual step</td><td class="mutD">No</td><td>Yes</td><td style="color:var(--gold)">Yes</td></tr>
+        <tr><td>Settings tuned per scene by hand</td><td class="mutD">Few knobs, few results</td><td>Yes, constantly</td><td style="color:var(--gold)">None</td></tr>
+        <tr><td>Solid floor and walls under the model</td><td class="mutD">No</td><td class="mutD">No</td><td style="color:var(--gold)">Yes</td></tr>
+        <tr><td>A person can walk it in a browser</td><td class="mutD">Viewer only</td><td class="mutD">No</td><td style="color:var(--gold)">Yes</td></tr>
+        <tr><td>Machine verifies the walk happened</td><td class="mutD">No</td><td class="mutD">No</td><td style="color:var(--gold)">Yes, thirteen rules</td></tr>
+        <tr><td>Refuses to ship a world it distrusts</td><td class="mutD">Never refuses</td><td class="mutD">Never refuses</td><td style="color:var(--gold)">Yes, 2 of 10</td></tr>
+        <tr><td>Cloud service, accounts, a link to send</td><td>Yes</td><td>Yes</td><td style="color:var(--gold)">Not yet</td></tr>
+        <tr><td>Mesh and drawing export for engineers</td><td>Yes</td><td>Yes</td><td style="color:var(--gold)">Not yet</td></tr>
+        <tr><td>Polish, support, distribution</td><td>Yes</td><td>Yes</td><td style="color:var(--gold)">No</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <footer class="foot">
+    <div class="row" style="grid-template-columns:1fr 1fr;gap:56px;align-items:end">
+      <p class="lead">The bottom three rows are our gap, and they are the expensive ones to close. The middle five are
+        <em>the moat, and they are cheap for us and costly for them.</em></p>
+      <p class="sm">Adding a walkable physics layer means rebuilding their export as a simulation surface and inventing a
+        verification step that can fail their own sales. That is why it is not on their roadmap.</p>
+    </div>
+  </footer>
+</section>
+
+<!-- ================= 14 · WHY NOW ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">Why now</span><span class="kicker dim">14</span></header>
+  <div class="body" style="padding-top:20px">
+    <h2 class="h2 sm reveal">Every piece became available <em>in the same twenty-four months.</em></h2>
+
+    <div class="row vd c4 reveal" style="margin-top:40px;gap:0 36px">
+      <div>
+        <div class="stat s-sm">01</div>
+        <div class="h4" style="margin:16px 0 12px">The rendering technique won</div>
+        <p class="tx mutL">Gaussian splatting went from a 2023 paper to 212 products and 749 papers this year. It renders
+          in an ordinary browser at frame rate, which no earlier method managed on a laptop.</p>
+      </div>
+      <div>
+        <div class="stat s-sm">02</div>
+        <div class="h4" style="margin:16px 0 12px">Laptop memory caught up</div>
+        <p class="tx mutL">Training used to need a data centre card. A six-gigabyte laptop chip now holds a real room of
+          half a million elements, which is what makes a per-desk product possible at all.</p>
+      </div>
+      <div>
+        <div class="stat s-sm">03</div>
+        <div class="h4" style="margin:16px 0 12px">Every phone is a survey rig</div>
+        <p class="tx mutL">Phone position tracking gives metric anchors for free. A room shot on an ordinary handset now
+          arrives with its own walk path, and no extra hardware in the bag.</p>
+      </div>
+      <div>
+        <div class="stat s-sm">04</div>
+        <div class="h4" style="margin:16px 0 12px">Demand moved to walkable space</div>
+        <p class="tx mutL">Simulation, robotics training and interactive twins all need a space a body can move through,
+          not a picture of one. That is the exact artefact nobody else produces.</p>
+      </div>
+    </div>
+
+    <div class="row vd c2 reveal" style="margin-top:46px;gap:0 56px;flex:1;align-items:start">
+      <div>
+        <div class="kicker" style="font-size:11px">Why it has not been done</div>
+        <p class="lead" style="margin-top:14px">The research community optimises picture quality because that is what its
+          scores measure. The consumer apps optimise the first five minutes of delight because that is what converts a
+          trial. The step in between, making a reconstruction physically trustworthy, earns nothing in either game until
+          someone insists on a walker.</p>
+      </div>
+      <div>
+        <div class="kicker" style="font-size:11px">Why the window is real but not forever</div>
+        <p class="lead" style="margin-top:14px">The same openness that let us build this in weeks is what lets anyone
+          else reach it. Our defence is not the technique. It is <em>the thirteen rules, the rescue ladders, and every
+          defect we have already had to survive.</em></p>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><p class="lead">The window is not a patent. It is <em>a two-year head start on the boring,
+    unglamorous layer that nobody wanted to own.</em></p></footer>
+</section>
+
+<!-- ================= 15 · BUSINESS MODEL ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">Business model</span><span class="kicker dim">15</span></header>
+  <div class="body" style="padding-top:16px">
+    <h2 class="h2 sm reveal">Sell the certified world, <em>not the software.</em></h2>
+
+    <div class="row" style="grid-template-columns:1fr 560px;gap:60px;margin-top:26px;flex:1;align-items:start">
+      <div>
+        <div class="row c3" style="gap:0 24px">
+          <div class="step">
+            <div class="kicker" style="font-size:11px">Tier one</div>
+            <div class="h4" style="margin:10px 0 8px">Per certified scene</div>
+            <p class="sm">You pay when a world passes the gate and ships. Failed runs cost nothing, which is the only
+              pricing that is honest about how this works.</p>
+            <div class="stat s-xs" style="margin-top:14px">Usage</div>
+          </div>
+          <div class="step">
+            <div class="kicker" style="font-size:11px">Tier two</div>
+            <div class="h4" style="margin:10px 0 8px">Team seats</div>
+            <p class="sm">Capture, run, share and measure, with the viewer link as the deliverable. Priced against the
+              $1,290 to $4,990 the survey tools already charge a user a year.</p>
+            <div class="stat s-xs" style="margin-top:14px">Recurring</div>
+          </div>
+          <div class="step">
+            <div class="kicker" style="font-size:11px">Tier three</div>
+            <div class="h4" style="margin:10px 0 8px">Site licence</div>
+            <p class="sm">On their own machine, for owners with footage that cannot leave the building. This is where
+              inspection, energy and defence sit.</p>
+            <div class="stat s-xs" style="margin-top:14px">High margin</div>
+          </div>
+        </div>
+
+        <div class="bT" style="margin-top:34px;padding-top:22px">
+          <div class="kicker" style="font-size:11px">What we deliberately do not sell yet</div>
+          <p class="sm" style="margin-top:10px">No advertising on shared worlds. No per-viewer pricing, because a world
+            nobody can open is the exact failure we are fixing. No bespoke integration work, because a consultancy cannot
+            be funded forward from where we are.</p>
+        </div>
+      </div>
+
+      <div>
+        <div class="kicker" style="font-size:11px">What one machine gives you</div>
+        <div style="margin-top:16px">
+          <div class="bT" style="padding:16px 0"><div class="row" style="grid-template-columns:auto 1fr;gap:20px;align-items:baseline">
+            <div class="stat s-sm" style="width:110px">40 min</div><div class="sm">One certified world, start to finish</div></div></div>
+          <div class="bT" style="padding:16px 0"><div class="row" style="grid-template-columns:auto 1fr;gap:20px;align-items:baseline">
+            <div class="stat s-sm" style="width:110px">12</div><div class="sm">Worlds a single workstation finishes in a working day</div></div></div>
+          <div class="bT" style="padding:16px 0"><div class="row" style="grid-template-columns:auto 1fr;gap:20px;align-items:baseline">
+            <div class="stat s-sm" style="width:110px">6 GB</div><div class="sm">Consumer graphics card, no data centre required</div></div></div>
+          <div class="bT bB" style="padding:16px 0"><div class="row" style="grid-template-columns:auto 1fr;gap:20px;align-items:baseline">
+            <div class="stat s-sm" style="width:110px">~26s</div><div class="sm">Of that time is the physics and the proof</div></div></div>
+        </div>
+        <p class="cap" style="margin-top:16px">Twelve a day is arithmetic on our own measured run times, not a projection.
+          The two slow stages are the industry-wide cost curve, and they fall with hardware every year without us
+          touching them.</p>
+        <div class="panel" style="margin-top:20px">
+          <p class="tx">The margin story is simple: <em>the expensive part is already getting cheaper on its own.</em>
+            What we own is the layer that makes the output sellable.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><p class="lead">Three ways to pay, one thing being sold:
+    <em>a world that arrived with its own certificate.</em></p></footer>
+</section>
+
+<!-- ================= 16 · HONEST LIMITS ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">What is not finished</span><span class="kicker dim">16</span></header>
+  <div class="body" style="padding-top:16px">
+    <h2 class="h2 sm reveal">The honest list. <em>Every one of these is on the roadmap.</em></h2>
+    <p class="tx reveal" style="margin-top:12px;max-width:1440px">This is a three-week-old build by one person, running on
+      footage that person shot. Saying so is cheaper than being asked.</p>
+
+    <div class="row vd c2 reveal" style="margin-top:28px;gap:28px 56px">
+      <div>
+        <div class="h4">Indoor walking is not human height yet</div>
+        <p class="tx mutL" style="margin-top:9px">Rooms we captured come out two to four square metres of genuinely
+          walkable floor, so the character inside them is deliberately shrunk to fit. Life-size walking is proven on the
+          outdoor scenes. Fixing the indoor case is the first item on the roadmap, not a footnote.</p>
+      </div>
+      <div>
+        <div class="h4">There is no hosted service</div>
+        <p class="tx mutL" style="margin-top:9px">Today this is a Windows program with a local dashboard. No accounts, no
+          queue, one job at a time. The shareable link everyone assumes we have is real engineering still to be done.</p>
+      </div>
+      <div>
+        <div class="h4">No mesh or drawing export</div>
+        <p class="tx mutL" style="margin-top:9px">We produce a solid collision surface, which is not the same as the clean
+          mesh that a building professional's software expects. Until that exists we cannot sell into that workflow.</p>
+      </div>
+      <div>
+        <div class="h4">A world is heavy to deliver</div>
+        <p class="tx mutL" style="margin-top:9px">A finished room is 84 to 155 megabytes at our best quality setting. That
+          is fine on a local network and awkward as a link to a client's phone. Compression is required before sharing.</p>
+      </div>
+      <div>
+        <div class="h4">Two of ten scenes were refused</div>
+        <p class="tx mutL" style="margin-top:9px">Including the drone shot we use in the demo. The gate is working. The
+          pipeline is not yet good enough that the gate rarely fires.</p>
+      </div>
+      <div>
+        <div class="h4">Windows and one graphics brand only</div>
+        <p class="tx mutL" style="margin-top:9px">The toolchain is vendored for one platform. Portability is unglamorous
+          and it gates every hosting conversation until it is done.</p>
+      </div>
+    </div>
+
+    <div class="panel reveal" style="margin-top:28px">
+      <div class="row" style="grid-template-columns:auto 1fr;gap:34px;align-items:center">
+        <div class="stat s-md" style="white-space:nowrap">7</div>
+        <p class="tx">takes tested end to end, ten scenes reconstructed, one machine, one author. Small print, but every
+          number on the previous pages came off this repository rather than out of a slide.</p>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><p class="lead">Every item above is a gap we can name and price. The ones that kill companies in
+    this category are the gaps nobody would write down.</p></footer>
+</section>
+
+<!-- ================= 17 · ROADMAP ================= -->
+<section class="slide dk">
+  <header class="chrome"><span class="kicker">Next eighteen months</span><span class="kicker dim">17</span></header>
+  <div class="body" style="padding-top:18px">
+    <h2 class="h2 sm reveal">Four things have to become true before this is a <em>company.</em></h2>
+
+    <div class="row c4 reveal" style="gap:0 26px;margin-top:32px">
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Months 1 to 4</div>
+        <div class="h3" style="margin:12px 0 10px;font-size:26px">It runs on someone else's machine</div>
+        <ul class="dash sp"><li style="font-size:17px">Works on any Linux box with a card, not one laptop</li>
+          <li style="font-size:17px">A queue, so ten jobs do not collide</li>
+          <li style="font-size:17px">Accounts, upload, and a link that is not a home network</li></ul>
+        <p class="cap hinD" style="margin-top:14px">Unlocks: the first paid pilot</p>
+      </div>
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Months 3 to 8</div>
+        <div class="h3" style="margin:12px 0 10px;font-size:26px">You walk a room at your own height</div>
+        <ul class="dash sp"><li style="font-size:17px">Denser indoor capture guidance on the phone</li>
+          <li style="font-size:17px">Scale read off known objects, not only camera motion</li>
+          <li style="font-size:17px">The shrunken walker deleted</li></ul>
+        <p class="cap hinD" style="margin-top:14px">Unlocks: real estate and inspection</p>
+      </div>
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Months 6 to 12</div>
+        <div class="h3" style="margin:12px 0 10px;font-size:26px">It fits in a message</div>
+        <ul class="dash sp"><li style="font-size:17px">Compressed delivery, hundreds of megabytes to tens</li>
+          <li style="font-size:17px">Streaming so a world opens before it finishes loading</li>
+          <li style="font-size:17px">Measurements and notes on top of the scene</li></ul>
+        <p class="cap hinD" style="margin-top:14px">Unlocks: sharing as the sales motion</p>
+      </div>
+      <div class="step">
+        <div class="kicker" style="font-size:11px">Months 10 to 18</div>
+        <div class="h3" style="margin:12px 0 10px;font-size:26px">Engineers can use the output</div>
+        <ul class="dash sp"><li style="font-size:17px">A clean surface mesh out of the same data</li>
+          <li style="font-size:17px">Drawing and model formats the trade already opens</li>
+          <li style="font-size:17px">The gate extended to certify those too</li></ul>
+        <p class="cap hinD" style="margin-top:14px">Unlocks: the building and twin market</p>
+      </div>
+    </div>
+
+    <div class="row vd c3 reveal" style="margin-top:38px;gap:0 44px">
+      <div><div class="kicker" style="font-size:11px">Who we need</div>
+        <p class="sm" style="margin-top:10px">One infrastructure engineer to take this off a laptop, and one
+          computer-vision engineer on indoor scale and density. That is the whole first team.</p></div>
+      <div><div class="kicker" style="font-size:11px">What proves it worked</div>
+        <p class="sm" style="margin-top:10px">Ten outside sites, shot by people who have never spoken to us, finishing
+          without a single setting changed. That is the only milestone that matters.</p></div>
+      <div><div class="kicker" style="font-size:11px">What we will not do early</div>
+        <p class="sm" style="margin-top:10px">No generative fill-in of unseen space, no marketplace, no virtual reality
+          build. Each is a real future. None is the bottleneck now.</p></div>
+    </div>
+  </div>
+  <footer class="foot"><p class="lead">Everything on this page is a consequence of the same bet:
+    <em>a reconstruction is not finished until someone can be inside it.</em></p></footer>
+</section>
+
+<!-- ================= 18 · WHAT EXISTS ================= -->
+<section class="slide lt">
+  <header class="chrome"><span class="kicker">What already exists</span><span class="kicker dim">18</span></header>
+  <div class="body" style="padding-top:18px">
+    <h2 class="h2 sm reveal">Not a plan. <em>A repository, running.</em></h2>
+
+    <div class="row" style="grid-template-columns:1fr 620px;gap:60px;margin-top:28px;flex:1;align-items:start">
+      <div>
+        <div class="row hd c3" style="gap:0 34px">
+          <div><div class="stat s-md">28,355</div><div class="kicker dim" style="font-size:11px;margin-top:8px">Lines of code written</div></div>
+          <div><div class="stat s-md">25</div><div class="kicker dim" style="font-size:11px;margin-top:8px">Source files, pipeline and viewer</div></div>
+          <div><div class="stat s-md">15</div><div class="kicker dim" style="font-size:11px;margin-top:8px">Pipeline stages, all wired</div></div>
+        </div>
+        <div class="row hd c3" style="gap:0 34px;margin-top:26px">
+          <div><div class="stat s-md">232</div><div class="kicker dim" style="font-size:11px;margin-top:8px">Automated checks</div></div>
+          <div><div class="stat s-md">10</div><div class="kicker dim" style="font-size:11px;margin-top:8px">Scenes reconstructed</div></div>
+          <div><div class="stat s-md">100</div><div class="kicker dim" style="font-size:11px;margin-top:8px">Blind comparison pairs</div></div>
+        </div>
+
+        <div class="row vd c2" style="gap:0 44px;margin-top:34px">
+          <div>
+            <div class="kicker" style="font-size:11px">Installed in one command</div>
+            <p class="sm mutL" style="margin-top:10px">A single setup script builds both environments, installs the tool
+              chain, fetches the browser the walk test drives, then runs a health check that prints a fix for anything it
+              rejects. A stranger can clone this and walk a world today.</p>
+          </div>
+          <div>
+            <div class="kicker" style="font-size:11px">Open, and free to build on</div>
+            <p class="sm mutL" style="margin-top:10px">Released under a permissive licence with the third-party
+              components credited. That is a deliberate choice: distribution in this field comes from researchers and
+              surveyors being able to inspect it, not from hiding it.</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="fig" style="height:330px"><img src="img/hall-crop.jpg" alt="Inside a rebuilt lecture hall with a character standing in the aisle"></div>
+        <p class="cap hinL" style="margin-top:10px">A seven-and-a-half minute 4K clip of a real hall, rebuilt and walked.
+          Nothing on this page is a mock-up.</p>
+        <div class="tile" style="margin-top:22px">
+          <div class="kicker" style="font-size:11px">Also shipped</div>
+          <ul class="dash sp" style="margin-top:12px">
+            <li style="font-size:17px">A phone capture page that records and shows coverage live</li>
+            <li style="font-size:17px">A desktop dashboard with the run monitor and logs</li>
+            <li style="font-size:17px">A four-and-a-half minute demo of the whole thing working</li>
+            <li style="font-size:17px">Continuous integration running the fast suites on every change</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><p class="tx">Three weeks of visible history. The point is not the speed. The point is
+    <em>that the hard layer is already built, and the remaining work is the part that buys customers.</em></p></footer>
+</section>
+
+<!-- ================= 19 · CLOSING ================= -->
+<section class="slide cover dk">
+  <div class="cover-bg"><img class="ken" src="img/shot-hall-collider.jpg" alt="A rebuilt hall with its physics surface overlaid"></div>
+  <div class="scrim a" style="background:linear-gradient(100deg,#1C2644 0%,#1C2644 44%,rgba(28,38,68,.86) 78%,rgba(28,38,68,.66) 100%)"></div>
+  <div class="scrim b"></div>
+
+  <div><span class="kicker">In closing</span></div>
+
+  <div style="max-width:1380px">
+    <h2 class="h-display" style="font-size:92px">Everyone has filmed every place<br>they care about. Almost nobody<br>can <em>go back inside one.</em></h2>
+    <p class="lead" style="margin-top:32px;max-width:1040px">
+      We built the step that closes that gap, and then built the checks that make it trustworthy without us in the room.
+      What is left is to take it off one laptop and put it in front of the people already paying for the file it replaces.
+    </p>
+  </div>
+
+  <div>
+    <div class="hair" style="margin-bottom:22px"></div>
+    <div class="row" style="grid-template-columns:repeat(3,auto) 1fr;gap:60px;align-items:end">
+      <div><div class="kicker dim" style="font-size:11px">Product</div><div class="h4" style="margin-top:8px">Drone3D Studio</div></div>
+      <div><div class="kicker dim" style="font-size:11px">Status</div><div class="h4" style="margin-top:8px">Working pipeline, seeking its first ten sites</div></div>
+      <div><div class="kicker dim" style="font-size:11px">Built by</div><div class="h4" style="margin-top:8px">Kris Garg</div></div>
+      <div class="kicker dim" style="font-size:11px;text-align:right">September 2026</div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<div class="deck-controls">
+  <button id="prevBtn">Prev</button>
+  <span id="counter">01 / 10</span>
+  <button id="nextBtn">Next</button>
+</div>
+
+<script>
+class SlidePresentation{
+  constructor(){
+    this.slides=[...document.querySelectorAll('.slide')];
+    this.stage=document.getElementById('deckStage');
+    this.i=0;
+    this.scale(); addEventListener('resize',()=>this.scale());
+    addEventListener('keydown',e=>this.key(e));
+    let t=0; addEventListener('wheel',e=>{if(Date.now()-t<450)return;t=Date.now();
+      if(e.deltaY>26)this.go(1);else if(e.deltaY<-26)this.go(-1);},{passive:true});
+    let x0=null;
+    addEventListener('touchstart',e=>x0=e.touches[0].clientX,{passive:true});
+    addEventListener('touchend',e=>{if(x0===null)return;const d=e.changedTouches[0].clientX-x0;
+      if(Math.abs(d)>52)this.go(d<0?1:-1);x0=null;},{passive:true});
+    document.getElementById('prevBtn').onclick=()=>this.go(-1);
+    document.getElementById('nextBtn').onclick=()=>this.go(1);
+    this.show(0);
+  }
+  scale(){
+    const f=Math.min(innerWidth/1920,innerHeight/1080);
+    this.stage.style.transform=`translate(${(innerWidth-1920*f)/2}px,${(innerHeight-1080*f)/2}px) scale(${f})`;
+  }
+  key(e){
+    if(['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)){e.preventDefault();this.go(1);}
+    else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();this.go(-1);}
+    else if(e.key==='Home')this.show(0);
+    else if(e.key==='End')this.show(this.slides.length-1);
+  }
+  go(d){this.show(this.i+d);}
+  show(n){
+    this.i=Math.max(0,Math.min(n,this.slides.length-1));
+    this.slides.forEach((s,k)=>{s.classList.toggle('active',k===this.i);s.classList.toggle('visible',k===this.i);});
+    document.getElementById('counter').textContent=
+      String(this.i+1).padStart(2,'0')+' / '+String(this.slides.length).padStart(2,'0');
+  }
+}
+new SlidePresentation();
+</script>
+</body>
+</html>

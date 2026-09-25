@@ -71,7 +71,7 @@ class ExportProductsTests(unittest.TestCase):
         written = {entry["format"] for entry in manifest["files"]}
         self.assertIn("obj", written)
         self.assertEqual(manifest["claims_textured_mesh"], False)
-        self.assertIn("no texture", " ".join(manifest["caveats"]).lower())
+        self.assertIn("no uv texture", " ".join(manifest["caveats"]).lower())
 
     def test_point_containers_never_claim_a_surface(self):
         manifest = self.export("points_only")

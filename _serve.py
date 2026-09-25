@@ -11,10 +11,13 @@ import sys
 import threading
 import time
 import urllib.parse
+import uuid
+import signal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 for s in (sys.stdout, sys.stderr):
     try:
         s.reconfigure(encoding="utf-8", errors="replace")
@@ -209,60 +212,145 @@ def tail_run(root: Path, scene: str, cursor: str = "0", limit: int = 1 << 20) ->
             "current": pos_file, "lines": lines, "running": running}
 
 
-def run_pipeline_thread(scene: str, preset: str, quality: str, extra_args: list):
-    global active_process, active_job_info
-    py_exe = str(ROOT / ".venv" / "Scripts" / "python.exe")
-    if not Path(py_exe).exists():
-        py_exe = sys.executable
+def job_busy_locked():
+    """Call while holding process_lock, including the pre-spawn reservation."""
+    return (active_job_info.get("status") == "running"
+            or active_process is not None and active_process.poll() is None)
 
-    cmd = [py_exe, str(ROOT / "pipeline.py"), "run", scene, "--preset", preset, "--quality", quality] + extra_args
-    with process_lock:
-        active_job_info = {
-            "status": "running",
-            "scene": scene,
-            "preset": preset,
-            "quality": quality,
-            "cmd": " ".join(cmd),
-            "step": "initializing",
-            "logs": []
-        }
 
+def reserve_job_locked(scene, preset, quality, action="run", engine="pipeline"):
+    global active_job_info
+    token = uuid.uuid4().hex
+    active_job_info = {"status": "running", "scene": scene, "preset": preset,
+                       "quality": quality, "action": action, "engine": engine,
+                       "step": "initializing", "logs": [], "job_id": token}
+    return token
+
+
+def spawn_pipeline_job(scene, preset, quality, extra_args, **options):
     try:
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(ROOT),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1
-        )
+        threading.Thread(target=run_pipeline_thread,
+                         args=(scene, preset, quality, extra_args),
+                         kwargs=options, daemon=True).start()
+    except Exception:
         with process_lock:
-            active_process = proc
+            if active_job_info.get("job_id") == options.get("reservation"):
+                active_job_info["status"] = "error: Could not start job worker"
+        raise
 
-        for line in proc.stdout:
-            line_str = line.rstrip()
-            with process_lock:
-                active_job_info["logs"].append(line_str)
-                if len(active_job_info["logs"]) > 300:
-                    active_job_info["logs"].pop(0)
 
-                # Track current stage. The banner is "[01/13] keyframes: RUN": the
-                # first bracket is the counter, so the step is the word after it.
-                # Capturing the counter instead left the stepper dark mid-run.
-                stage_match = re.search(r"\[\d+/\d+\]\s+([a-z_]+):", line_str)
-                if stage_match:
-                    active_job_info["step"] = stage_match.group(1)
+def terminate_process_tree(proc):
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        # Target this PID and descendants, never an image name (other Python/
+        # COLMAP jobs may belong to the operator). Windows has no killpg.
+        result = subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                timeout=20, check=False)
+        if result.returncode and proc.poll() is None:
+            raise OSError("Could not terminate the reconstruction process tree.")
+    else:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
 
-        proc.wait()
+
+def cancel_job(scene=None):
+    with process_lock:
+        if scene is not None and active_job_info.get("scene") != scene:
+            return False
+        if not job_busy_locked():
+            return active_job_info.get("status") == "cancelled"
+        if active_process is not None:
+            terminate_process_tree(active_process)
+        # Do not clear active_process: the reservation remains busy until the
+        # worker reaps it, and its exit must not turn cancellation into failure.
+        active_job_info["status"] = "cancelled"
+        active_job_info["step"] = "cancelled"
+        return True
+
+
+def run_pipeline_thread(scene: str, preset: str, quality: str, extra_args: list,
+                        *, root=None, action="run", engine="pipeline",
+                        dense_profile="survey", reservation=None):
+    global active_process
+    import workspace_api as workspace
+    root = Path(root or ROOT).resolve()
+    py_exe = ROOT / ".venv" / "Scripts" / "python.exe"
+    py_exe = str(py_exe) if py_exe.exists() else sys.executable
+    if engine == "survey":
+        cmd = [py_exe, str(root / "survey.py"), "reconstruct", scene,
+               "--allow-gpu", "--dense-profile", dense_profile]
+    else:
+        cmd = [py_exe, str(root / "pipeline.py"), action, scene,
+               "--preset", preset, "--quality", quality] + extra_args
+    proc = None
+    started = time.monotonic()
+    try:
         with process_lock:
-            active_job_info["status"] = "completed" if proc.returncode == 0 else f"failed (code {proc.returncode})"
-            active_process = None
-    except Exception as e:
+            if reservation is None:
+                if job_busy_locked():
+                    return
+                reservation = reserve_job_locked(scene, preset, quality, action, engine)
+            if active_job_info.get("job_id") != reservation or active_job_info.get("status") != "running":
+                return
+            log_dir = workspace.safe_path(root, "work/" + scene + "/logs")
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = workspace.safe_path(root, "work/" + scene + "/logs/00-workspace_" + ("survey" if engine == "survey" else action) + ".log")
+            active_job_info["cmd"] = " ".join([Path(cmd[0]).name, Path(cmd[1]).name] + cmd[2:])
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write("\n[workspace] starting " + engine + " " + action + "\n")
+            log.flush()
+            try:
+                with process_lock:
+                    if active_job_info.get("job_id") != reservation or active_job_info.get("status") != "running":
+                        log.write("[exit -1 cancelled] 0.0s\n")
+                        return
+                    proc = subprocess.Popen(cmd, cwd=str(root), stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                            errors="replace", bufsize=1,
+                                            **({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                                               if os.name == "nt" else {"start_new_session": True}))
+                    active_process = proc
+                for line in proc.stdout:
+                    log.write(line)
+                    log.flush()
+                    with process_lock:
+                        if active_job_info.get("job_id") != reservation:
+                            continue
+                        active_job_info["logs"].append(line.rstrip())
+                        active_job_info["logs"] = active_job_info["logs"][-300:]
+                        stage_match = re.search(r"\[\d+/\d+\]\s+([a-z_]+):|\[survey\]\s+([a-z_]+)", line)
+                        if stage_match and active_job_info["status"] != "cancelled":
+                            active_job_info["step"] = stage_match.group(1) or stage_match.group(2)
+                proc.wait()
+                with process_lock:
+                    cancelled = active_job_info.get("job_id") == reservation and active_job_info.get("status") == "cancelled"
+                    if active_job_info.get("job_id") == reservation and not cancelled:
+                        active_job_info["status"] = "completed" if proc.returncode == 0 else f"failed (code {proc.returncode})"
+                log.write(f"[exit {-1 if cancelled else proc.returncode}{' cancelled' if cancelled else ''}] {time.monotonic() - started:.3f}s\n")
+            except Exception:
+                log.write(f"[exit -1 error] {time.monotonic() - started:.3f}s\n")
+                raise
+    except Exception as error:
+        print(f"[workspace worker] {type(error).__name__}: {error}", file=sys.stderr, flush=True)
+        if proc is not None and proc.poll() is None:
+            try:
+                terminate_process_tree(proc)
+                proc.wait(timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                pass
         with process_lock:
-            active_job_info["status"] = f"error: {e}"
-            active_process = None
+            if active_job_info.get("job_id") == reservation and active_job_info.get("status") != "cancelled":
+                active_job_info["status"] = "error: Reconstruction failed; inspect the server log"
+    finally:
+        if proc is not None and proc.stdout:
+            proc.stdout.close()
+        with process_lock:
+            if active_job_info.get("job_id") == reservation and (proc is None or proc.poll() is not None):
+                active_process = None
 
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -313,7 +401,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(payload)
+        if self.command != "HEAD":
+            self.wfile.write(payload)
 
     def _survey_refused(self):
         """Why this survey write must be refused, or None when it may proceed.
@@ -329,8 +418,14 @@ class H(http.server.SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if not origin:
             return "Survey writes require a browser Origin header."
-        if urllib.parse.urlparse(origin).netloc != self.headers.get("Host", ""):
+        parsed = urllib.parse.urlparse(origin)
+        scheme = "https" if isinstance(self.connection, ssl.SSLSocket) else "http"
+        if parsed.hostname not in {"localhost", "127.0.0.1", "::1"} or parsed.scheme != scheme:
+            return "Survey writes require a trusted local origin."
+        if parsed.netloc.lower() != self.headers.get("Host", "").lower():
             return "Cross-origin survey writes are not allowed."
+        if parsed.path not in {"", "/"} or parsed.query or parsed.fragment or parsed.username:
+            return "Invalid survey Origin header."
         return None
 
     def _consume_request_body(self, cap=4 << 20):
@@ -405,7 +500,7 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if action == "inputs":
                     arguments += [request.get("telemetry_csv"), request.get("metadata")]
                 with process_lock:
-                    if active_process is not None and active_process.poll() is None:
+                    if job_busy_locked():
                         self._survey_json({"error": "Wait for the running reconstruction before changing survey evidence."}, 409)
                         return
                     result = actions[action](*arguments)
@@ -415,7 +510,20 @@ class H(http.server.SimpleHTTPRequestHandler):
         except (ValueError, KeyError, TypeError, OSError) as error:
             self._survey_failure(400, error)
 
+    def _workspace(self):
+        import workspace_api
+        workspace_api.handle(self, sys.modules[__name__])
+
+    def do_HEAD(self):
+        if urllib.parse.urlparse(self.path).path.startswith("/api/workspace/"):
+            self._workspace()
+            return
+        return super().do_HEAD()
+
     def do_GET(self):
+        if urllib.parse.urlparse(self.path).path.startswith("/api/workspace/"):
+            self._workspace()
+            return
         if urllib.parse.urlparse(self.path).path == "/api/survey":
             # Read-only status stays LAN-reachable because the dashboard iframe and
             # the phone viewer both render it. Every write route passes the guard.
@@ -489,30 +597,43 @@ class H(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         global active_process
         path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/api/workspace/"):
+            self._workspace()
+            return
         if path.startswith("/api/survey/"):
             self._survey(path.removeprefix("/api/survey/"))
             return
-        if self.path.startswith("/api/run"):
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            req = json.loads(body.decode("utf-8")) if body else {}
-
-            scene = safe_scene_name(req.get("scene", "room_w_jsonl"), "room_w_jsonl")
-            preset = req.get("preset", "room")
-            quality = req.get("quality", "high")
-            extra_args = req.get("extra_args", [])
+        if path == "/api/run":
+            import workspace_api
+            from pipeline import PRESETS, QUALITY
+            try:
+                req = workspace_api.json_body(self)
+                preset = req.get("preset", "room")
+                quality = req.get("quality", "high")
+                extra_args = req.get("extra_args", [])
+                if (not isinstance(req.get("scene", "room_w_jsonl"), str)
+                        or not isinstance(preset, str) or preset not in PRESETS
+                        or not isinstance(quality, str) or quality not in QUALITY
+                        or not isinstance(extra_args, list) or len(extra_args) > 128
+                        or any(not isinstance(arg, str) or len(arg) > 4096 for arg in extra_args)):
+                    raise workspace_api.Error(400, "Invalid reconstruction options.")
+                scene = safe_scene_name(req.get("scene", "room_w_jsonl"), "room_w_jsonl")
+            except workspace_api.Error as error:
+                self.close_connection = True
+                self._survey_json({"error": str(error)}, error.status)
+                return
 
             with process_lock:
-                if active_process and active_process.poll() is None:
+                if job_busy_locked():
                     self.send_response(409)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({"error": "Job already running"}).encode("utf-8"))
                     return
+                token = reserve_job_locked(scene, preset, quality)
 
-            t = threading.Thread(target=run_pipeline_thread, args=(scene, preset, quality, extra_args), daemon=True)
-            t.start()
+            spawn_pipeline_job(scene, preset, quality, extra_args, reservation=token)
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -522,14 +643,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             return
 
         elif self.path.startswith("/api/kill"):
-            with process_lock:
-                if active_process:
-                    try:
-                        active_process.terminate()
-                    except Exception:
-                        pass
-                    active_process = None
-                    active_job_info["status"] = "cancelled"
+            try:
+                cancel_job()
+            except (OSError, subprocess.SubprocessError):
+                pass
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

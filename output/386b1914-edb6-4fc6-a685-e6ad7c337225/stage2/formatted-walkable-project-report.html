@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="docx-page-size" content="A4">
+  <title>WALKABLE: Turning a Single Drone or Handheld Video into a Metric, Walkable 3D World</title>
+  <style>
+  @page {
+    @bottom-center { content: counter(page); }
+  }
+  @page cover {
+    @bottom-center { content: none; }
+  }
+  section[role="cover"] { page: cover; }
+
+  :root {
+    /* Design tokens (academic-paper theme, Latin-script adaptation) */
+    --typography-fontSize-title: 18pt;
+    --typography-fontSize-h1: 15pt;
+    --typography-fontSize-h2: 14pt;
+    --typography-fontSize-h3: 12pt;
+    --typography-fontSize-body: 12pt;
+    --typography-fontSize-caption: 10.5pt;
+    --typography-fontSize-small: 10pt;
+    --typography-fontSize-coverTitle: 24pt;
+    --typography-fontSize-coverMeta: 12pt;
+    --typography-lineHeight-body: 1.5;
+    --typography-lineHeight-heading: 1.5;
+    --typography-fontWeight-bold: 700;
+    --typography-fontWeight-normal: 400;
+    --color-primary: #1f2937;
+    --color-text: #111111;
+    --color-muted: #555555;
+    --color-border: #cccccc;
+    --color-bg: #ffffff;
+    --color-info: #01579b;
+    --spacing-paragraph: 0.55em;
+    --spacing-section: 1.6em;
+    --spacing-block: 0.9em;
+    --layout-margin: 2.5cm;
+
+    /* Semantic aliases */
+    --fs-h1: var(--typography-fontSize-h1, 15pt);
+    --fs-h2: var(--typography-fontSize-h2, 14pt);
+    --fs-h3: var(--typography-fontSize-h3, 12pt);
+    --fs-body: var(--typography-fontSize-body, 12pt);
+    --fs-small: var(--typography-fontSize-small, 10pt);
+    --fs-caption: var(--typography-fontSize-caption, 10.5pt);
+    --fs-cover-title: var(--typography-fontSize-coverTitle, 24pt);
+    --fs-cover-meta: var(--typography-fontSize-coverMeta, 12pt);
+    --ff-heading: Arial, Helvetica, sans-serif;
+    --ff-body: "Times New Roman", Times, serif;
+    --lh-body: var(--typography-lineHeight-body, 1.5);
+    --lh-heading: var(--typography-lineHeight-heading, 1.5);
+    --fw-bold: var(--typography-fontWeight-bold, 700);
+    --fw-normal: var(--typography-fontWeight-normal, 400);
+    --page-content-width: 16.0cm;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--ff-body);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--color-text);
+    background: var(--color-bg);
+    max-width: var(--page-content-width);
+    margin-left: auto;
+    margin-right: auto;
+    padding: var(--layout-margin);
+  }
+
+  h1, h2, h3 { font-family: var(--ff-heading); font-weight: var(--fw-bold); color: var(--color-primary); line-height: var(--lh-heading); }
+  h1 { font-size: var(--fs-h1); margin-bottom: var(--spacing-block); }
+  h2 { font-size: var(--fs-h2); margin-top: var(--spacing-section); margin-bottom: var(--spacing-paragraph); border-bottom: 1px solid var(--color-border); padding-bottom: 0.2em; }
+  h3 { font-size: var(--fs-h3); margin-top: var(--spacing-block); margin-bottom: var(--spacing-paragraph); }
+  p { margin-bottom: var(--spacing-paragraph); text-align: justify; }
+
+  /* Cover — every block declares its own text-align (no inheritance) */
+  .cover-eyebrow { text-align: center; font-family: var(--ff-heading); font-size: var(--fs-cover-meta); letter-spacing: 0.18em; color: var(--color-info); font-weight: var(--fw-bold); margin-top: 3.2cm; }
+  .cover-title { text-align: center; font-family: var(--ff-heading); font-size: var(--fs-cover-title); font-weight: var(--fw-bold); color: var(--color-primary); margin-top: var(--spacing-block); margin-bottom: var(--spacing-block); line-height: 1.3; }
+  .cover-subtitle { text-align: center; font-size: var(--fs-cover-meta); color: var(--color-muted); font-style: italic; margin-bottom: 2.2cm; }
+  .cover-meta { text-align: center; }
+  .cover-info-list { border-collapse: collapse; margin: 0 auto; }
+  .cover-info-list td { padding: 0.35em 0.9em; font-size: var(--fs-body); vertical-align: top; border: none; }
+  .cover-info-list td:first-child { text-align: right; font-family: var(--ff-heading); font-weight: var(--fw-bold); white-space: nowrap; color: var(--color-primary); }
+  .cover-info-list td:last-child { text-align: left; }
+
+  /* Abstract */
+  .abstract { margin-top: var(--spacing-section); margin-bottom: var(--spacing-section); padding: var(--spacing-block); border-left: 3px solid var(--color-info); }
+  .abstract-heading { font-family: var(--ff-heading); font-weight: var(--fw-bold); margin-bottom: 0.5em; text-align: left; color: var(--color-info); }
+  .abstract-text { text-align: justify; }
+  .keywords { margin-top: 0.5em; text-align: left; }
+
+  /* TOC */
+  .doc-toc { margin-top: var(--spacing-section); margin-bottom: var(--spacing-section); }
+  .toc-title { font-family: var(--ff-heading); font-weight: var(--fw-bold); text-align: center; font-size: var(--fs-h2); margin-bottom: var(--spacing-block); color: var(--color-primary); }
+  .toc-list, .toc-list ol, .toc-list ul { list-style: none; list-style-type: none; padding-left: 1.5em; }
+  .toc-list li { margin-bottom: 0.35em; }
+  .toc-list a { color: var(--color-text); text-decoration: none; }
+
+  /* Three-line academic tables */
+  .three-line-table { border-collapse: collapse; width: 100%; margin-top: var(--spacing-block); margin-bottom: var(--spacing-block); }
+  .three-line-table caption { font-size: var(--fs-caption); margin-bottom: 0.4em; text-align: center; color: var(--color-muted); }
+  .three-line-table thead tr:first-child { border-top: 2px solid var(--color-text); }
+  .three-line-table thead tr:last-child { border-bottom: 1px solid var(--color-text); }
+  .three-line-table tbody tr:last-child { border-bottom: 2px solid var(--color-text); }
+  .three-line-table td, .three-line-table th { border-left: none; border-right: none; padding: 0.45em 0.8em; text-align: left; vertical-align: top; }
+  .three-line-table th { font-family: var(--ff-heading); font-weight: var(--fw-bold); background: transparent; }
+
+  /* Figure */
+  figure { margin: var(--spacing-block) 0; text-align: center; }
+  figure img { max-width: 100%; }
+  figcaption { font-size: var(--fs-caption); color: var(--color-muted); margin-top: 0.4em; text-align: center; }
+
+  /* Survey & domain paragraphs */
+  .survey-item { text-align: justify; margin-bottom: var(--spacing-paragraph); }
+  .domain-item { text-align: justify; margin-bottom: var(--spacing-paragraph); }
+
+  /* References */
+  .references { margin-top: var(--spacing-section); }
+  .reference-list { padding-left: 2em; }
+  .reference-item { margin-bottom: 0.5em; font-size: var(--fs-small); text-align: left; }
+  </style>
+</head>
+<body>
+  <section role="cover">
+    <div class="cover-body">
+      <p class="cover-eyebrow">SOFTWARE ENGINEERING LABORATORY · PROJECT REPORT</p>
+      <h1 class="cover-title">WALKABLE: Turning a Single Drone or Handheld Video into a Metric, Walkable 3D World</h1>
+      <p class="cover-subtitle">A reproducible Structure-from-Motion → 3D Gaussian Splatting → browser-physics pipeline that runs end-to-end on a 6 GB laptop GPU</p>
+    </div>
+    <div class="cover-meta">
+      <table class="cover-info-list">
+        <tr><td>Course</td><td>Software Engineering Laboratory</td></tr>
+        <tr><td>Project</td><td>WALKABLE — Drone-to-3D Walkable World Pipeline</td></tr>
+        <tr><td>Submitted by</td><td>______________________  (Roll No. __________)</td></tr>
+        <tr><td>Project guide</td><td>______________________</td></tr>
+        <tr><td>Stack</td><td>Python 3.12 + JavaScript (ES2022), ~18,000 lines of first-party code</td></tr>
+        <tr><td>Date</td><td>September 2026</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section role="body" data-page-restart="1">
+    <div class="abstract" aria-label="Abstract">
+      <p class="abstract-heading">&nbsp;&nbsp;Abstract</p>
+      <p class="abstract-text">Most systems that rebuild a real scene into 3D stop at a viewable model: it can be orbited, but not stood inside, and nothing about it knows what a metre is. This report presents WALKABLE, a single-command pipeline that converts one ordinary drone or handheld video into a metric, photorealistic 3D world that can be walked through in a browser, with gravity, collision, and a measured ground surface. The pipeline combines COLMAP structure-from-motion, gsplat-based 3D Gaussian Splatting, and classical computational geometry; it runs within a 6 GB laptop GPU budget and is gated by automated acceptance tests — blinded visual review and scripted walk tests. Measured results include 65.3 m of autonomous traversal with 16/16 waypoints reached and zero falls, and 10/10 blinded A/B pairs judged to be the same scene.</p>
+      <p class="keywords"><strong>Keywords:</strong> 3D Gaussian Splatting; structure-from-motion; UAV photogrammetry; walkable 3D reconstruction; digital twin; browser physics</p>
+    </div>
+
+    <nav class="doc-toc" aria-label="Table of contents">
+      <p class="toc-title">Contents</p>
+      <ol class="toc-list">
+        <li><a href="#section-1">1. Project Overview</a></li>
+        <li><a href="#section-2">2. Project Objectives</a></li>
+        <li><a href="#section-3">3. Impact Statement</a></li>
+        <li><a href="#section-4">4. Research Literature Survey</a></li>
+        <li><a href="#section-5">5. Application Domains</a></li>
+        <li><a href="#section-6">6. Methodology</a></li>
+        <li><a href="#section-7">7. Work Done</a></li>
+        <li><a href="#section-references">References</a></li>
+      </ol>
+    </nav>
+
+    <main class="paper-body">
+      <div id="section-1">
+        <h2>1. Project Overview</h2>
+        <p>Most systems that rebuild a real scene into 3D stop at a picture of a model: you can orbit it, but you cannot stand inside it, and nothing about it knows what a metre is. This project builds the physical-usability half — a single-command pipeline that takes one ordinary video of a place and returns a world you can walk through in a browser, with gravity, collision, a metric ground surface, and automated proof that the floor is real. One command drives eighteen resumable stages: keyframe selection, camera-pose solving with COLMAP, Gaussian-splat training, metric-scale recovery, ground-surface extraction, collision-mesh generation, and a headless physics walk test, all guarded by an eleven-assertion quality gate.</p>
+      </div>
+
+      <div id="section-2">
+        <h2>2. Project Objectives</h2>
+        <table class="three-line-table">
+          <caption>Table 1. Project objectives (final selected idea: single video → metric, walkable 3D world).</caption>
+          <thead>
+            <tr><th style="width:3em">#</th><th>Objective</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>O1</td><td><strong>Single video → walkable 3D world, one command.</strong> Convert an ordinary drone or handheld video into a photorealistic, navigable 3D world through one fully automated command — no manual modelling, no cloud dependency.</td></tr>
+            <tr><td>O2</td><td><strong>Metric, measurable reconstruction.</strong> Recover true metric scale and orientation from minimal operator input (a single speed or height anchor), so distances, areas, and ground surfaces in the model are physically meaningful.</td></tr>
+            <tr><td>O3</td><td><strong>Walkability, not just visuals.</strong> Derive physics-valid ground and collision geometry from the neural reconstruction, enabling first-person walking and autonomous agent navigation in the scanned scene.</td></tr>
+            <tr><td>O4</td><td><strong>Falsifiable quality on consumer hardware.</strong> Run every stage on a 6 GB laptop GPU and gate each build on automated acceptance tests (blind visual review, scripted walk tests), not subjective judgment.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="section-3">
+        <h2>3. Impact Statement</h2>
+        <p>This work lowers the cost of producing a <em>usable</em> 3D replica of a real place from hours of expert photogrammetry and expensive licensed software to a single command on an ordinary laptop. Because the output is metric and walkable rather than a view-only render, it directly serves disaster damage assessment, border and strategic area mapping, infrastructure inspection, construction progress monitoring, archaeological documentation, urban digital twins, and mission rehearsal — domains where decisions depend on measuring and moving through a scene, not merely looking at it. By combining the geometric guarantees of classical methods with the visual fidelity of neural rendering, and by refusing to ship any result that fails automated measurement, the pipeline provides a reproducible, low-cost foundation that researchers, engineers, and field teams can build upon.</p>
+      </div>
+
+      <div id="section-4">
+        <h2>4. Research Literature Survey</h2>
+        <h3>4.1 Core Reconstruction Methods</h3>
+        <p class="survey-item"><strong>[1] Mildenhall et al. (2020) — NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis (ECCV 2020).</strong> The foundational neural-rendering paper: a scene is stored as a fully connected network mapping 5-D coordinates (position + viewing direction) to colour and density, optimised by differentiable volume rendering. NeRF established photorealistic novel-view synthesis from photographs but requires per-scene optimisation measured in hours and produces no explicit surface — nothing to measure, collide with, or stand on. Our pipeline inherits the <em>idea</em> of a learned appearance field while rejecting its geometry as a physical substrate.</p>
+        <p class="survey-item"><strong>[2] Schönberger &amp; Frahm (2016) — Structure-from-Motion Revisited (COLMAP, CVPR 2016).</strong> The reference implementation of incremental SfM: feature extraction, matching, and bundle adjustment producing camera poses and a sparse point cloud. COLMAP remains the accuracy baseline against which all neural pose estimators are compared, and it is robustly engineered and BSD-licensed. We adopt it as our pose solver because it runs within a 6 GB GPU budget and yields survey-grade registrations — the cost is runtime and fragility on blur, low texture, and rotation-only motion, which our keyframing and AR pose-prior stages are designed to absorb.</p>
+        <p class="survey-item"><strong>[3] Kerbl et al. (2023) — 3D Gaussian Splatting for Real-Time Radiance Field Rendering (ACM TOG / SIGGRAPH 2023).</strong> Represents the scene as 10⁵–10⁶ anisotropic 3-D Gaussians optimised from SfM points and rendered by rasterisation at interactive rates, reaching NeRF-class fidelity in minutes. This is the only representation that stays photorealistic from a single sparse video pass <em>and</em> trains on consumer hardware, which is why it forms our appearance stage. Its known gap — a splat cloud is not a surface — defines our downstream geometry problem.</p>
+        <p class="survey-item"><strong>[4] Huang et al. (2024) — 2D Gaussian Splatting for Geometrically Accurate Radiance Fields (SIGGRAPH 2024).</strong> Flattens 3-D Gaussians into surfels aligned to the underlying surface, adding depth-distortion and normal-consistency losses. It demonstrates that splat representations can yield geometrically accurate, meshable surfaces, validating our design rule that appearance (splats) and physics (extracted classical geometry) must be produced by separate, separately verified stages.</p>
+        <p class="survey-item"><strong>[5] Wang et al. (2025) — VGGT: Visual Geometry Grounded Transformer (CVPR 2025, Best Paper Award).</strong> A ~1B-parameter feed-forward transformer that predicts camera poses, depth, point maps, and tracks for hundreds of views in under a second — replacing per-scene optimisation with a single forward pass. It marks the direction of the field, but its outputs are up-to-scale only and its VRAM demands (13–21 GB for 100–200 frames) exceed a student laptop; we therefore treat feed-forward transformers as a scaling path rather than a foundation.</p>
+        <p class="survey-item"><strong>[6] Teed &amp; Deng (2021) — DROID-SLAM: Deep Visual SLAM for Monocular, Stereo, and RGB-D Cameras (NeurIPS 2021).</strong> Couples learned optical flow with a differentiable dense bundle-adjustment layer, achieving robust real-time tracking on long sequences. It illustrates the deep-SLAM family whose strengths (long-trajectory odometry) and weaknesses (scale ambiguity, heavy dense depth) complement classical SfM; its MIT-licensed successor DPVO is our designated tracking backend for whole-flight sequences.</p>
+        <h3>4.2 Application-Domain Literature</h3>
+        <p class="survey-item"><strong>[7] Nex &amp; Remondino (2014) — UAV for 3D Mapping Applications: A Review (Applied Geomatics 6(1)).</strong> A comprehensive survey of drone platforms, sensors, and photogrammetric workflows for 3-D mapping, covering flight planning, georeferencing, and accuracy budgets. It establishes the classical UAV-photogrammetry baseline our pipeline modernises and quantifies the accuracy achievable with and without ground control — the reference against which our anchor-based metric recovery is positioned.</p>
+        <p class="survey-item"><strong>[8] Ham et al. (2016) — Visual Monitoring of Civil Infrastructure Systems via Camera-Equipped UAVs (Visualization in Engineering 4).</strong> Reviews UAV-based visual monitoring of bridges, dams, and buildings, identifying flight-path planning, image quality, and automated defect detection as the open challenges. It motivates our capture-assist console (quality decided before filming) and our measurable-surface requirement for inspection-grade outputs.</p>
+        <p class="survey-item"><strong>[9] Rakha &amp; Gorodetsky (2018) — Review of UAS Applications in the Built Environment (Automation in Construction 93).</strong> Surveys drone use across construction and facility management — progress tracking, surveying, and inspection — and shows that automated, repeatable capture is the key enabler. Their analysis of construction progress monitoring directly informs our time-series scenario: re-fly the same route, rebuild the model, and diff the geometry.</p>
+        <p class="survey-item"><strong>[10] Biljecki et al. (2015) — Applications of 3D City Models: State of the Art Review (ISPRS Int. J. Geo-Information 4(4)).</strong> Catalogues dozens of uses of 3-D city models — urban planning, energy estimation, emergency response, navigation — and introduces level of detail as the organising concept for city-scale twins. It frames our long-term target: our per-site walkable models are the high-fidelity leaf nodes of a city-scale digital twin.</p>
+        <p class="survey-item"><strong>Synthesis.</strong> The literature splits into three families: classical photogrammetry (accurate, measurable, slow), deep SLAM (fast, scale-ambiguous), and neural rendering (photorealistic, surface-free). No single family delivers a <em>metric, walkable</em> world from one video on consumer hardware. The gap identified across [1]–[10] — converting neural-rendering quality into physically usable geometry with verified scale — is precisely the contribution of this project.</p>
+      </div>
+
+      <div id="section-5">
+        <h2>5. Application Domains</h2>
+        <p class="domain-item"><strong>(i) Border and strategic area mapping.</strong> A single drone pass over remote or sensitive terrain becomes a measurable 3-D model within minutes on a field laptop, with no cloud link required — critical where connectivity is denied. Metric terrain supports line-of-sight analysis, route planning, and change detection between repeat sorties over the same corridor.</p>
+        <p class="domain-item"><strong>(ii) Disaster damage assessment.</strong> After earthquakes, floods, or landslides, responders can film a structure or slope and obtain a walkable, measurable model before physical access is safe. Comparing pre- and post-event models quantifies deformation, debris volume, and accessible paths, while the walk-test layer verifies that simulated rescue routes are actually traversable.</p>
+        <p class="domain-item"><strong>(iii) Urban planning and smart cities.</strong> Planners gain photorealistic, navigable site models for design review, shadow and sight-line studies, and public consultation — stakeholders can walk through a proposal at true scale. Per-site models plug into city-scale 3-D frameworks [10] as high-fidelity local layers of a smart-city twin.</p>
+        <p class="domain-item"><strong>(iv) Infrastructure inspection.</strong> Bridges, towers, facades, and roofs filmed by drone become measurable models on which engineers can gauge cracks, spalling, and deformation in context rather than from isolated photographs [8]. The metric frame makes defect sizes and locations reportable in engineering units, and repeat captures track progression over time.</p>
+        <p class="domain-item"><strong>(v) Construction progress monitoring.</strong> Weekly re-flights of the same route yield comparable 3-D snapshots: earthwork volumes, structural completeness, and as-built vs. as-planned deviation become measurable quantities [9]. Because the pipeline is one command and laptop-class, it fits the cadence and budget of real construction sites.</p>
+        <p class="domain-item"><strong>(vi) Archaeological documentation.</strong> Excavations and heritage structures can be recorded non-invasively at each dig phase, producing a permanent, measurable 3-D archive even as the site itself is altered or backfilled [7]. Walkable models support remote scholarship, virtual museum exhibits, and condition monitoring of fragile monuments.</p>
+        <p class="domain-item"><strong>(vii) Digital twin generation.</strong> The pipeline converts a place into a metric, physics-enabled digital asset — the atomic unit of any digital twin. Its typed artefacts (heightfield, collider mesh, navmesh, splat scene) are exactly the layers twin platforms consume, and its one-command automation makes twin <em>refresh</em> practical rather than a one-off consultancy project.</p>
+        <p class="domain-item"><strong>(viii) Military reconnaissance and mission planning.</strong> A reconnaissance sortie's footage becomes a walkable rehearsal environment: teams can traverse the objective area virtually, measure sight lines and cover from the scanned geometry, and plan insertion routes against a navmesh baked from the real terrain. All processing is offline and laptop-class, matching denied-communications field constraints; the project deliberately uses only Apache/BSD/MIT components with no usage restrictions for this scope.</p>
+      </div>
+
+      <div id="section-6">
+        <h2>6. Methodology</h2>
+        <p>The methodology is organised in three phases, shown in Figure 1.</p>
+        <figure>
+          <img src="images/methodology_diagram.png" alt="Methodology diagram of the WALKABLE pipeline">
+          <figcaption>Figure 1. End-to-end methodology of the WALKABLE pipeline: Phase 1 capture and pre-processing; Phase 2 3D reconstruction; Phase 3 world building and validation — feeding eight downstream application domains.</figcaption>
+        </figure>
+        <p><strong>Phase 1 — Capture and pre-processing.</strong> Input is an ordinary video (drone or handheld) with an optional ARCore/ARKit pose log. Frames are decoded with OpenCV, scored by variance-of-Laplacian sharpness, and reduced to a diverse keyframe set with near-duplicate rejection. A WebXR capture console guides the operator before filming — colouring each surface patch by how many distinct viewing directions have covered it — so reconstruction quality is decided at capture time, not discovered at training time.</p>
+        <p><strong>Phase 2 — 3D reconstruction.</strong> Keyframes are registered by COLMAP (GPU SIFT → sequential/spatial matching → bundle adjustment); phone AR tracks are injected as native pose priors, which rescues rotation-heavy handheld footage and carries a metric translation into registration. Registered poses seed Gaussian-splat training on gsplat (spherical-harmonics degree 3, SSIM+L1 loss, hard Gaussian cap), which converges within 6 GB of VRAM. Orientation is taken from the gimbal attitude and metric scale from exactly one named anchor — cruise speed × duration, or camera height above ground — recorded in a single source-of-truth frame file. Sky and cloud-sea splats are culled by a bimodality test on the height histogram.</p>
+        <p><strong>Phase 3 — World building and validation.</strong> Splat means are rasterised into a ground heightfield, and a voxelised collision shell is exported as a GLB trimesh; two candidate walk surfaces are built and the one the autopilot walks farther on is shipped. An eleven-assertion quality gate (coverage provenance, floor-not-ceiling, spawn support, route length, collider/route consistency, and more) fails the build rather than shipping a broken world. The validated assets load into a browser runtime (PlayCanvas + ammo.js/Bullet physics) for first-person walking and navmesh-driven autonomous agents, and acceptance is measured two ways: blinded A/B visual review against real frames, and scripted traversal measured in metres walked and waypoints reached.</p>
+        <p><strong>Design principles.</strong> Every stage is a separate CLI module with typed artefacts on disk, so runs are resumable and inspectable; re-running a stage invalidates everything downstream; and the neural stage is trusted only with appearance — never with geometry, orientation, or scale.</p>
+      </div>
+
+      <div id="section-7">
+        <h2>7. Work Done</h2>
+        <p>The pipeline is implemented and validated end-to-end (Python 3.12 + JavaScript ES2022, ~18,000 lines of first-party code across 35 stage modules, a 12-file test suite of ~550 assertions, and a vendored browser runtime requiring no build step). Table 2 summarises measured outcomes on the target hardware (RTX 3050 6 GB laptop).</p>
+        <table class="three-line-table">
+          <caption>Table 2. Measured outcomes of the implemented pipeline (target hardware: RTX 3050 6 GB laptop).</caption>
+          <thead>
+            <tr><th style="width:32%">Result</th><th>Evidence</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>End-to-end automation</td><td>18-stage resumable pipeline driven by one command (<code>mvp.bat run &lt;scene&gt;</code>)</td></tr>
+            <tr><td>Hardware budget</td><td>Peak training VRAM 1.26 GB at the <code>high</code> preset — 5× headroom under the 6 GB card</td></tr>
+            <tr><td>Visual quality</td><td>10/10 blinded A/B pairs judged to be the same scene with no disqualifying artefact</td></tr>
+            <tr><td>Walkability</td><td>65.3 m walked, 16/16 waypoints reached, 0 falls (up from 19.9 m, 1/20 before fixes)</td></tr>
+            <tr><td>Ground correctness</td><td>Viewer ground vs. physics ground discrepancy reduced from 0.101 m to 0.000 m</td></tr>
+            <tr><td>Metric priors</td><td>Synthetic 12 m AR walk reconstructs at scale 1.0000, 7 mm max camera deviation</td></tr>
+            <tr><td>Honest reporting</td><td>2 of 8 test scenes still fail the route gate; the build reports this rather than hiding it</td></tr>
+          </tbody>
+        </table>
+        <p>Eleven numbered engineering iterations are documented with the measurement that changed each decision, including two recorded cases where a stated hypothesis was later shown wrong by evidence.</p>
+      </div>
+
+      <div class="references" aria-label="References" id="section-references">
+        <h2>References</h2>
+        <ol class="reference-list">
+          <li class="reference-item">Mildenhall, B., Srinivasan, P. P., Tancik, M., Barron, J. T., Ramamoorthi, R., &amp; Ng, R. (2020). NeRF: Representing scenes as neural radiance fields for view synthesis. In <em>European Conference on Computer Vision (ECCV)</em>, 405–421.</li>
+          <li class="reference-item">Schönberger, J. L., &amp; Frahm, J.-M. (2016). Structure-from-motion revisited. In <em>IEEE Conference on Computer Vision and Pattern Recognition (CVPR)</em>, 4104–4113.</li>
+          <li class="reference-item">Kerbl, B., Kopanas, G., Leimkühler, T., &amp; Drettakis, G. (2023). 3D Gaussian splatting for real-time radiance field rendering. <em>ACM Transactions on Graphics</em>, 42(4), Article 139.</li>
+          <li class="reference-item">Huang, B., Yu, Z., Chen, A., Geiger, A., &amp; Gao, S. (2024). 2D Gaussian splatting for geometrically accurate radiance fields. <em>ACM Transactions on Graphics</em>, 43(4), Article 32.</li>
+          <li class="reference-item">Wang, J., Chen, M., Karaev, N., Vedaldi, A., Rupprecht, C., &amp; Novotny, D. (2025). VGGT: Visual geometry grounded transformer. In <em>IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)</em> — Best Paper Award.</li>
+          <li class="reference-item">Teed, Z., &amp; Deng, J. (2021). DROID-SLAM: Deep visual SLAM for monocular, stereo, and RGB-D cameras. In <em>Advances in Neural Information Processing Systems (NeurIPS) 34</em>, 16558–16569.</li>
+          <li class="reference-item">Nex, F., &amp; Remondino, F. (2014). UAV for 3D mapping applications: A review. <em>Applied Geomatics</em>, 6(1), 1–15.</li>
+          <li class="reference-item">Ham, Y., Han, K. K., Lin, J. J., &amp; Golparvar-Fard, M. (2016). Visual monitoring of civil infrastructure systems via camera-equipped unmanned aerial vehicles (UAVs): A review of related works. <em>Visualization in Engineering</em>, 4(1), Article 1.</li>
+          <li class="reference-item">Rakha, T., &amp; Gorodetsky, A. (2018). Review of unmanned aerial system (UAS) applications in the built environment: Towards automated building inspection procedures using drones. <em>Automation in Construction</em>, 93, 252–264.</li>
+          <li class="reference-item">Biljecki, F., Stoter, J., Ledoux, H., Zlatanova, S., &amp; Çöltekin, A. (2015). Applications of 3D city models: State of the art review. <em>ISPRS International Journal of Geo-Information</em>, 4(4), 2842–2889.</li>
+        </ol>
+      </div>
+    </main>
+  </section>
+</body>
+</html>

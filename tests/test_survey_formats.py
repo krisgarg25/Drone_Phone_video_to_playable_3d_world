@@ -592,6 +592,23 @@ class SurveyFormatsTests(unittest.TestCase):
         self.assertIsNone(read["epsg"])
         self.assertTrue(read["user_defined_crs"])
 
+    def test_geotiff_epsg_key_is_the_crs_code_not_the_spheroid(self):
+        """A full PROJCS names 7030 (spheroid) and 6326 (datum) before its own code."""
+        full = ('PROJCS["WGS 84 / UTM zone 43N",GEOGCS["WGS 84",DATUM["WGS_1984"],'
+                'SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],'
+                'AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+                'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],'
+                'AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],'
+                'UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],'
+                'AXIS["Northing",NORTH],AUTHORITY["EPSG","32643"]]')
+        self.assertEqual(self.fmt._epsg_from_wkt(full), 32643)
+        out = self.path("full.tif")
+        self.fmt.write_geotiff(np.zeros((2, 2), dtype=float), out,
+                               transform=(0, 1, 0, 0, 0, -1), crs_wkt=full)
+        read = self.fmt.read_geotiff(out)
+        self.assertEqual(read["epsg"], 32643)
+        self.assertIn((3072, 0, 1, 32643), self.geo_keys(self.tiff_ifd(out.read_bytes()))["keys"])
+
     def test_read_geotiff_refuses_a_big_endian_or_tagless_file(self):
         out = self.path("be.tif")
         out.write_bytes(struct.pack(">HHI", 77, 43, 8) + struct.pack("<H", 0))
