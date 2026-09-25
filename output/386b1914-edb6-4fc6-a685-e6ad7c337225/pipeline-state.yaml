@@ -1,0 +1,60 @@
+schema_version: 1
+request_id: 386b1914-edb6-4fc6-a685-e6ad7c337225
+created_at: 2026-09-09T14:05:17Z
+updated_at: 2026-09-09T18:34:06Z
+
+entry_type: full_pipeline
+stage_chain: [1, 2, 3]
+
+output_docx_path: C:\Users\krisg\Desktop\Drone to 3d mesh\output\386b1914-edb6-4fc6-a685-e6ad7c337225\stage3\Drone-to-3D-Walkable-World-Project-Report.docx
+output_docx_user_specified: false
+output_pdf_path: C:\Users\krisg\Desktop\Drone to 3d mesh\output\386b1914-edb6-4fc6-a685-e6ad7c337225\stage3\Drone-to-3D-Walkable-World-Project-Report.pdf
+
+current_stage: 3
+
+stages:
+  stage_0:
+    status: completed
+    completed_at: 2026-09-09T14:05:17Z
+    decision: full_pipeline
+
+  stage_1:
+    status: completed
+    started_at: 2026-09-09T14:06:00Z
+    completed_at: 2026-09-09T14:12:00Z
+    output_path: stage1/final_draft.md
+    genre: academic-paper
+    expert_used: academic-paper-expert
+    route_tag: expert_academic
+    critic_decision: PASS
+
+  stage_2:
+    status: in_progress
+    started_at: 2026-09-09T14:12:00Z
+    completed_at: null
+    route: null
+    html_sub: null
+    output_path: null
+    output_format: null
+    skills_invoked: []
+    design_tokens_path: null
+    fallback: false
+    fallback_reason: null
+
+  stage_3:
+    status: pending
+    started_at: null
+    completed_at: null
+    executor: null
+    input_format: null
+    output_path: null
+    skill_used: []
+    present_files_opened: false
+    fallback: false
+    fallback_reason: null
+
+consistency_check:
+  output_files_exist: null
+  stage_chain_complete: null
+  last_checked_at: null
+  errors: []

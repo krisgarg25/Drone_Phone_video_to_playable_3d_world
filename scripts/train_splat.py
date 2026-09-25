@@ -12,6 +12,7 @@ Usage:
   python train_splat.py --work work/room_w_jsonl --steps 12000 --cap 650000
 """
 import argparse
+import hashlib
 import json
 import math
 import sys
@@ -26,6 +27,7 @@ from PIL import Image
 from plyfile import PlyData, PlyElement
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from camera_intrinsics import camera_matrix_and_distortion  # noqa: E402
 from parse_colmap import qvec2rot  # noqa: E402
 import robust as rb  # noqa: E402
 
@@ -80,52 +82,44 @@ def prepare_dataset(work: Path, max_images: int | None = None):
     src_sizes = set()
     for im in imgs:
         c = cams[im["cam_id"]]
-        if c["model"] in ("SIMPLE_RADIAL", "RADIAL", "OPENCV"):
-            f = c["params"][0]
-            cx, cy = c["params"][1], c["params"][2]
-            if c["model"] == "SIMPLE_RADIAL":
-                dist = np.array([c["params"][3], 0, 0, 0], np.float64)
-            elif c["model"] == "RADIAL":
-                dist = np.array([c["params"][3], c["params"][4], 0, 0], np.float64)
-            else:
-                dist = np.array(c["params"][4:8], np.float64)
-        else:
-            f = c["params"][0]
-            cx, cy = c["params"][2], c["params"][3]
-            dist = np.zeros(4)
-        K = np.array([[f, 0, cx], [0, f if c["model"] != "PINHOLE" else c["params"][1], cy], [0, 0, 1]], dtype=np.float32)
-
-        # The undistortion cache is keyed on the source pixel size: a cache made
-        # from 1280 px frames must not answer a 1920 px request, or the run trains
-        # at the old size while asking for the new one.
         src_path = work / "frames_train" / im["name"]
-        if np.any(dist[:2] != 0):
-            src = cv2.imread(str(src_path))
-            hs, ws = src.shape[:2]
-            cache = und_dir / f"{ws}x{hs}__{im['name'].replace('/', '__')}"
+        src = cv2.imread(str(src_path))
+        hs, ws = src.shape[:2]
+        # Undistortion must use intrinsics in the decoded source pixel grid.
+        K, dist = camera_matrix_and_distortion(
+            c["model"], c["params"], (c["w0"], c["h0"]), (ws, hs))
+        try:
+            with np.errstate(over="raise", invalid="raise", under="ignore"):
+                training_K = K.astype(np.float32)
+        except FloatingPointError as exc:
+            raise ValueError("Camera matrix K is not representable in float32") from exc
+        if not np.isfinite(training_K).all() or training_K[0, 0] <= 0 or training_K[1, 1] <= 0:
+            raise ValueError("Float32 camera matrix K must be finite with positive focal lengths")
+        if np.any(dist != 0):
+            # Both calibration and decoded content determine the undistorted pixels.
+            source_hash = hashlib.sha256(src.tobytes()).hexdigest()
+            calibration = json.dumps(
+                [c["model"], c["params"], c["w0"], c["h0"], ws, hs, source_hash],
+                separators=(",", ":"))
+            calibration_key = hashlib.sha256(calibration.encode("utf-8")).hexdigest()[:20]
+            cache = und_dir / f"{ws}x{hs}__{calibration_key}" / im["name"]
             if cache.exists():
                 img_path = cache
                 img = cv2.cvtColor(cv2.imread(str(cache)), cv2.COLOR_BGR2RGB)
             else:
                 img = cv2.undistort(src, K, dist)
-                cache.parent.mkdir(exist_ok=True)
+                cache.parent.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(cache), img)
                 img_path = cache
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         else:
             img_path = src_path
-            img = cv2.cvtColor(cv2.imread(str(src_path)), cv2.COLOR_BGR2RGB)
+            img = cv2.cvtColor(src, cv2.COLOR_BGR2RGB)
 
         h, w = img.shape[:2]
-        # cameras.txt solved at (w0, h0); a resize scales fx, fy, cx and cy with
-        # it, so a model solved at 1600 px is exactly as good at 1920 px once the
-        # intrinsics come along. Without this the principal point stays at the old
-        # centre and every gaussian lands off by the ratio.
+        K = training_K
         sx, sy = w / c["w0"], h / c["h0"]
         if abs(sx - 1) > 1e-6 or abs(sy - 1) > 1e-6:
-            K = np.array([[K[0, 0] * sx, 0, K[0, 2] * sx],
-                          [0, K[1, 1] * sy, K[1, 2] * sy],
-                          [0, 0, 1]], dtype=np.float32)
             src_sizes.add((c["w0"], c["h0"], w, h))
         viewmat = np.eye(4, dtype=np.float32)
         viewmat[:3, :3] = im["R"]

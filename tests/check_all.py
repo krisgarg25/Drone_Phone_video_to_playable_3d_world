@@ -41,6 +41,29 @@ SUITES = [
     ("collider", "test_collider.py", 10),
     ("gate", "test_gate.py", 10),
     ("unit", "run_tests.py", 10),
+    ("survey-georef", "test_survey_georef.py", 5),
+    ("survey-evaluation", "test_survey_evaluation.py", 5),
+    ("survey-calibration", "test_camera_intrinsics.py", 5),
+    ("survey-priors", "test_survey_priors.py", 5),
+    ("survey-evidence", "test_survey_evidence.py", 5),
+    ("survey-visibility", "test_survey_visibility.py", 5),
+    ("survey-selection", "test_survey_selection.py", 5),
+    ("survey-products", "test_survey_products.py", 5),
+    ("survey-gnss", "test_survey_gnss.py", 5),
+    ("survey-accuracy", "test_survey_accuracy.py", 5),
+    ("survey-observability", "test_survey_observability.py", 5),
+    ("survey-streaming", "test_survey_streaming.py", 5),
+    ("survey-occlusion", "test_survey_occlusion.py", 5),
+    ("survey-frame-quality", "test_survey_frame_quality.py", 5),
+    ("survey-photometry", "test_survey_photometry.py", 5),
+    ("survey-measure", "test_survey_measure.py", 5),
+    ("survey-inputs", "test_survey_inputs.py", 5),
+    ("survey-formats", "test_survey_formats.py", 5),
+    ("survey-export", "test_survey_export.py", 5),
+    ("survey-dynamics", "test_survey_dynamics.py", 5),
+    ("survey-workflow", "test_survey_workflow.py", 5),
+    ("survey-api", "test_survey_api.py", 5),
+    ("survey-cli", "test_survey_cli.py", 5),
 ]
 E2E = ("e2e", "test_e2e.py", 180)
 
@@ -48,8 +71,12 @@ E2E = ("e2e", "test_e2e.py", 180)
 def run_suite(script: str, minutes: float, extra: list[str]) -> tuple[bool, float, str]:
     t0 = time.time()
     cmd = [str(PY), str(ROOT / "tests" / script), *extra]
+    env = dict(os.environ)
+    if script.startswith("test_survey_") or script == "test_camera_intrinsics.py":
+        cmd = [str(PY), "-m", "unittest", "discover", "-s", str(ROOT / "tests"), "-p", script, "-v"]
+        env.update(CUDA_VISIBLE_DEVICES="-1", PYTHONDONTWRITEBYTECODE="1")
     try:
-        p = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
+        p = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env,
                            timeout=minutes * 60, encoding="utf-8", errors="replace")
         out = (p.stdout or "") + (p.stderr or "")
         ok = p.returncode == 0

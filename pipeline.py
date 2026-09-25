@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -36,6 +37,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 PY = ROOT / ".venv" / "Scripts" / "python.exe"
 PY310 = ROOT / ".venv310" / "Scripts" / "python.exe"
+NODE = shutil.which("node") or "node"
 VIDEOS = ROOT / "videos"
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -432,6 +434,19 @@ def build_config(args, sources: dict, allow_auto_diag: bool = True) -> dict:
 # --------------------------------------------------------------------------- 
 # steps
 # ---------------------------------------------------------------------------
+def nav_params(cfg: dict) -> list:
+    """Agent + grid parameters for the navmesh bake, scaled to the scene type.
+
+    Interiors and small objects bake with a human agent on a fine grid (bake.mjs
+    defaults). Large aerial scenes need a coarser cell or Recast chokes on the
+    extent — these mirror the manual `tools/navbake` recipes per scene.
+    """
+    if cfg.get("preset") == "drone":
+        return ["--cell", "0.25", "--radius", "0.3", "--height", "1.6",
+                "--climb", "0.9", "--slope", "55", "--region", "0.6"]
+    return []
+
+
 def build_steps(cfg: dict) -> list[dict]:
     name, work, asset = cfg["name"], cfg["work"], cfg["work"] / "viewer_assets"
     src = cfg["sources"]
@@ -570,6 +585,23 @@ def build_steps(cfg: dict) -> list[dict]:
                    *(["--skirt", cfg["collider_skirt"]]
                      if cfg.get("collider_skirt") is not None else [])],
              outputs=[asset / "ground.f32"]),
+        dict(name="nav", py=NODE,
+             # Bake a navigation mesh from the shipped collider so game/combat mode
+             # and bot pathing work straight from a run — no manual `node
+             # tools/navbake/bake.mjs <scene>` per scene. Runs after `surface` because
+             # tune_collider rewrites collision.collision.glb there. Advisory: nothing
+             # downstream in the run reads nav.json; the viewer loads it at runtime and
+             # falls back to a heightfield nav if it is absent.
+             argv=[NODE, ROOT / "tools/navbake/bake.mjs", name, *nav_params(cfg)],
+             inputs=[work / "pc" / "collision.collision.glb"],
+             outputs=[work / "pc" / "nav.json"]),
+        dict(name="semantics", py=PY,
+             # Heuristic ground/road/building/vegetation/obstacle labelling of the
+             # sparse cloud. Advisory: it reads finished assets and never gates the
+             # run, so a scene still ships if labelling is skipped or fails.
+             argv=[PY, ROOT / "scripts/label_semantics.py", "--work", work],
+             inputs=[asset / "sparse_points.json"],
+             outputs=[asset / "semantics.json"]),
         dict(name="gate", py=PY,
              argv=[PY, ROOT / "scripts/check_world.py", "--asset", asset,
                    "--work", work,
@@ -632,6 +664,8 @@ TIMEOUTS = {
     "collider": 40 * 60,
     "objects": 10 * 60,
     "surface": 30 * 60,
+    "nav": 10 * 60,
+    "semantics": 10 * 60,
     "gate": 5 * 60,
     "evals": 30 * 60,
     "pairs": 10 * 60,
@@ -695,7 +729,7 @@ RETRYABLE = (rb.OOM, rb.VOXEL_OVERFLOW, rb.CRASH, rb.TIMEOUT, rb.FAILED)
 # downstream reads their output, so one that dies on a locked screenshot must
 # not also cost the walk test: the run records it and carries on. The scene's
 # status is still partial because of the failed step.
-ADVISORY = ("evals", "pairs")
+ADVISORY = ("evals", "pairs", "semantics", "nav")
 
 
 def marker_file(work: Path, step: dict) -> Path:
@@ -714,14 +748,33 @@ def code_digest(argv) -> str:
     never the code. An edit to scripts/walk_path_from_glb.py therefore left every
     downstream step "done" and the pipeline shipped a route planned by source
     that no longer exists: the same defect as a stale ground.f32 beside a rebuilt
-    collider, one level up. Covers the .py files the command names plus
-    robust.py, which every step script imports and which has changed a step's
-    behaviour on its own more than once.
+    collider, one level up. Covers the .py files the command names, every sibling
+    module they import, and robust.py, which every step script imports and which
+    has changed a step's behaviour on its own more than once.
     """
-    files = {(ROOT / "scripts" / "robust.py").resolve()}
+    scripts = (ROOT / "scripts").resolve()
+    files = {scripts / "robust.py"}
     files |= {(ROOT / a).resolve() if not Path(str(a)).is_absolute()
               else Path(str(a)).resolve()
               for a in argv if str(a).endswith(".py")}
+    pending = [f for f in files if f.parent == scripts]
+    seen = set()
+    while pending:
+        path = pending.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # `import robust as rb` and `from camera_intrinsics import f` both name a
+        # sibling module; either one changes what the step computes.
+        for name in re.findall(r"^(?:from|import)\s+([a-z_][a-z0-9_]*)\b", source, re.M):
+            sibling = scripts / (name + ".py")
+            if sibling.exists() and sibling not in files:
+                files.add(sibling)
+                pending.append(sibling)
     h = hashlib.sha1()
     for f in sorted(files):
         h.update(f.name.encode("utf-8"))
@@ -1198,37 +1251,53 @@ def do_view(cfg: dict) -> None:
     asset = cfg["work"] / "viewer_assets"
     if not (asset / "scene.ply").exists():
         sys.exit(f"no scene at {asset} — run: python pipeline.py run {cfg['name']}")
-    url = f"http://localhost:8137/viewer/pc.html?asset=/work/{cfg['name']}/viewer_assets"
-    webbrowser.open(url)
-    subprocess.run([str(PY), str(ROOT / "_serve.py"), "8137", str(ROOT)])
+    do_ui(cfg["name"])
 
 
-def do_ui() -> None:
-    """The whole product behind one command: serve the pages, open the dashboard.
+def do_ui(scene: str | None = None) -> None:
+    from urllib.parse import quote
+    from _serve import terminate_process_tree
 
-    Nothing heavy starts here. The server is stdlib HTTP over the repo, presets
-    are imported lazily by the one endpoint that needs them, and torch/gsplat
-    live in the child process a run spawns - so opening the dashboard costs a
-    directory listing and a browser tab.
-    """
-    url = "http://localhost:8137/viewer/pipeline_gui.html"
-    with socket.socket() as probe:
-        if probe.connect_ex(("127.0.0.1", 8137)) == 0:
-            print(f"[ui] a server already answers on 8137 — opening {url}")
-            webbrowser.open(url)
-            return
-    proc = subprocess.Popen([str(PY), str(ROOT / "_serve.py"), "8137", str(ROOT)])
-    for _ in range(50):
+    def listening(port):
         with socket.socket() as probe:
-            if probe.connect_ex(("127.0.0.1", 8137)) == 0:
-                break
-        time.sleep(0.1)
-    print(f"[ui] dashboard: {url}")
-    webbrowser.open(url)
+            return probe.connect_ex(("127.0.0.1", port)) == 0
+
+    frontend = ROOT / "groundcontrol"
+    next_cli = frontend / "node_modules/next/dist/bin/next"
+    node = shutil.which("node")
+    if not listening(3000) and (not node or not next_cli.is_file()):
+        sys.exit("The workspace needs Node.js and its packages. Run npm install in groundcontrol, then try again.")
+    children = []
+    process_options = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                       if os.name == "nt" else {"start_new_session": True})
+    url = "http://127.0.0.1:3000" + ("/projects/" + quote(scene, safe="") if scene else "")
     try:
-        proc.wait()
+        if not listening(8137):
+            server = ("import functools,http.server,_serve; "
+                      "http.server.ThreadingHTTPServer(('127.0.0.1',8137),"
+                      "functools.partial(_serve.H,directory=str(_serve.ROOT))).serve_forever()")
+            children.append(subprocess.Popen([str(PY), "-c", server], cwd=str(ROOT), **process_options))
+        if not listening(3000):
+            children.append(subprocess.Popen([node, str(next_cli), "dev", "--hostname", "127.0.0.1", "--port", "3000"],
+                                             cwd=str(frontend), **process_options))
+        for port in (8137, 3000):
+            deadline = time.monotonic() + 60
+            while not listening(port):
+                if any(child.poll() is not None for child in children) or time.monotonic() > deadline:
+                    raise RuntimeError(f"Workspace service on port {port} did not start. Check the output above.")
+                time.sleep(0.2)
+        print(f"[ui] workspace: {url}")
+        webbrowser.open(url)
+        if children:
+            print("[ui] Ctrl+C stops the services started here and their child jobs.")
+            while all(child.poll() is None for child in children):
+                time.sleep(0.5)
     except KeyboardInterrupt:
-        proc.terminate()
+        pass
+    finally:
+        for child in reversed(children):
+            if child.poll() is None:
+                terminate_process_tree(child)
 
 
 # --------------------------------------------------------------------------- 

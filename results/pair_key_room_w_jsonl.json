@@ -20,8 +20,8 @@
     "A": "REAL",
     "B": "RENDER",
     "render_file": "eval_02.png",
-    "real_file": "data/00096.jpg",
-    "t_sec": 26.867
+    "real_file": "data/00098.jpg",
+    "t_sec": 27.533
   },
   {
     "pair": "room_w_jsonl_AB_03.jpg",
@@ -36,47 +36,47 @@
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_04.png",
-    "real_file": "data/00192.jpg",
-    "t_sec": 56.8
+    "real_file": "data/00194.jpg",
+    "t_sec": 57.133
   },
   {
     "pair": "room_w_jsonl_AB_05.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_05.png",
-    "real_file": "data/00238.jpg",
-    "t_sec": 69.667
+    "real_file": "data/00242.jpg",
+    "t_sec": 70.533
   },
   {
     "pair": "room_w_jsonl_AB_06.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_06.png",
-    "real_file": "data/00284.jpg",
-    "t_sec": 82.333
+    "real_file": "data/00290.jpg",
+    "t_sec": 83.933
   },
   {
     "pair": "room_w_jsonl_AB_07.jpg",
     "A": "REAL",
     "B": "RENDER",
     "render_file": "eval_07.png",
-    "real_file": "data/00330.jpg",
-    "t_sec": 95.067
+    "real_file": "data/00338.jpg",
+    "t_sec": 97.333
   },
   {
     "pair": "room_w_jsonl_AB_08.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_08.png",
-    "real_file": "data/00376.jpg",
-    "t_sec": 108.0
+    "real_file": "data/00386.jpg",
+    "t_sec": 110.933
   },
   {
     "pair": "room_w_jsonl_AB_09.jpg",
     "A": "REAL",
     "B": "RENDER",
     "render_file": "eval_09.png",
-    "real_file": "data/00423.jpg",
-    "t_sec": 121.667
+    "real_file": "data/00436.jpg",
+    "t_sec": 125.333
   }
 ]

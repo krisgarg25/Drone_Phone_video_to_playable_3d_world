@@ -7,6 +7,19 @@ click-a-surface / draw-a-patch fill system.
 **Hardware assumed throughout:** RTX 3050 Laptop, 6 GB VRAM, 16 GB RAM, Windows 11,
 CUDA 12.4, no cloud, no compile-from-source. Same constraint as `05_MVP_Agent_Prompt.md`.
 
+> **Companions — read alongside this document.** Two later passes are the delta on top of this one;
+> none of their material is repeated here.
+> - **`07_Video_to_3D_Alternatives_2026.md`** (2026-09-12) — the video→3D half: feed-forward and
+>   streaming reconstruction, whether COLMAP can be skipped, hardware tiering, and **§5, the
+>   `MCMCStrategy` finding that corrects Rung 6 below.**
+> - **`08_Splat_Cleaning_and_Generation_2026.md`** (2026-09-12) — the splat-cleaning half, updated:
+>   **no trained downloadable floater classifier exists**; SplatFormer's mechanism; the new
+>   completion and aerial papers; tooling deltas.
+>
+> Three corrections from those passes are folded in below, each marked inline with a
+> `(Corrected 2026-09-12)` or `(2026-09-12)` note — §6.3 (AnySplat slug), §7 Rung 0a (stale line
+> number), and §7 Rung 6 (the `MCMCStrategy` omission).
+
 ---
 
 ## 0. Decisions taken during this research pass
@@ -554,7 +567,7 @@ the pose and **metric scale** of a newly-generated or newly-shot chunk so it can
 - **MapAnything** is the strongest of the group and the most actively maintained in this whole survey (pushed 2026-08-07, 2 open issues). Apache-2.0 code, **two** weight sets: `facebook/map-anything` (CC-BY-NC-4.0) and **`facebook/map-anything-apache` (Apache-2.0, commercially clean)**. Outputs **metric** 3D, accepts any combination of images + intrinsics + depth + poses, ships `demo_colmap.py` and documented gsplat integration, and `memory_efficient_inference=True` with `minibatch_size=1` is designed for small GPUs. It also wraps VGGT, Pi3, MoGe, DUSt3R, MASt3R, DA3 behind one interface — the cheapest way to evaluate the whole family.
 - **DepthSplat** (MIT, 1,243★) is notable only because its stated env is **torch 2.4.0 / CUDA 12.4 / Python 3.10 — an exact match for `.venv310`** — and `test.save_gaussian=true` writes viewer-compatible PLYs. But it's trained on RealEstate10K/DL3DV (indoor, forward-facing).
 - **Pi3**: code BSD-3, **weights CC-BY-NC-4.0, "Strictly Non-Commercial"**.
-- **AnySplat**: MIT, weights at `lhjiang/anysplat`; the correct repo is `OpenRobotLab/AnySplat` (not `OpenGVLab`).
+- **AnySplat**: MIT, weights at `lhjiang/anysplat`; the correct repo is **`InternRobotics/AnySplat`** (not `OpenGVLab`, and not `OpenRobotLab`). Verified 2026-09-12: `OpenRobotLab/AnySplat` → HTTP 301, `InternRobotics/AnySplat` → HTTP 200. 929★.
 - **SpaTracker**: NOASSERTION (inherits CoTracker NC), README states **22 GB** for dense tracking. Irrelevant here.
 
 ### 6.4 Part-level and completion categories — mostly not applicable
@@ -614,11 +627,17 @@ Rungs are additive, not alternatives. Each is independently shippable.
 Floaters in a never-filmed region are, by construction, (a) seen by very few cameras and (b)
 **disconnected** from the structure. Three cheap mechanisms:
 
-**(a) Visibility pruning.** `scripts/solve_frame.py:93` `multiview_support()` already counts
+**(a) Visibility pruning.** `scripts/solve_frame.py:113` `multiview_support()` already counts
 cameras whose frustum contains each point and records nearest range, and already applies
 `(n_views >= min_views) & (near <= max_dist)`. **This is exactly the right primitive.**
 Gaussians seen by exactly 1-2 cameras are almost always floaters, because 3DGS needs multi-view
 agreement to place real geometry. Cutting `n_views <= 2` is nearly free and nearly always correct.
+
+> **Repo note (2026-09-12):** the function is *already being called* in the export path —
+> `scripts/export_viewer_assets.py:318` reads `region, _, _ = multiview_support(...)` and then
+> **discards the per-gaussian view count**. The exact quantity this rung needs is computed on every
+> export and thrown away. (Line number corrected here: earlier text cited `solve_frame.py:93`; the
+> definition is `def multiview_support(...)` at line **113**, returning at 137. Same function.)
 
 Known limitation: it is a **frustum test, not a visibility test.** A gaussian behind a wall counts
 as "seen" by every camera pointed at the wall. For floaters in genuinely empty air this is fine.
@@ -837,6 +856,19 @@ Every published sparse-view 3DGS regularizer worth having is (a) non-commercial 
 verbatim the Inria 3DGS licence), FSGS, CoR-GS (needs
 `diff-gaussian-rasterization-confidence`), SparseGS (repo 404s). RegNeRF is Apache-2.0 but is
 NeRF/JAX — port the idea, not the code.
+
+> **Correction (2026-09-12):** the sentence above is **incomplete**, and it is the one claim in this
+> document that a package already on disk contradicts. The statement is true of the *research
+> repos listed*, but it is not true that nothing drops in. **`gsplat.MCMCStrategy` ships in the
+> pinned `gsplat` 1.5.3 wheel**, is exported from `gsplat.strategy` (Apache-2.0, same package as
+> the `DefaultStrategy` the trainer already uses), and is a training-time regularizer of exactly
+> this family — MCMC relocation with `cap_max`, `min_opacity`, `noise_lr`, `refine_every`. It is
+> not used: `scripts/train_splat.py:348` imports only `DefaultStrategy`. The swap is not
+> drop-in — `step_post_backward` takes a required `lr: float` instead of `packed: bool`, and the
+> manual `--cap` trim block at `train_splat.py:536-546` exists precisely because
+> `DefaultStrategy` has no `cap_max`. **See `07_Video_to_3D_Alternatives_2026.md` §5** for the full
+> signature comparison, the `train_splat.py:538` "grew to 1.05 M" note it resolves, and the swap
+> surface. Not implemented — recorded because it is the cheapest untried quality lever here.
 
 The *ideas* are simple and unencumbered, and `scripts/train_splat.py` already exists:
 - **Opacity decay in unobserved space.** Each iteration, multiply the raw opacity logit of gaussians with `n_views <= k` by a factor slightly under 1. They fade out over training instead of being hard-deleted, which avoids the collapse `train_splat.py:427` already warns about. ~15 lines, cheapest regularizer with real effect.

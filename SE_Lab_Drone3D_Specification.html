@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SE Lab Project — SRS, DFD, Class & UML Diagrams | Drone to 3D Walkable Mesh</title>
+  <style>
+    /* ==========================================================================
+       Academic Student Lab Submission Stylesheet
+       Clean, Professional, Non-AI Look (Strict 4-Page A4 Layout)
+       PROPER PAGE MARGINS RESTORED (12mm Top/Bottom, 14mm Left/Right)
+       NO FOOTER TEXT
+       ========================================================================== */
+    @page {
+      size: A4 portrait;
+      margin: 12mm 14mm 12mm 14mm;
+    }
+
+    :root {
+      --primary: #1e293b;
+      --primary-dark: #0f172a;
+      --accent: #1d4ed8;
+      --accent-soft: #f0f4ff;
+      --border: #cbd5e1;
+      --border-dark: #94a3b8;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --bg-soft: #f8fafc;
+      --font-main: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-main);
+      color: var(--text);
+      background-color: #cbd5e1;
+      line-height: 1.38;
+      font-size: 8.5pt;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Screen UI toolbar */
+    .screen-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 999;
+      background: #0f172a;
+      color: #fff;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      font-size: 13px;
+    }
+
+    .btn-pdf {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 7px 18px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-pdf:hover { background: #1d4ed8; }
+
+    /* Page container: on screen it looks like an A4 sheet with realistic 12mm/14mm padding */
+    .page-sheet {
+      width: 210mm;
+      max-width: 210mm;
+      margin: 18px auto;
+      background: #ffffff;
+      padding: 12mm 14mm;
+      box-shadow: 0 3px 14px rgba(0,0,0,0.09);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      position: relative;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+      .screen-toolbar {
+        display: none !important;
+      }
+      .page-sheet {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      .page-sheet:last-of-type {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+    }
+
+    /* Standard Student / Lab Header */
+    .lab-header-box {
+      border: 1px solid var(--border-dark);
+      background: var(--bg-soft);
+      padding: 7px 10px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+    }
+
+    .lab-header-top {
+      display: flex;
+      justify-content: space-between;
+      font-size: 7.8pt;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 3px;
+      margin-bottom: 4px;
+    }
+
+    h1.project-title {
+      font-size: 13pt;
+      font-weight: 800;
+      color: var(--primary-dark);
+      line-height: 1.22;
+      margin-bottom: 3px;
+    }
+
+    .lab-meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px 14px;
+      font-size: 7.8pt;
+      color: #334155;
+    }
+
+    .lab-meta-grid strong {
+      color: var(--primary-dark);
+    }
+
+    /* Section Headings */
+    h2.section-title {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #fff;
+      background: var(--primary);
+      padding: 3.5px 8px;
+      border-radius: 3px;
+      margin: 6px 0 5px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    h3.sub-title {
+      font-size: 8.8pt;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 5px 0 3px 0;
+      border-left: 3px solid var(--accent);
+      padding-left: 6px;
+    }
+
+    p {
+      margin-bottom: 4px;
+      text-align: justify;
+      color: #334155;
+      font-size: 8.2pt;
+      line-height: 1.38;
+    }
+
+    /* Bullet List of Work Done */
+    .work-done-list {
+      margin: 3px 0 6px 16px;
+      padding: 0;
+      font-size: 8pt;
+      color: #1e293b;
+    }
+
+    .work-done-list li {
+      margin-bottom: 2.5px;
+      line-height: 1.32;
+    }
+
+    .work-done-list strong {
+      color: var(--primary-dark);
+    }
+
+    /* Tables */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 7.5pt;
+      margin: 4px 0 6px 0;
+    }
+
+    table.data-table th, table.data-table td {
+      border: 1px solid var(--border);
+      padding: 3.5px 5px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    table.data-table th {
+      background-color: var(--bg-soft);
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+
+    table.data-table tr:nth-child(even) td {
+      background-color: #fafbfc;
+    }
+
+    /* Diagram Card */
+    .diagram-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 5px 7px;
+      margin: 5px 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+
+    .diagram-caption {
+      font-size: 7pt;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    svg.diagram {
+      width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .grid-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen Toolbar -->
+  <div class="screen-toolbar">
+    <div>
+      <strong>SE Lab Project Deliverable</strong> — Student Report (SRS, Full DFDs, Class Diagram, UML Models)
+    </div>
+    <div>
+      <button class="btn-pdf" onclick="window.print()">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2m-12 0v4h12v-4M8 14h8"/>
+        </svg>
+        Save / Print as PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       PAGE 1: SRS (SOFTWARE REQUIREMENTS SPECIFICATION)
+       ========================================================================= -->
+  <div class="page-sheet" id="page-1">
+    <!-- Clean Student Lab Submission Header -->
+    <div class="lab-header-box">
+      <div class="lab-header-top">
+        <span>Department of Computer Science &amp; Engineering</span>
+        <span>Software Engineering Laboratory (SE Lab)</span>
+      </div>
+      <h1 class="project-title">Drone / Mobile Video to Walkable 3D Mesh World</h1>
+      <div class="lab-meta-grid">
+        <div><strong>Course:</strong> Software Engineering Lab (CS351)</div>
+        <div><strong>Submission Mode:</strong> Google Classroom (Single PDF)</div>
+        <div><strong>Submission Due Date:</strong> 02 October 2026</div>
+        <div><strong>Target Hardware:</strong> 6GB Laptop GPU (RTX 3050/3060)</div>
+      </div>
+    </div>
+
+    <section>
+      <h2 class="section-title">
+        <span>1. Software Requirements Specification (SRS)</span>
+        <span style="font-size: 7.2pt; font-weight: normal; opacity: 0.9;">IEEE-830 Format</span>
+      </h2>
+
+      <h3 class="sub-title">1.1 Project Summary &amp; Work Done</h3>
+      <p>
+        The objective of this project is to convert monocular video recorded from a drone or handheld smartphone into an interactive, physically walkable 3D environment inside a web browser. The core work done is summarized below:
+      </p>
+
+      <ul class="work-done-list">
+        <li><strong>Video Ingestion &amp; Keyframing:</strong> Reads video (.mp4/.mov) and drops motion-blurred frames using Laplacian edge variance scoring to retain sharp photos with &ge;70% overlap.</li>
+        <li><strong>Camera Tracking (SfM):</strong> Integrates COLMAP bundle adjustment to solve 6-DoF camera trajectories and sparse point landmarks with automated rescue ladders.</li>
+        <li><strong>3D Radiance Training:</strong> Trains 3D Gaussian Splats (3DGS) on a consumer 6GB laptop GPU under an active 5.8GB VRAM cap with checkpoint backups.</li>
+        <li><strong>Metric Scaling &amp; Ground Fit:</strong> Uses RANSAC ground plane fitting and physical flight speed/height anchors to scale arbitrary units into real meters (+Z upright).</li>
+        <li><strong>Physics Collision Meshing:</strong> Builds 0.35m voxel boundary colliders and selects the optimal walkable ground surface (mesh vs. heightfield).</li>
+        <li><strong>Automated 11-Rule Quality Gate:</strong> Tests ground orientation, player spawn clearance, and boundaries with zero tolerance for inverted floors.</li>
+        <li><strong>Autopilot Robot Walk Test:</strong> Simulates a character walking 10 meters headless, verifying 0 fall events before approving scene release.</li>
+        <li><strong>Browser Delivery (WebGL):</strong> Packages assets into a lightweight PlayCanvas HTML5 viewer running smoothly at 60 FPS on standard browsers.</li>
+      </ul>
+
+      <h3 class="sub-title">1.2 Functional Requirements (System Feature Matrix)</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width: 13%;">Req ID</th>
+            <th style="width: 22%;">System Module</th>
+            <th style="width: 45%;">Functional Description</th>
+            <th style="width: 20%;">Pass Criterion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>FR-101</strong></td>
+            <td>Keyframe Extractor</td>
+            <td>Reads input video, analyzes frame edge sharpness, and discards motion-blurred frames.</td>
+            <td>Filters &gt;80% of blur; retains ≥70% inter-photo overlap.</td>
+          </tr>
+          <tr>
+            <td><strong>FR-102</strong></td>
+            <td>COLMAP Pose Solver</td>
+            <td>Matches SIFT feature points and solves 3D camera trajectory with rescue ladder fallbacks.</td>
+            <td>Registers ≥90% of camera views successfully.</td>
+          </tr>
+          <tr>
+            <td><strong>FR-103</strong></td>
+            <td>Splat Trainer (3DGS)</td>
+            <td>Trains 350k 3D Gaussians for visual fidelity while capping GPU memory usage.</td>
+            <td>Peak VRAM &le; 5.8 GB; saves partial checkpoints.</td>
+          </tr>
+          <tr>
+            <td><strong>FR-104</strong></td>
+            <td>Metric Ground Scaler</td>
+            <td>Fits ground plane via RANSAC and converts camera units to meters using physical anchors.</td>
+            <td>Scale error within &plusmn;5%; upright Z-axis floor.</td>
+          </tr>
+          <tr>
+            <td><strong>FR-105</strong></td>
+            <td>Physics Mesh Builder</td>
+            <td>Constructs solid 0.35m voxel boundary colliders to block character clipping.</td>
+            <td>Character capsule cannot clip through walls or floors.</td>
+          </tr>
+          <tr>
+            <td><strong>FR-106</strong></td>
+            <td>11-Rule Safety Gate</td>
+            <td>Runs automated assertions on scale, floor orientation, and player spawn clearance.</td>
+            <td>100% pass on all 11 rules; emits receipt file.</td>
+          </tr>
+          <tr>
+            <td><strong>FR-107</strong></td>
+            <td>Autopilot Test Runner</td>
+            <td>Drives a character headless across the model for 10 meters, logging falls and coordinates.</td>
+            <td>Robot walks &ge;10m with exactly 0 falls.</td>
+          </tr>
+        </tbody>
+      </table>
+
+
+    </section>
+  </div>
+
+  <!-- =========================================================================
+       PAGE 2: DFD (DATA FLOW DIAGRAMS — ALL LEVELS)
+       ========================================================================= -->
+  <div class="page-sheet" id="page-2">
+    <section>
+      <h2 class="section-title">
+        <span>2. Data Flow Diagrams (DFD) — All Levels</span>
+        <span style="font-size: 7.2pt; font-weight: normal; opacity: 0.9;">Gane-Sarson Structured Analysis</span>
+      </h2>
+
+      <!-- 2.1 DFD LEVEL 0: CONTEXT DIAGRAM -->
+      <h3 class="sub-title">2.1 DFD Level 0 — System Context Diagram</h3>
+      <p>
+        The Level 0 Context Diagram establishes the boundary of the system, showing how video data and user configurations enter the central engine and produce verified 3D assets for client exploration.
+      </p>
+
+      <div class="diagram-card">
+        <svg class="diagram" viewBox="0 0 680 120" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr-blue0" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#1d4ed8"/>
+            </marker>
+            <marker id="arr-green0" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669"/>
+            </marker>
+          </defs>
+
+          <!-- External Entity: Camera -->
+          <g transform="translate(15, 10)">
+            <rect width="135" height="42" rx="4" fill="#f8fafc" stroke="#1e293b" stroke-width="1.3"/>
+            <text x="67" y="18" text-anchor="middle" font-size="8" font-weight="700" fill="#0f172a">EXTERNAL ENTITY</text>
+            <text x="67" y="32" text-anchor="middle" font-size="8.5" font-weight="600" fill="#1d4ed8">Drone / Phone Camera</text>
+          </g>
+
+          <!-- External Entity: Operator -->
+          <g transform="translate(15, 68)">
+            <rect width="135" height="42" rx="4" fill="#f8fafc" stroke="#1e293b" stroke-width="1.3"/>
+            <text x="67" y="18" text-anchor="middle" font-size="8" font-weight="700" fill="#0f172a">EXTERNAL ENTITY</text>
+            <text x="67" y="32" text-anchor="middle" font-size="8.5" font-weight="600" fill="#1d4ed8">Student / Drone Pilot</text>
+          </g>
+
+          <!-- System Process 0.0 -->
+          <g transform="translate(245, 14)">
+            <rect width="200" height="92" rx="10" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.8"/>
+            <rect x="0" y="0" width="200" height="22" rx="10" fill="#1d4ed8"/>
+            <rect x="0" y="11" width="200" height="11" fill="#1d4ed8"/>
+            <text x="100" y="15" text-anchor="middle" font-size="8.5" font-weight="700" fill="#ffffff">SYSTEM PROCESS 0.0</text>
+            <text x="100" y="42" text-anchor="middle" font-size="10" font-weight="800" fill="#0f172a">Drone-to-3D Walkable</text>
+            <text x="100" y="56" text-anchor="middle" font-size="10" font-weight="800" fill="#0f172a">Mesh System</text>
+            <text x="100" y="74" text-anchor="middle" font-size="7.5" fill="#475569">(SfM + 3DGS + Physics Engine)</text>
+          </g>
+
+          <!-- External Entity: Client Viewer -->
+          <g transform="translate(530, 36)">
+            <rect width="135" height="46" rx="4" fill="#f8fafc" stroke="#1e293b" stroke-width="1.3"/>
+            <text x="67" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="#0f172a">EXTERNAL ENTITY</text>
+            <text x="67" y="34" text-anchor="middle" font-size="8.5" font-weight="600" fill="#1d4ed8">Web Browser Client</text>
+          </g>
+
+          <!-- Clean Horizontal / Right-Angle Flow Lines -->
+          <line x1="150" y1="31" x2="243" y2="44" stroke="#1d4ed8" stroke-width="1.3" marker-end="url(#arr-blue0)"/>
+          <text x="195" y="30" text-anchor="middle" font-size="7.2" font-weight="600" fill="#1e293b">Video (.mp4)</text>
+
+          <line x1="150" y1="89" x2="243" y2="76" stroke="#1d4ed8" stroke-width="1.3" marker-end="url(#arr-blue0)"/>
+          <text x="195" y="93" text-anchor="middle" font-size="7.2" font-weight="600" fill="#1e293b">Presets &amp; Anchors</text>
+
+          <line x1="445" y1="46" x2="528" y2="50" stroke="#1d4ed8" stroke-width="1.3" marker-end="url(#arr-blue0)"/>
+          <text x="487" y="41" text-anchor="middle" font-size="7.2" font-weight="600" fill="#1e293b">Walkable 3D Model</text>
+
+          <line x1="445" y1="72" x2="528" y2="69" stroke="#059669" stroke-width="1.3" marker-end="url(#arr-green0)"/>
+          <text x="487" y="82" text-anchor="middle" font-size="7.2" font-weight="600" fill="#059669">Safety Receipt</text>
+        </svg>
+        <div class="diagram-caption">Figure 2.1: DFD Level 0 — System Context Architecture</div>
+      </div>
+
+      <!-- 2.2 DFD LEVEL 1: CLEAN 3-PHASE RE-ENGINEERED FLOW -->
+      <h3 class="sub-title">2.2 DFD Level 1 — Pipeline Data Flow</h3>
+      <p>
+        The Level 1 diagram traces data sequentially through all 6 pipeline processes and 5 local stores with clean, non-crossing orthogonal connections.
+      </p>
+
+      <div class="diagram-card">
+        <svg class="diagram" viewBox="0 0 680 185" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr-dfd1-clean" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#1d4ed8"/>
+            </marker>
+            <marker id="arr-dfd1-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669"/>
+            </marker>
+          </defs>
+
+          <!-- TIER 1: Ingestion to Camera Pose Estimation (Left to Right) -->
+          <!-- Process 1.0 -->
+          <g transform="translate(10, 15)">
+            <rect width="120" height="42" rx="4" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+            <text x="60" y="15" text-anchor="middle" font-size="7.2" font-weight="700" fill="#1d4ed8">1.0 KEYFRAME FILTER</text>
+            <text x="60" y="28" text-anchor="middle" font-size="7.8" font-weight="700" fill="#0f172a">Laplacian Blur Cut</text>
+            <text x="60" y="38" text-anchor="middle" font-size="6.8" fill="#64748b">Drops blurry frames</text>
+          </g>
+
+          <!-- Store D1: Sharp Frames -->
+          <g transform="translate(165, 15)">
+            <path d="M 105,0 L 0,0 L 0,42 L 105,42" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="8" y="16" font-size="7.5" font-weight="700" fill="#1d4ed8">D1</text>
+            <text x="26" y="16" font-size="7.5" font-weight="600" fill="#0f172a">Sharp Keyframes</text>
+            <text x="26" y="28" font-size="6.8" fill="#64748b">images/*.jpg</text>
+            <text x="26" y="38" font-size="6.8" fill="#64748b">&ge;70% overlap</text>
+          </g>
+
+          <!-- Process 2.0: COLMAP SfM -->
+          <g transform="translate(305, 15)">
+            <rect width="130" height="42" rx="4" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+            <text x="65" y="15" text-anchor="middle" font-size="7.2" font-weight="700" fill="#1d4ed8">2.0 SFM CAMERA SOLVE</text>
+            <text x="65" y="28" text-anchor="middle" font-size="7.8" font-weight="700" fill="#0f172a">COLMAP Pose Solver</text>
+            <text x="65" y="38" text-anchor="middle" font-size="6.8" fill="#64748b">Matches SIFT features</text>
+          </g>
+
+          <!-- Store D2: Pose DB -->
+          <g transform="translate(470, 15)">
+            <path d="M 110,0 L 0,0 L 0,42 L 110,42" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="8" y="16" font-size="7.5" font-weight="700" fill="#1d4ed8">D2</text>
+            <text x="26" y="16" font-size="7.5" font-weight="600" fill="#0f172a">Camera 3D Poses</text>
+            <text x="26" y="28" font-size="6.8" fill="#64748b">sparse/0 database</text>
+            <text x="26" y="38" font-size="6.8" fill="#64748b">6-DoF trajectory</text>
+          </g>
+
+          <!-- Connecting Arrows for Tier 1 -->
+          <line x1="130" y1="36" x2="163" y2="36" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+          <line x1="270" y1="36" x2="303" y2="36" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+          <line x1="435" y1="36" x2="468" y2="36" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+
+          <!-- Clean Turn: D2 down to Process 3.0 -->
+          <path d="M 525,57 L 525,75 L 142,75 L 142,88" fill="none" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+
+          <!-- TIER 2: 3D Splatting & Metric Scaling -->
+          <!-- Process 3.0: 3DGS Training -->
+          <g transform="translate(80, 90)">
+            <rect width="125" height="42" rx="4" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+            <text x="62" y="15" text-anchor="middle" font-size="7.2" font-weight="700" fill="#1d4ed8">3.0 SPLAT TRAINING</text>
+            <text x="62" y="28" text-anchor="middle" font-size="7.8" font-weight="700" fill="#0f172a">Train 3D Radiance</text>
+            <text x="62" y="38" text-anchor="middle" font-size="6.8" fill="#64748b">Cap at 5.8GB VRAM</text>
+          </g>
+
+          <!-- Store D3: Splat Model Store -->
+          <g transform="translate(235, 90)">
+            <path d="M 115,0 L 0,0 L 0,42 L 115,42" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="8" y="16" font-size="7.5" font-weight="700" fill="#1d4ed8">D3</text>
+            <text x="26" y="16" font-size="7.5" font-weight="600" fill="#0f172a">Trained 3D Splats</text>
+            <text x="26" y="28" font-size="6.8" fill="#64748b">splat.ply file</text>
+            <text x="26" y="38" font-size="6.8" fill="#64748b">Checkpoint backups</text>
+          </g>
+
+          <!-- Process 4.0: Metric Framing -->
+          <g transform="translate(380, 90)">
+            <rect width="125" height="42" rx="4" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+            <text x="62" y="15" text-anchor="middle" font-size="7.2" font-weight="700" fill="#1d4ed8">4.0 METRIC SCALING</text>
+            <text x="62" y="28" text-anchor="middle" font-size="7.8" font-weight="700" fill="#0f172a">Find Scale &amp; Floor</text>
+            <text x="62" y="38" text-anchor="middle" font-size="6.8" fill="#64748b">Speed / Height Anchors</text>
+          </g>
+
+          <!-- Process 5.0: Physics Meshing -->
+          <g transform="translate(535, 90)">
+            <rect width="135" height="42" rx="4" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+            <text x="67" y="15" text-anchor="middle" font-size="7.2" font-weight="700" fill="#1d4ed8">5.0 PHYSICS MESHING</text>
+            <text x="67" y="28" text-anchor="middle" font-size="7.8" font-weight="700" fill="#0f172a">Build Floor &amp; Walls</text>
+            <text x="67" y="38" text-anchor="middle" font-size="6.8" fill="#64748b">0.35m Voxel Colliders</text>
+          </g>
+
+          <!-- Connecting Arrows for Tier 2 -->
+          <line x1="205" y1="111" x2="233" y2="111" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+          <line x1="350" y1="111" x2="378" y2="111" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+          <line x1="505" y1="111" x2="533" y2="111" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+
+          <!-- Clean Turn: 5.0 down to Store D4 -->
+          <path d="M 602,132 L 602,148 L 575,148" fill="none" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+
+          <!-- TIER 3: Quality Gate, Verification & Browser Viewer -->
+          <!-- Store D4: Physics Mesh -->
+          <g transform="translate(450, 142)">
+            <path d="M 120,0 L 0,0 L 0,38 L 120,38" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="6" y="14" font-size="7.5" font-weight="700" fill="#1d4ed8">D4</text>
+            <text x="24" y="14" font-size="7.5" font-weight="600" fill="#0f172a">Physics Collision Mesh</text>
+            <text x="24" y="26" font-size="6.8" fill="#64748b">collision.obj, ground.bin</text>
+          </g>
+
+          <!-- Process 6.0: Quality Gate & Test -->
+          <g transform="translate(230, 140)">
+            <rect width="180" height="42" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.4"/>
+            <text x="90" y="14" text-anchor="middle" font-size="7.5" font-weight="700" fill="#059669">6.0 QUALITY GATE &amp; TEST</text>
+            <text x="90" y="27" text-anchor="middle" font-size="8.2" font-weight="700" fill="#065f46">11-Rule Gate &amp; Robot Walk</text>
+            <text x="90" y="38" text-anchor="middle" font-size="6.8" fill="#047857">Autonomous 10m traversal proof</text>
+          </g>
+
+          <!-- Store D5: Verification Receipt -->
+          <g transform="translate(25, 142)">
+            <path d="M 140,0 L 0,0 L 0,38 L 140,38" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="6" y="14" font-size="7.5" font-weight="700" fill="#1d4ed8">D5</text>
+            <text x="24" y="14" font-size="7.5" font-weight="600" fill="#0f172a">Verified Safety Receipt</text>
+            <text x="24" y="26" font-size="6.8" fill="#64748b">gate-receipt.json, logs/*.log</text>
+          </g>
+
+          <!-- Connecting Arrows for Tier 3 -->
+          <line x1="450" y1="161" x2="413" y2="161" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr-dfd1-clean)"/>
+          <line x1="230" y1="161" x2="167" y2="161" stroke="#059669" stroke-width="1.2" marker-end="url(#arr-dfd1-green)"/>
+        </svg>
+        <div class="diagram-caption">Figure 2.2: DFD Level 1 — Core Processing Steps &amp; Data Stores</div>
+      </div>
+
+      <!-- 2.3 DFD LEVEL 2: DETAILED SUB-PROCESS -->
+      <h3 class="sub-title">2.3 DFD Level 2 — Detailed Floor Building &amp; Safety Verification</h3>
+      <p>
+        The Level 2 diagram zooms into the ground extraction sub-process: fitting flat ground, generating candidate surfaces, picking the easiest walking route, and verifying the result with a robot character.
+      </p>
+
+      <div class="diagram-card">
+        <svg class="diagram" viewBox="0 0 680 115" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arr2-clean" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#1d4ed8"/>
+            </marker>
+          </defs>
+
+          <!-- Input -->
+          <g transform="translate(10, 34)">
+            <rect width="90" height="44" rx="4" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+            <text x="45" y="17" text-anchor="middle" font-size="7.2" font-weight="700" fill="#0f172a">From Store D3</text>
+            <text x="45" y="30" text-anchor="middle" font-size="7.5" font-weight="600" fill="#1d4ed8">splat.ply Cloud</text>
+          </g>
+
+          <!-- Sub-process 4.1 -->
+          <g transform="translate(125, 30)">
+            <rect width="115" height="52" rx="5" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.3"/>
+            <text x="57" y="14" text-anchor="middle" font-size="7" font-weight="700" fill="#1d4ed8">4.1 FIND GROUND</text>
+            <text x="57" y="28" text-anchor="middle" font-size="7.5" font-weight="700" fill="#0f172a">Calculate Ground</text>
+            <text x="57" y="42" text-anchor="middle" font-size="6.5" fill="#64748b">Fit Plane &amp; Speed Scale</text>
+          </g>
+
+          <!-- Candidate A: Shell -->
+          <g transform="translate(265, 8)">
+            <rect width="125" height="44" rx="4" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+            <text x="62" y="14" text-anchor="middle" font-size="6.8" font-weight="700" fill="#1d4ed8">5.1 VOXEL SHELL</text>
+            <text x="62" y="27" text-anchor="middle" font-size="7.2" font-weight="700" fill="#0f172a">Solid 3D Voxel Boxes</text>
+            <text x="62" y="38" text-anchor="middle" font-size="6.2" fill="#64748b">Exact Obstacle Barriers</text>
+          </g>
+
+          <!-- Candidate B: Heightfield -->
+          <g transform="translate(265, 62)">
+            <rect width="125" height="44" rx="4" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.2"/>
+            <text x="62" y="14" text-anchor="middle" font-size="6.8" font-weight="700" fill="#1d4ed8">5.2 HEIGHTFIELD</text>
+            <text x="62" y="27" text-anchor="middle" font-size="7.2" font-weight="700" fill="#0f172a">Smooth Terrain Grid</text>
+            <text x="62" y="38" text-anchor="middle" font-size="6.2" fill="#64748b">Interpolated Walk Floor</text>
+          </g>
+
+          <!-- Decision: Best Ground Chooser -->
+          <g transform="translate(418, 31)">
+            <polygon points="46,0 92,26 46,52 0,26" fill="#fef3c7" stroke="#d97706" stroke-width="1.3"/>
+            <text x="46" y="21" text-anchor="middle" font-size="6.8" font-weight="700" fill="#92400e">5.3 TEST &amp; PICK</text>
+            <text x="46" y="33" text-anchor="middle" font-size="6.8" font-weight="700" fill="#92400e">EASIEST FLOOR</text>
+          </g>
+
+          <!-- Quality Gate -->
+          <g transform="translate(535, 29)">
+            <rect width="135" height="54" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.4"/>
+            <text x="67" y="15" text-anchor="middle" font-size="7" font-weight="700" fill="#059669">6.1 11-RULE GATE</text>
+            <text x="67" y="30" text-anchor="middle" font-size="7.8" font-weight="700" fill="#065f46">Robot Walk Proof</text>
+            <text x="67" y="44" text-anchor="middle" font-size="6.5" fill="#047857">Walk 10m with 0 Falls</text>
+          </g>
+
+          <!-- Connectors -->
+          <line x1="100" y1="56" x2="123" y2="56" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr2-clean)"/>
+          <path d="M 240,46 L 252,46 L 252,30 L 263,30" fill="none" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr2-clean)"/>
+          <path d="M 240,66 L 252,66 L 252,84 L 263,84" fill="none" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr2-clean)"/>
+          <path d="M 390,30 L 404,30 L 404,47 L 416,47" fill="none" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr2-clean)"/>
+          <path d="M 390,84 L 404,84 L 404,65 L 416,65" fill="none" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arr2-clean)"/>
+          <line x1="510" y1="56" x2="533" y2="56" stroke="#059669" stroke-width="1.4" marker-end="url(#arr2-clean)"/>
+        </svg>
+        <div class="diagram-caption">Figure 2.3: DFD Level 2 — Ground Selection &amp; Robot Walk Test</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- =========================================================================
+       PAGE 3: CLASS DIAGRAM & OBJECT DICTIONARY
+       ========================================================================= -->
+  <div class="page-sheet" id="page-3">
+    <section>
+      <h2 class="section-title">
+        <span>3. Object-Oriented Class Diagram</span>
+        <span style="font-size: 7.2pt; font-weight: normal; opacity: 0.9;">UML 2.5 Architecture</span>
+      </h2>
+
+      <p style="margin-bottom: 5px;">
+        The Class Diagram models the software architecture. Classes are organized with clear attributes, private/public methods, and standard UML composition relationships (filled diamonds) and associations.
+      </p>
+
+      <div class="diagram-card" style="padding: 7px 9px;">
+        <svg class="diagram" viewBox="0 0 680 315" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="comp-diamond-clean" viewBox="0 0 12 12" refX="1" refY="6" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M 1 6 L 6 1 L 11 6 L 6 11 z" fill="#0f172a" stroke="#0f172a"/>
+            </marker>
+            <marker id="assoc-arrow-clean" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 2 L 8 5 L 0 8" fill="none" stroke="#1e293b" stroke-width="1.3"/>
+            </marker>
+          </defs>
+
+          <!-- Central Controller -->
+          <g transform="translate(225, 8)">
+            <rect width="230" height="92" rx="3" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+            <rect width="230" height="20" fill="#0f172a"/>
+            <text x="115" y="14" text-anchor="middle" font-size="8.8" font-weight="700" fill="#ffffff">PipelineController</text>
+            <text x="8" y="34" font-size="7.2" font-family="monospace" fill="#1e293b">- scene_name: String</text>
+            <text x="8" y="45" font-size="7.2" font-family="monospace" fill="#1e293b">- preset_mode: PresetConfig</text>
+            <text x="8" y="56" font-size="7.2" font-family="monospace" fill="#1e293b">- max_vram_limit_gb: Float = 5.8</text>
+            <line x1="0" y1="62" x2="230" y2="62" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="8" y="74" font-size="7.2" font-family="monospace" fill="#1e293b">+ run_full_reconstruction(): Bool</text>
+            <text x="8" y="85" font-size="7.2" font-family="monospace" fill="#1e293b">+ resume_from_last_checkpoint(): Void</text>
+          </g>
+
+          <!-- Class 1: KeyframeSelector -->
+          <g transform="translate(10, 12)">
+            <rect width="190" height="85" rx="3" fill="#ffffff" stroke="#1e293b" stroke-width="1.2"/>
+            <rect width="190" height="19" fill="#f8fafc"/>
+            <text x="95" y="13" text-anchor="middle" font-size="8.2" font-weight="700" fill="#0f172a">KeyframeSelector</text>
+            <line x1="0" y1="19" x2="190" y2="19" stroke="#1e293b" stroke-width="1"/>
+            <text x="8" y="33" font-size="7.2" font-family="monospace" fill="#1e293b">- blur_threshold: Float</text>
+            <text x="8" y="44" font-size="7.2" font-family="monospace" fill="#1e293b">- min_overlap_ratio: Float = 0.70</text>
+            <line x1="0" y1="50" x2="190" y2="50" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="8" y="63" font-size="7.2" font-family="monospace" fill="#1e293b">+ discard_blurry_frames()</text>
+            <text x="8" y="75" font-size="7.2" font-family="monospace" fill="#1e293b">+ pick_overlapping_photos()</text>
+          </g>
+
+          <!-- Class 2: COLMAPRunner -->
+          <g transform="translate(10, 120)">
+            <rect width="190" height="90" rx="3" fill="#ffffff" stroke="#1e293b" stroke-width="1.2"/>
+            <rect width="190" height="19" fill="#f8fafc"/>
+            <text x="95" y="13" text-anchor="middle" font-size="8.2" font-weight="700" fill="#0f172a">COLMAPRunner (SfM)</text>
+            <line x1="0" y1="19" x2="190" y2="19" stroke="#1e293b" stroke-width="1"/>
+            <text x="8" y="33" font-size="7.2" font-family="monospace" fill="#1e293b">- registered_views: Int</text>
+            <text x="8" y="44" font-size="7.2" font-family="monospace" fill="#1e293b">- rescue_ladder_active: Bool</text>
+            <line x1="0" y1="50" x2="190" y2="50" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="8" y="63" font-size="7.2" font-family="monospace" fill="#1e293b">+ match_feature_points()</text>
+            <text x="8" y="74" font-size="7.2" font-family="monospace" fill="#1e293b">+ calculate_camera_positions()</text>
+            <text x="8" y="85" font-size="7.2" font-family="monospace" fill="#1e293b">+ run_rescue_if_lost()</text>
+          </g>
+
+          <!-- Class 3: SplatTrainer -->
+          <g transform="translate(480, 12)">
+            <rect width="190" height="85" rx="3" fill="#ffffff" stroke="#1e293b" stroke-width="1.2"/>
+            <rect width="190" height="19" fill="#f8fafc"/>
+            <text x="95" y="13" text-anchor="middle" font-size="8.2" font-weight="700" fill="#0f172a">SplatTrainer (3DGS)</text>
+            <line x1="0" y1="19" x2="190" y2="19" stroke="#1e293b" stroke-width="1"/>
+            <text x="8" y="33" font-size="7.2" font-family="monospace" fill="#1e293b">- max_splats: Int = 350000</text>
+            <text x="8" y="44" font-size="7.2" font-family="monospace" fill="#1e293b">- iterations: Int = 12000</text>
+            <line x1="0" y1="50" x2="190" y2="50" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="8" y="63" font-size="7.2" font-family="monospace" fill="#1e293b">+ train_radiance_field()</text>
+            <text x="8" y="75" font-size="7.2" font-family="monospace" fill="#1e293b">+ guard_vram_limit()</text>
+          </g>
+
+          <!-- Class 4: SpatialFramer & Collider -->
+          <g transform="translate(480, 120)">
+            <rect width="190" height="90" rx="3" fill="#ffffff" stroke="#1e293b" stroke-width="1.2"/>
+            <rect width="190" height="19" fill="#f8fafc"/>
+            <text x="95" y="13" text-anchor="middle" font-size="8.2" font-weight="700" fill="#0f172a">SpatialFramer &amp; Collider</text>
+            <line x1="0" y1="19" x2="190" y2="19" stroke="#1e293b" stroke-width="1"/>
+            <text x="8" y="33" font-size="7.2" font-family="monospace" fill="#1e293b">- metric_scale_factor: Float</text>
+            <text x="8" y="44" font-size="7.2" font-family="monospace" fill="#1e293b">- voxel_size: Float = 0.35</text>
+            <line x1="0" y1="50" x2="190" y2="50" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="8" y="63" font-size="7.2" font-family="monospace" fill="#1e293b">+ convert_to_real_meters()</text>
+            <text x="8" y="74" font-size="7.2" font-family="monospace" fill="#1e293b">+ build_collision_mesh()</text>
+            <text x="8" y="85" font-size="7.2" font-family="monospace" fill="#1e293b">+ select_best_floor()</text>
+          </g>
+
+          <!-- Class 5: QualityGate & Autopilot -->
+          <g transform="translate(225, 128)">
+            <rect width="230" height="90" rx="3" fill="#ffffff" stroke="#059669" stroke-width="1.4"/>
+            <rect width="230" height="19" fill="#ecfdf5"/>
+            <text x="115" y="13" text-anchor="middle" font-size="8.2" font-weight="700" fill="#059669">QualityGate &amp; Autopilot</text>
+            <line x1="0" y1="19" x2="230" y2="19" stroke="#059669" stroke-width="1"/>
+            <text x="8" y="33" font-size="7.2" font-family="monospace" fill="#1e293b">- safety_rules: Assertion[11]</text>
+            <text x="8" y="44" font-size="7.2" font-family="monospace" fill="#1e293b">- min_walk_meters: Float = 10.0</text>
+            <line x1="0" y1="50" x2="230" y2="50" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="8" y="63" font-size="7.2" font-family="monospace" fill="#1e293b">+ verify_11_safety_rules(): Bool</text>
+            <text x="8" y="74" font-size="7.2" font-family="monospace" fill="#1e293b">+ simulate_robot_walk(): WalkLog</text>
+            <text x="8" y="85" font-size="7.2" font-family="monospace" fill="#1e293b">+ issue_safety_certificate()</text>
+          </g>
+
+          <!-- Class 6: PlayCanvasViewerBridge -->
+          <g transform="translate(225, 238)">
+            <rect width="230" height="66" rx="3" fill="#ffffff" stroke="#1e293b" stroke-width="1.2"/>
+            <rect width="230" height="17" fill="#f8fafc"/>
+            <text x="115" y="12" text-anchor="middle" font-size="8.2" font-weight="700" fill="#0f172a">PlayCanvasViewerBridge</text>
+            <line x1="0" y1="17" x2="230" y2="17" stroke="#1e293b" stroke-width="1"/>
+            <text x="8" y="31" font-size="7.2" font-family="monospace" fill="#1e293b">- browser_url: http://localhost:8137</text>
+            <line x1="0" y1="36" x2="230" y2="36" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="8" y="47" font-size="7.2" font-family="monospace" fill="#1e293b">+ bundle_html_viewer_assets()</text>
+            <text x="8" y="58" font-size="7.2" font-family="monospace" fill="#1e293b">+ spawn_playable_third_person()</text>
+          </g>
+
+          <!-- Composition Diamonds & Connections -->
+          <line x1="225" y1="42" x2="200" y2="42" stroke="#0f172a" stroke-width="1.2" marker-start="url(#comp-diamond-clean)"/>
+          <line x1="455" y1="42" x2="480" y2="42" stroke="#0f172a" stroke-width="1.2" marker-start="url(#comp-diamond-clean)"/>
+          <path d="M 225,75 L 205,75 L 205,160 L 200,160" fill="none" stroke="#0f172a" stroke-width="1.2" marker-start="url(#comp-diamond-clean)"/>
+          <path d="M 455,75 L 470,75 L 470,160 L 480,160" fill="none" stroke="#0f172a" stroke-width="1.2" marker-start="url(#comp-diamond-clean)"/>
+          <line x1="340" y1="100" x2="340" y2="128" stroke="#059669" stroke-width="1.3" marker-start="url(#comp-diamond-clean)"/>
+          <line x1="340" y1="218" x2="340" y2="238" stroke="#1d4ed8" stroke-width="1.3" marker-end="url(#assoc-arrow-clean)"/>
+        </svg>
+        <div class="diagram-caption">Figure 3.1: Object-Oriented Class Architecture &amp; Component Relations</div>
+      </div>
+
+      <!-- Plain-English Class Dictionary -->
+      <h3 class="sub-title">3.1 Class Responsibilities &amp; Collaboration Dictionary</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width: 26%;">Class Name</th>
+            <th style="width: 44%;">Core Role &amp; Implementation Responsibility</th>
+            <th style="width: 30%;">Direct Collaborators</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>PipelineController</strong></td>
+            <td>Master orchestrator. Controls stage dependencies, checks resumability from logs, and catches hardware aborts.</td>
+            <td>Orchestrates all 5 worker classes.</td>
+          </tr>
+          <tr>
+            <td><strong>KeyframeSelector</strong></td>
+            <td>Pre-processing module. Computes Laplacian variance blur scores and decimates frames while maintaining ≥70% visual overlap.</td>
+            <td>Outputs keyframe directory to <code>COLMAPRunner</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>COLMAPRunner</strong></td>
+            <td>Structure-from-Motion engine. Matches feature points, runs bundle adjustment, and triggers rescue ladders if camera solving diverges.</td>
+            <td>Delivers camera poses to <code>SplatTrainer</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>SplatTrainer</strong></td>
+            <td>Neural radiance field trainer (gsplat). Densifies and prunes 3D Gaussians while actively monitoring the 6GB VRAM memory ceiling.</td>
+            <td>Exports <code>splat.ply</code> to <code>SpatialFramer</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>SpatialFramer &amp; Collider</strong></td>
+            <td>Geometry engine. Fits the ground plane, applies speed/height anchors for metric scaling, and extrudes solid voxel collision shells.</td>
+            <td>Feeds collision mesh to <code>QualityGate</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>QualityGate &amp; Autopilot</strong></td>
+            <td>Verification test harness. Tests 11 assertions and drives a headless kinematic capsule character 10m to prove walkability.</td>
+            <td>Authorizes output release to <code>PlayCanvasViewerBridge</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <!-- =========================================================================
+       PAGE 4: UML BEHAVIORAL DIAGRAMS (USE CASE, SEQUENCE, ACTIVITY)
+       ========================================================================= -->
+  <div class="page-sheet" id="page-4">
+    <section>
+      <h2 class="section-title">
+        <span>4. Unified Modeling Language (UML) Diagrams</span>
+        <span style="font-size: 7.2pt; font-weight: normal; opacity: 0.9;">Behavioral &amp; Interaction Models</span>
+      </h2>
+
+      <!-- Side-by-side grid for Use Case and Sequence -->
+      <div class="grid-2col">
+        <!-- 4.1 USE CASE DIAGRAM -->
+        <div class="diagram-card">
+          <h3 class="sub-title" style="margin-top: 1px;">4.1 UML Use Case Diagram</h3>
+          <svg class="diagram" viewBox="0 0 320 140" xmlns="http://www.w3.org/2000/svg">
+            <!-- Boundary -->
+            <rect x="70" y="5" width="180" height="130" rx="6" fill="#f8fafc" stroke="#64748b" stroke-width="1" stroke-dasharray="3,2"/>
+            <text x="160" y="15" text-anchor="middle" font-size="6.5" font-weight="700" fill="#0f172a">Drone-to-3D Walkable Engine</text>
+
+            <!-- Actor: Pilot / Operator -->
+            <g transform="translate(10, 18)">
+              <circle cx="18" cy="12" r="8" fill="#fff" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="18" y1="20" x2="18" y2="40" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="7" y1="28" x2="29" y2="28" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="18" y1="40" x2="9" y2="58" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="18" y1="40" x2="27" y2="58" stroke="#0f172a" stroke-width="1.3"/>
+              <text x="18" y="70" text-anchor="middle" font-size="7" font-weight="700">Drone Pilot /</text>
+              <text x="18" y="80" text-anchor="middle" font-size="7" font-weight="700">Student</text>
+            </g>
+
+            <!-- Actor: Web Viewer -->
+            <g transform="translate(270, 38)">
+              <circle cx="18" cy="12" r="8" fill="#fff" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="18" y1="20" x2="18" y2="40" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="7" y1="28" x2="29" y2="28" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="18" y1="40" x2="9" y2="58" stroke="#0f172a" stroke-width="1.3"/>
+              <line x1="18" y1="40" x2="27" y2="58" stroke="#0f172a" stroke-width="1.3"/>
+              <text x="18" y="70" text-anchor="middle" font-size="7" font-weight="700">Web Player /</text>
+              <text x="18" y="80" text-anchor="middle" font-size="7" font-weight="700">Evaluator</text>
+            </g>
+
+            <!-- Use Cases -->
+            <ellipse cx="130" cy="30" rx="48" ry="11" fill="#fff" stroke="#1d4ed8" stroke-width="1"/>
+            <text x="130" y="33" text-anchor="middle" font-size="5.8" font-weight="600">Record &amp; Ingest Video</text>
+
+            <ellipse cx="195" cy="52" rx="46" ry="11" fill="#fff" stroke="#1d4ed8" stroke-width="1"/>
+            <text x="195" y="55" text-anchor="middle" font-size="5.8" font-weight="600">Auto-Detect Preset</text>
+
+            <ellipse cx="130" cy="74" rx="48" ry="11" fill="#fff" stroke="#1d4ed8" stroke-width="1"/>
+            <text x="130" y="77" text-anchor="middle" font-size="5.8" font-weight="600">Train 3D Splats &amp; Mesh</text>
+
+            <ellipse cx="130" cy="112" rx="50" ry="12" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+            <text x="130" y="115" text-anchor="middle" font-size="5.8" font-weight="700" fill="#065f46">Execute 11-Rule Gate</text>
+
+            <ellipse cx="205" cy="95" rx="40" ry="11" fill="#fff" stroke="#1d4ed8" stroke-width="1"/>
+            <text x="205" y="98" text-anchor="middle" font-size="5.8" font-weight="600">Explore 3D World</text>
+
+            <!-- Connections -->
+            <line x1="38" y1="44" x2="82" y2="32" stroke="#0f172a" stroke-width="0.9"/>
+            <line x1="38" y1="44" x2="82" y2="74" stroke="#0f172a" stroke-width="0.9"/>
+            <line x1="38" y1="44" x2="80" y2="112" stroke="#0f172a" stroke-width="0.9"/>
+            <line x1="178" y1="34" x2="195" y2="40" stroke="#64748b" stroke-width="0.8" stroke-dasharray="2,2"/>
+            <line x1="245" y1="95" x2="270" y2="66" stroke="#0f172a" stroke-width="0.9"/>
+          </svg>
+          <div class="diagram-caption">Figure 4.1: UML Use Case Interactions</div>
+        </div>
+
+        <!-- 4.2 SEQUENCE DIAGRAM -->
+        <div class="diagram-card">
+          <h3 class="sub-title" style="margin-top: 1px;">4.2 UML Sequence Diagram</h3>
+          <svg class="diagram" viewBox="0 0 330 140" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="sq-arr-clean" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#0f172a"/>
+              </marker>
+              <marker id="sq-ret-clean" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                <path d="M 0 2 L 8 5 L 0 8" fill="none" stroke="#64748b" stroke-width="1"/>
+              </marker>
+            </defs>
+
+            <!-- Lifelines -->
+            <g transform="translate(5, 5)">
+              <rect width="48" height="14" rx="2" fill="#0f172a"/>
+              <text x="24" y="10" text-anchor="middle" font-size="5.8" font-weight="700" fill="#fff">:User</text>
+              <line x1="24" y1="14" x2="24" y2="130" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="2,2"/>
+            </g>
+            <g transform="translate(70, 5)">
+              <rect width="55" height="14" rx="2" fill="#1d4ed8"/>
+              <text x="27" y="10" text-anchor="middle" font-size="5.8" font-weight="700" fill="#fff">:PipelineCtrl</text>
+              <line x1="27" y1="14" x2="27" y2="130" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="2,2"/>
+            </g>
+            <g transform="translate(145, 5)">
+              <rect width="48" height="14" rx="2" fill="#0f172a"/>
+              <text x="24" y="10" text-anchor="middle" font-size="5.8" font-weight="700" fill="#fff">:COLMAP</text>
+              <line x1="24" y1="14" x2="24" y2="130" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="2,2"/>
+            </g>
+            <g transform="translate(210, 5)">
+              <rect width="48" height="14" rx="2" fill="#0f172a"/>
+              <text x="24" y="10" text-anchor="middle" font-size="5.8" font-weight="700" fill="#fff">:Trainer</text>
+              <line x1="24" y1="14" x2="24" y2="130" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="2,2"/>
+            </g>
+            <g transform="translate(270, 5)">
+              <rect width="52" height="14" rx="2" fill="#059669"/>
+              <text x="26" y="10" text-anchor="middle" font-size="5.8" font-weight="700" fill="#fff">:QualityGate</text>
+              <line x1="26" y1="14" x2="26" y2="130" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="2,2"/>
+            </g>
+
+            <!-- Calls -->
+            <line x1="29" y1="28" x2="93" y2="28" stroke="#0f172a" stroke-width="1" marker-end="url(#sq-arr-clean)"/>
+            <text x="60" y="24" text-anchor="middle" font-size="4.8" font-weight="600">run(scene, preset)</text>
+
+            <line x1="97" y1="42" x2="165" y2="42" stroke="#0f172a" stroke-width="1" marker-end="url(#sq-arr-clean)"/>
+            <text x="131" y="38" text-anchor="middle" font-size="4.8" font-weight="600">solve_camera_angles()</text>
+
+            <rect x="135" y="48" width="60" height="16" fill="#fef2f2" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="1.5,1.5"/>
+            <text x="165" y="58" text-anchor="middle" font-size="4.2" fill="#dc2626">[Rescue Ladder if Lost]</text>
+
+            <line x1="169" y1="70" x2="99" y2="70" stroke="#64748b" stroke-width="0.8" stroke-dasharray="2,1" marker-end="url(#sq-ret-clean)"/>
+            <text x="134" y="66" text-anchor="middle" font-size="4.8" fill="#64748b">camera_poses</text>
+
+            <line x1="97" y1="84" x2="230" y2="84" stroke="#0f172a" stroke-width="1" marker-end="url(#sq-arr-clean)"/>
+            <text x="163" y="80" text-anchor="middle" font-size="4.8" font-weight="600">train_3d_splat(≤6GB VRAM)</text>
+
+            <line x1="234" y1="98" x2="99" y2="98" stroke="#64748b" stroke-width="0.8" stroke-dasharray="2,1" marker-end="url(#sq-ret-clean)"/>
+            <text x="166" y="94" text-anchor="middle" font-size="4.8" fill="#64748b">splat.ply &amp; collider</text>
+
+            <line x1="97" y1="110" x2="292" y2="110" stroke="#059669" stroke-width="1" marker-end="url(#sq-arr-clean)"/>
+            <text x="195" y="106" text-anchor="middle" font-size="4.8" font-weight="600" fill="#059669">test_robot_walk(10m)</text>
+
+            <line x1="296" y1="124" x2="31" y2="124" stroke="#059669" stroke-width="1.1" marker-end="url(#sq-arr-clean)"/>
+            <text x="160" y="120" text-anchor="middle" font-size="4.8" font-weight="700" fill="#059669">11/11 Passed! Open Web Browser</text>
+          </svg>
+          <div class="diagram-caption">Figure 4.2: UML Sequence Flow &amp; Rescue</div>
+        </div>
+      </div>
+
+      <!-- 4.3 ACTIVITY / STATE MACHINE DIAGRAM -->
+      <h3 class="sub-title">4.3 UML Activity &amp; State Machine Flowchart</h3>
+      <div class="diagram-card" style="padding: 5px 8px;">
+        <svg class="diagram" viewBox="0 0 680 70" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="act-arr-clean" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#1e293b"/>
+            </marker>
+          </defs>
+
+          <!-- Start Circle -->
+          <circle cx="18" cy="35" r="8" fill="#0f172a"/>
+
+          <!-- State 1 -->
+          <g transform="translate(42, 16)">
+            <rect width="82" height="38" rx="4" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="41" y="17" text-anchor="middle" font-size="6.8" font-weight="700">1. Ingest Video</text>
+            <text x="41" y="28" text-anchor="middle" font-size="6.2" fill="#64748b">Filter Blur Frames</text>
+          </g>
+
+          <!-- State 2 -->
+          <g transform="translate(144, 16)">
+            <rect width="88" height="38" rx="4" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="44" y="17" text-anchor="middle" font-size="6.8" font-weight="700">2. Track Cameras</text>
+            <text x="44" y="28" text-anchor="middle" font-size="6.2" fill="#64748b">Find 3D Positions</text>
+          </g>
+
+          <!-- Decision 1 -->
+          <g transform="translate(252, 21)">
+            <polygon points="18,0 36,14 18,28 0,14" fill="#fef3c7" stroke="#d97706" stroke-width="1.2"/>
+            <text x="18" y="17" text-anchor="middle" font-size="5.8" font-weight="700" fill="#92400e">&gt;90%?</text>
+          </g>
+
+          <!-- Rescue Ladder -->
+          <g transform="translate(242, 52)">
+            <rect width="58" height="15" rx="2" fill="#fef2f2" stroke="#dc2626" stroke-width="0.8"/>
+            <text x="29" y="11" text-anchor="middle" font-size="5.2" font-weight="700" fill="#dc2626">Rescue Ladder</text>
+          </g>
+
+          <!-- State 3 -->
+          <g transform="translate(315, 16)">
+            <rect width="90" height="38" rx="4" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="45" y="17" text-anchor="middle" font-size="6.8" font-weight="700">3. Train Splats</text>
+            <text x="45" y="28" text-anchor="middle" font-size="6.2" fill="#64748b">Safe ≤6GB VRAM</text>
+          </g>
+
+          <!-- State 4 -->
+          <g transform="translate(425, 16)">
+            <rect width="90" height="38" rx="4" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+            <text x="45" y="17" text-anchor="middle" font-size="6.8" font-weight="700">4. Build Floor</text>
+            <text x="45" y="28" text-anchor="middle" font-size="6.2" fill="#64748b">Physics Walls &amp; Mesh</text>
+          </g>
+
+          <!-- Decision 2 -->
+          <g transform="translate(535, 21)">
+            <polygon points="18,0 36,14 18,28 0,14" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+            <text x="18" y="17" text-anchor="middle" font-size="5.8" font-weight="700" fill="#065f46">Safe?</text>
+          </g>
+
+          <!-- State 5 -->
+          <g transform="translate(595, 16)">
+            <rect width="80" height="38" rx="4" fill="#ecfdf5" stroke="#059669" stroke-width="1.3"/>
+            <text x="40" y="17" text-anchor="middle" font-size="6.8" font-weight="700" fill="#065f46">5. Walk World</text>
+            <text x="40" y="28" text-anchor="middle" font-size="6.2" fill="#047857">Browser WebGL</text>
+          </g>
+
+          <!-- End Target -->
+          <circle cx="26" cy="35" r="8" fill="none" stroke="#0f172a" stroke-width="1.2"/>
+          <line x1="26" y1="35" x2="40" y2="35" stroke="#1e293b" stroke-width="1.2" marker-end="url(#act-arr-clean)"/>
+          <line x1="124" y1="35" x2="142" y2="35" stroke="#1e293b" stroke-width="1.2" marker-end="url(#act-arr-clean)"/>
+          <line x1="232" y1="35" x2="250" y2="35" stroke="#1e293b" stroke-width="1.2" marker-end="url(#act-arr-clean)"/>
+
+          <!-- Yes to 3DGS -->
+          <line x1="288" y1="35" x2="313" y2="35" stroke="#1e293b" stroke-width="1.2" marker-end="url(#act-arr-clean)"/>
+          <text x="299" y="30" font-size="5.2" font-weight="700" fill="#059669">[Yes]</text>
+
+          <!-- No to Rescue -->
+          <line x1="270" y1="49" x2="270" y2="51" stroke="#dc2626" stroke-width="1"/>
+          <path d="M 242,59 L 188,59 L 188,54" fill="none" stroke="#dc2626" stroke-width="0.9" stroke-dasharray="2,1" marker-end="url(#act-arr-clean)"/>
+
+          <!-- Training to Meshing -->
+          <line x1="405" y1="35" x2="423" y2="35" stroke="#1e293b" stroke-width="1.2" marker-end="url(#act-arr-clean)"/>
+          <line x1="515" y1="35" x2="533" y2="35" stroke="#1e293b" stroke-width="1.2" marker-end="url(#act-arr-clean)"/>
+
+          <!-- Gate to Finish -->
+          <line x1="571" y1="35" x2="593" y2="35" stroke="#059669" stroke-width="1.3" marker-end="url(#act-arr-clean)"/>
+          <text x="581" y="30" font-size="5.2" font-weight="700" fill="#059669">[Pass]</text>
+        </svg>
+        <div class="diagram-caption">Figure 4.3: Complete Pipeline State Machine &amp; Execution Path</div>
+      </div>
+
+      <!-- Plain English Workflow Guide -->
+      <h3 class="sub-title">4.4 Step-by-Step Pipeline Execution Summary</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width: 15%;">Stage</th>
+            <th style="width: 45%;">Internal Processing Actions</th>
+            <th style="width: 40%;">Observable User Output</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Preflight</strong></td>
+            <td>Scans video frames for motion blur and detects camera focal lengths.</td>
+            <td>Console logs: <em>"Inspecting video... Presets tuned for room capture."</em></td>
+          </tr>
+          <tr>
+            <td><strong>2. SfM Solve</strong></td>
+            <td>Extracts feature points and tracks 3D camera angles. Automatic rescue ladder kicks in if solving diverges.</td>
+            <td>Console logs: <em>"COLMAP registered 428/430 frames (99.5% success)."</em></td>
+          </tr>
+          <tr>
+            <td><strong>3. 3D Splatting</strong></td>
+            <td>Trains 350k Gaussian light ellipsoids, regularly checkpointing progress to prevent data loss.</td>
+            <td>Progress reaches 12,000 steps; VRAM consumption stays under 5.8 GB.</td>
+          </tr>
+          <tr>
+            <td><strong>4. Floor &amp; Walls</strong></td>
+            <td>Fits ground plane to true meters and extrudes collision barriers for obstacles and boundaries.</td>
+            <td>Generates solid physics mesh (<code>collision.obj</code>) and floor elevations.</td>
+          </tr>
+          <tr>
+            <td><strong>5. Robot Walk</strong></td>
+            <td>Drives a headless avatar 10 meters through the space to ensure no falls through the floor occur.</td>
+            <td>Console logs: <em>"Autopilot walk: 10.4m completed, 0 falls. Gate Passed!"</em></td>
+          </tr>
+          <tr>
+            <td><strong>6. Web 3D</strong></td>
+            <td>Launches an in-browser WebGL environment with keyboard navigation (WASD/arrows).</td>
+            <td>Automatically opens <code>http://localhost:8137</code> at a smooth 60 FPS.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+</body>
+</html>

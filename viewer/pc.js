@@ -8,6 +8,7 @@
  *   &auto=1                                   run autopilot
  *   &cams=1                                   show camera frustums by default
  *   &drone=1                                  start in drone fly mode
+ *   &embed=1                                  parent-controlled orbit workspace
  *   &combat=1                                 combat mode: bots, shooting, HUD
  *                                             (needs work/<scene>/pc/nav.json,
  *                                              baked by tools/navbake/bake.mjs)
@@ -24,6 +25,13 @@ import {
   Vec3, WasmModule, createGraphicsDevice,
 } from "playcanvas";
 import { TARGET_HEIGHT, makeCharacter } from "./pc/scripts/character.js";
+import {
+  WorkspaceProtocol, SnapshotCapture, finitePoint, boundsFromPoints, fitOrbit,
+  orbitEye, orbitFromPose, rotateOrbit, panOrbit, zoomOrbit, layerState,
+  canvasPoint, collisionSurfacePoint, appendPick, workspaceAssetPath, walkDistance,
+  measureRenderable, measureAnchor, formatMeasureLabel, measureColor,
+  placementBox, placementColor, placementLabel, MAX_PICKS,
+} from "./workspace_core.js";
 
 // Unlit material helper
 function unlitMat(r = 1, g = 1, b = 1, transparent = false, opacity = 1.0) {
@@ -39,6 +47,22 @@ function unlitMat(r = 1, g = 1, b = 1, transparent = false, opacity = 1.0) {
 }
 
 const q = new URLSearchParams(location.search);
+const EMBED = q.get("embed") === "1";
+let workspaceMode = "orbit";
+let workspaceOrbit = null;
+let workspaceCommand = null;
+let workspacePick = false;
+let workspacePickLimit = 128;
+let workspaceLookDirty = false;
+const collisionMeshEntities = new Set();
+const workspace = EMBED ? new WorkspaceProtocol({
+  parent: window.parent, origin: location.origin,
+  send: data => window.parent.postMessage(data, location.origin),
+  getState: () => ({ mode: workspaceMode, layers: workspaceLayers(), selectedFrame: selectedCamIdx }),
+  getDetails: () => ({ capabilities: workspaceCapabilities(), cameraCount: allCameras.length }),
+  execute: cmd => workspaceCommand(cmd),
+}) : null;
+if (workspace) window.addEventListener("message", event => workspace.receive(event));
 let rawAsset = q.get("asset") || "/work/room_w_jsonl/viewer_assets";
 if (!rawAsset.includes("/")) {
   rawAsset = `/work/${rawAsset}/viewer_assets`;
@@ -53,12 +77,12 @@ if (ASSET.startsWith("../")) {
 // Extract base scene work dir, e.g. "/work/room_w_jsonl"
 const WORK_DIR = ASSET.replace(/\/viewer_assets\/?$/, "");
 
-const AUTO = q.get("auto") === "1";
-const SHOOT = q.get("shoot") === "1";
-const COMBAT = q.get("combat") === "1";
+const AUTO = !EMBED && q.get("auto") === "1";
+const SHOOT = !EMBED && q.get("shoot") === "1";
+const COMBAT = !EMBED && q.get("combat") === "1";
 /** Viewer shortcuts combat replaces: R reloads, F/C would break the aiming camera. */
 const COMBAT_KEYS = ["KeyR", "KeyF", "KeyC"];
-const UNDERLAY = q.get("underlay") === "1";
+const UNDERLAY = !EMBED && q.get("underlay") === "1";
 const SINK = Number(q.get("sink") ?? 0.7);
 let combat = null;
 
@@ -78,20 +102,25 @@ const loadEl = document.getElementById("load");
 const hudEl = document.getElementById("hud");
 const setLoad = (msg, err = false) => {
   if (loadEl) {
+    if (msg && !loadEl.isConnected) document.body.appendChild(loadEl);
     loadEl.textContent = msg;
     loadEl.classList.toggle("err", err);
+    if (msg) { loadEl.style.opacity = "1"; loadEl.style.pointerEvents = "auto"; }
   }
 };
 const fail = (msg) => {
   window.__loadError = String(msg);
+  window.__ready = false;
+  workspacePick = false;
+  workspace?.fail(msg);
   setLoad("ERROR: " + msg, true);
   throw new Error(String(msg));
 };
 
 // ---------------- drone / splat / camera state ----------------
-let isDrone = q.get("drone") === "1";
+let isDrone = EMBED || q.get("drone") === "1";
 let splatVisible = true;
-let currentPly = q.get("full") === "1" ? "scene.full.ply" : (q.get("ply") || "scene.ply");
+let currentPly = q.get("full") === "1" ? "scene.full.ply" : ((!EMBED && q.get("ply")) || "scene.ply");
 const dronePos = new Vec3(0, 0, 0);
 // Fly-mode speed scales with character size so a hamster does not cross a room
 // at human flight speed and blur past every wall.
@@ -113,6 +142,7 @@ let objectBoxes = [];
 let objectsEnt = null;
 let allCameras = [];
 let allSparsePoints = null;
+let allSemantics = null;
 let allCoverageGrid = null;
 let selectedCamIdx = -1;
 
@@ -120,7 +150,33 @@ let camerasEntity = null;
 let trajectoryEntity = null;
 let selectedCamEntity = null;
 let sparsePointsEntity = null;
+let semanticsEntity = null;
+let showSemantics = false;
 let coverageGridEntity = null;
+
+function workspaceLayers() {
+  return { splats: splatVisible, cameras: showCameras, points: showPoints,
+    coverage: showCoverage, collider: showCollider, semantics: showSemantics };
+}
+function workspaceCapabilities() {
+  return { cameras: !!camerasEntity, points: !!sparsePointsEntity,
+    coverage: !!coverageGridEntity, collider: collisionMeshEntities.size > 0,
+    semantics: !!semanticsEntity };
+}
+function clearActiveKeys() {
+  for (const key of Object.keys(activeKeys)) delete activeKeys[key];
+}
+window.addEventListener("blur", clearActiveKeys);
+document.addEventListener("visibilitychange", () => { if (document.hidden) clearActiveKeys(); });
+if (EMBED) {
+  const stopOnError = event => {
+    clearActiveKeys();
+    workspacePick = false;
+    workspace.fail(event.message || event.reason?.message || event.reason || "Viewer failed");
+  };
+  window.addEventListener("error", stopOnError);
+  window.addEventListener("unhandledrejection", stopOnError);
+}
 
 window.addEventListener("keydown", (e) => {
   activeKeys[e.code] = true;
@@ -212,10 +268,11 @@ async function loadSceneData() {
 
   // Load cameras.json, sparse_points.json, coverage_grid.json in parallel
   try {
-    const [camsResp, ptsResp, covResp] = await Promise.allSettled([
+    const [camsResp, ptsResp, covResp, semResp] = await Promise.allSettled([
       fetch(`${ASSET}/cameras.json`),
       fetch(`${ASSET}/sparse_points.json`),
-      fetch(`${ASSET}/coverage_grid.json`)
+      fetch(`${ASSET}/coverage_grid.json`),
+      fetch(`${ASSET}/semantics.json`)
     ]);
     if (camsResp.status === "fulfilled" && camsResp.value.ok) {
       allCameras = await camsResp.value.json();
@@ -224,6 +281,10 @@ async function loadSceneData() {
     if (ptsResp.status === "fulfilled" && ptsResp.value.ok) {
       allSparsePoints = await ptsResp.value.json();
       console.log(`[viewer] Loaded ${allSparsePoints.count || 0} sparse tie points`);
+    }
+    if (semResp.status === "fulfilled" && semResp.value.ok) {
+      allSemantics = await semResp.value.json();
+      console.log(`[viewer] Loaded semantics (${allSemantics.counts ? Object.values(allSemantics.counts).reduce((a, b) => a + b, 0) : 0} labelled points)`);
     }
     if (covResp.status === "fulfilled" && covResp.value.ok) {
       allCoverageGrid = await covResp.value.json();
@@ -508,6 +569,27 @@ function buildSparsePointsMesh(device, data) {
   return mesh;
 }
 
+// Class-coloured semantic cloud (ground/road/building/vegetation/obstacle).
+// Same shape as the sparse points but sourced from semantics.json's coords/rgb.
+function buildSemanticsMesh(device, data) {
+  if (!data || !data.coords || !data.coords.length) return null;
+  const pts = data.coords, rgbs = data.rgb || [], n = pts.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    positions[i * 3] = pts[i][0]; positions[i * 3 + 1] = pts[i][1]; positions[i * 3 + 2] = pts[i][2];
+    const c = rgbs[i] || [200, 200, 200];
+    colors[i * 3] = Math.pow(c[0] / 255, 2.0);
+    colors[i * 3 + 1] = Math.pow(c[1] / 255, 2.0);
+    colors[i * 3 + 2] = Math.pow(c[2] / 255, 2.0);
+  }
+  const mesh = new Mesh(device);
+  mesh.setPositions(positions);
+  mesh.setColors(colors, 3);
+  mesh.update(PRIMITIVE_POINTS);
+  return mesh;
+}
+
 function buildCoverageGridMesh(device, covData) {
   if (!covData || !covData.voxels || !covData.voxels.length) return null;
   const voxels = covData.voxels;
@@ -610,6 +692,7 @@ function updateSelectedCameraMesh(device, cam) {
 // ---------------- boot ----------------
 const canvas = document.getElementById("app");
 async function boot() {
+  if (EMBED) ASSET = workspaceAssetPath(ASSET);
   window.__stage = "data";
   setLoad("Loading terrain, cameras & collision metadata…");
   const col = await loadSceneData();
@@ -638,7 +721,9 @@ async function boot() {
   window.__stage = "device";
   setLoad("Creating WebGL2 renderer…");
 
-  const device = await createGraphicsDevice(canvas, { deviceTypes: ["webgl2"], antialias: false });
+  const device = await createGraphicsDevice(canvas, {
+    deviceTypes: ["webgl2"], antialias: false, preserveDrawingBuffer: EMBED,
+  });
   const opts = new AppOptions();
   opts.graphicsDevice = device;
   opts.componentSystems = [
@@ -654,6 +739,17 @@ async function boot() {
   application.mouse = new Mouse(canvas);
   Object.assign(app, application);
   applicationRef = application;
+  if (EMBED) {
+    // The iframe changes size when the host opens drawers; no window event is required.
+    const resize = () => application.resizeCanvas();
+    const observer = new ResizeObserver(resize);
+    observer.observe(document.documentElement);
+    window.addEventListener("resize", resize);
+    application.once("destroy", () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+    });
+  }
 
   const assets = {
     splat: new Asset("splat", "gsplat", { url: `${ASSET}/${currentPly}` }),
@@ -666,10 +762,11 @@ async function boot() {
     new AssetListLoader(Object.values(assets), application.assets).load(
       (err) => (err ? reject(err) : resolve()));
   });
+  if (EMBED && !assets.splat.resource?.numSplats) throw new Error("Scene contains no Gaussian splats");
   window.__stage = "start";
   setLoad("Rendering 3D scene & camera frustums…");
 
-  application.scene.fog.type = FOG_LINEAR;
+  application.scene.fog.type = EMBED ? "none" : FOG_LINEAR;
   application.scene.fogColor = SKY.clone();
   application.scene.fogStart = 35;
   application.scene.fogEnd = 120;
@@ -695,6 +792,9 @@ async function boot() {
   colRoot.findComponents("render").forEach((render) => {
     render.entity.addComponent("rigidbody", { type: "static", friction: 0.6, restitution: 0 });
     render.entity.addComponent("collision", { type: "mesh", renderAsset: render.asset });
+    if (render.meshInstances.some(mi => mi.mesh?.primitive?.[0]?.count >= 3)) {
+      collisionMeshEntities.add(render.entity);
+    }
     render.enabled = showCollider;
     for (const mi of render.meshInstances) {
       // The component setter is not enough: a GLB's mesh instances carry their own
@@ -790,6 +890,21 @@ async function boot() {
       });
       sparsePointsEntity.enabled = showPoints;
       application.root.addChild(sparsePointsEntity);
+    }
+  }
+
+  // 4b. Semantic class overlay (off by default; a diagnostic, not the model).
+  if (allSemantics && allSemantics.coords && allSemantics.coords.length) {
+    const semMesh = buildSemanticsMesh(device, allSemantics);
+    if (semMesh) {
+      const matS = unlitMat(1, 1, 1);
+      matS.diffuseVertexColor = true;
+      matS.depthTest = false;
+      matS.update();
+      semanticsEntity = new Entity("semanticsEntity");
+      semanticsEntity.addComponent("render", { meshInstances: [new MeshInstance(semMesh, matS)] });
+      semanticsEntity.enabled = false;
+      application.root.addChild(semanticsEntity);
     }
   }
 
@@ -1007,7 +1122,7 @@ async function boot() {
   async function setSplatModel(filename) {
     if (currentPly === filename && splatEnt?.gsplat?.asset) return;
     setLoad(`Loading 3D Gaussian Splat (${filename})…`);
-    loadEl.style.opacity = "1";
+    if (loadEl) loadEl.style.opacity = "1";
     try {
       const newAsset = new Asset("splat_" + Date.now(), "gsplat", { url: `${ASSET}/${filename}` });
       await new Promise((resolve, reject) => {
@@ -1019,7 +1134,7 @@ async function boot() {
       console.error("Failed to load splat:", e);
     } finally {
       setLoad("");
-      loadEl.style.opacity = "0";
+      if (loadEl) { loadEl.style.opacity = "0"; loadEl.style.pointerEvents = "none"; }
       updateToolbarUI();
     }
   }
@@ -1055,6 +1170,10 @@ async function boot() {
 
     const cam = allCameras[idx];
     updateSelectedCameraMesh(device, cam);
+    if (EMBED) {
+      selectedCamEntity.enabled = showCameras;
+      return; // Never build legacy inspector HTML or image URLs from embedded scene metadata.
+    }
 
     const inspModal = document.getElementById("cam-inspector");
     const inspTitle = document.getElementById("insp-title");
@@ -1100,6 +1219,351 @@ async function boot() {
     cameraEnt.setPosition(cam.pos[0], cam.pos[1], cam.pos[2]);
     cameraEnt.lookAt(new Vec3(cam.pos[0] + fw[0] * 5, cam.pos[1] + fw[1] * 5, cam.pos[2] + fw[2] * 5));
   }
+
+  // ---------------- embedded workspace ----------------
+  const snapshotCapture = new SnapshotCapture((type, data) => workspace?.emit(type, data));
+  let pickPoints = [], pickLines = [];
+  const pickColor = new Color(1, 0.78, 0.24);
+  let markerSize = 0.02;
+
+  // Persistent measurement geometry + floating labels, driven by the host.
+  let renderedMeasurements = [];
+  let selectedMeasureId = null;
+  let showMeasureLabels = true;
+  let previewPoint = null;   // live cursor world point while picking
+  const labelLayer = EMBED ? Object.assign(document.createElement("div"), { id: "measure-labels" }) : null;
+  const labelEls = new Map();
+  if (labelLayer) {
+    Object.assign(labelLayer.style, { position: "absolute", inset: "0", overflow: "hidden", pointerEvents: "none", zIndex: "5", font: "500 12px system-ui, sans-serif" });
+    document.body.appendChild(labelLayer);
+  }
+  function segmentsFor(m) {
+    const r = measureRenderable(m), out = [];
+    for (let i = 0; i + 1 < r.points.length; i++) out.push(r.points[i], r.points[i + 1]);
+    return { line: out.map(p => new Vec3(p[0], p[1], p[2])), anchor: measureAnchor(m) };
+  }
+  function drawMeasurementGeometry() {
+    for (const m of renderedMeasurements) {
+      const { line } = segmentsFor(m);
+      if (line.length < 2) continue;
+      const c = measureColor(m.kind);
+      const strong = m.id === selectedMeasureId;
+      application.drawLines(line, new Color(c[0], c[1], c[2], strong ? 1 : 0.9), false);
+    }
+    // Live rubber-band from the last pick to the cursor while placing.
+    if (workspacePick && pickPoints.length && previewPoint) {
+      const last = pickPoints[pickPoints.length - 1];
+      application.drawLines([new Vec3(...last), new Vec3(...previewPoint)], new Color(1, 1, 1, 0.6), false);
+    }
+  }
+  function updateMeasureLabels() {
+    if (!labelLayer) return;
+    const cam = cameraEnt.camera, rect = canvas.getBoundingClientRect(), dpr = application.graphicsDevice.maxPixelRatio || 1;
+    const seen = new Set();
+    for (const m of renderedMeasurements) {
+      if (!showMeasureLabels) break;
+      const anchor = measureAnchor(m);
+      if (!anchor) continue;
+      const s = cam.worldToScreen(new Vec3(anchor[0], anchor[1], anchor[2]), new Vec3());
+      const x = s.x / dpr, y = s.y / dpr;   // worldToScreen is in device px from top-left
+      let el = labelEls.get(m.id);
+      if (!el) { el = document.createElement("div"); el.style.cssText = "position:absolute;transform:translate(-50%,-140%);padding:2px 7px;border-radius:5px;background:rgba(12,16,22,.86);color:#eaf1f8;border:1px solid rgba(120,150,180,.35);white-space:nowrap;backdrop-filter:blur(4px)"; labelLayer.appendChild(el); labelEls.set(m.id, el); }
+      el.textContent = formatMeasureLabel(m);
+      el.style.display = s.z > 0 ? "block" : "none";   // worldToScreen z is view distance; >0 means in front
+      el.style.left = x + "px"; el.style.top = y + "px";
+      el.style.borderColor = m.id === selectedMeasureId ? "rgb(250,170,60)" : "rgba(120,150,180,.35)";
+      seen.add(m.id);
+    }
+    for (const p of renderedPlacements) {
+      if (!showMeasureLabels) break;
+      const box = placementBox(p);
+      if (!box) continue;
+      const anchor = [box.center[0], box.center[1] + box.halfExtents[1], box.center[2]];
+      const s = cam.worldToScreen(new Vec3(anchor[0], anchor[1], anchor[2]), new Vec3());
+      const x = s.x / dpr, y = s.y / dpr;
+      const key = "p" + (p.id || x);
+      let el = labelEls.get(key);
+      if (!el) { el = document.createElement("div"); el.style.cssText = "position:absolute;transform:translate(-50%,-150%);padding:2px 7px;border-radius:5px;background:rgba(12,16,22,.86);color:#eaf1f8;border:1px solid rgba(120,150,180,.35);white-space:nowrap;backdrop-filter:blur(4px)"; labelLayer.appendChild(el); labelEls.set(key, el); }
+      el.textContent = placementLabel(p);
+      el.style.display = s.z > 0 ? "block" : "none";
+      el.style.left = x + "px"; el.style.top = y + "px";
+      const c = placementColor(p);
+      el.style.borderColor = `rgb(${c[0] * 255 | 0},${c[1] * 255 | 0},${c[2] * 255 | 0})`;
+      seen.add(key);
+    }
+    for (const [id, el] of labelEls) if (!seen.has(id)) { el.remove(); labelEls.delete(id); }
+  }
+  function setRenderedMeasurements(list) {
+    renderedMeasurements = Array.isArray(list) ? list.filter(m => m && Array.isArray(m.points)) : [];
+  }
+
+  // Placed furniture: solid two-sided boxes the walk character collides with,
+  // tinted by the backend's fit verdict. Colliders go on a compound static body
+  // exactly like detected furniture, so the same BODYMASK_STATIC rays the character
+  // and combat use will not fly through a placed sofa.
+  let renderedPlacements = [];
+  let placedRoot = null, placedMeshEnt = null, placedMat = null, placedSignature = "";
+  function buildPlacementMesh(device, placements) {
+    const positions = [], colors = [], indices = [];
+    let v = 0;
+    const quad = (a, b, c, d, col) => {
+      for (const pt of [a, b, c, d]) { positions.push(pt[0], pt[1], pt[2]); colors.push(col[0], col[1], col[2]); }
+      indices.push(v, v + 1, v + 2, v, v + 2, v + 3); v += 4;
+    };
+    for (const p of placements) {
+      const box = placementBox(p);
+      if (!box) continue;
+      const [b0, t0, b1, t1, b2, t2, b3, t3] = box.corners;
+      const c = placementColor(p);
+      quad(b0, b1, b2, b3, c); quad(t0, t1, t2, t3, c);
+      quad(b0, b1, t1, t0, c); quad(b1, b2, t2, t1, c);
+      quad(b2, b3, t3, t2, c); quad(b3, b0, t0, t3, c);
+    }
+    if (!positions.length) return null;
+    const mesh = new Mesh(device);
+    mesh.setPositions(positions);
+    mesh.setColors32(colors);
+    mesh.setIndices(indices);
+    mesh.update(PRIMITIVE_TRIANGLES);
+    return mesh;
+  }
+  function placementMaterial() {
+    if (placedMat) return placedMat;
+    const m = new StandardMaterial();
+    m.useLighting = false;
+    m.diffuseVertexColor = true;
+    m.blendType = 2;            // BLEND_NORMAL
+    m.opacity = 0.6;
+    m.depthWrite = false;
+    m.cull = 0;                 // CULL_NONE — two-sided, winding-independent
+    m.update();
+    placedMat = m;
+    return m;
+  }
+  function rebuildPlacements() {
+    if (placedRoot) { placedRoot.destroy(); placedRoot = null; }
+    if (placedMeshEnt) { placedMeshEnt.destroy(); placedMeshEnt = null; }
+    if (!renderedPlacements.length) return;
+    placedRoot = new Entity("placed");
+    placedRoot.addComponent("rigidbody", { type: "static", friction: 0.6, restitution: 0 });
+    placedRoot.addComponent("collision", { type: "compound" });
+    application.root.addChild(placedRoot);
+    for (const p of renderedPlacements) {
+      const box = placementBox(p);
+      if (!box) continue;
+      const e = new Entity();
+      e.setLocalPosition(box.center[0], box.center[1], box.center[2]);
+      e.setLocalEulerAngles(0, -box.yaw, 0);   // physics yaw sign, as detected furniture uses
+      e.addComponent("collision", { type: "box", halfExtents: new Vec3(box.halfExtents[0], box.halfExtents[1], box.halfExtents[2]) });
+      placedRoot.addChild(e);
+    }
+    const mesh = buildPlacementMesh(application.graphicsDevice, renderedPlacements);
+    if (mesh) {
+      placedMeshEnt = new Entity("placedMesh");
+      placedMeshEnt.addComponent("render", { meshInstances: [new MeshInstance(mesh, placementMaterial())] });
+      application.root.addChild(placedMeshEnt);
+    }
+    console.log(`[place] ${renderedPlacements.length} placed items, colliders on a static body`);
+  }
+  function setRenderedPlacements(list) {
+    renderedPlacements = Array.isArray(list) ? list.filter(p => p && placementBox(p)) : [];
+    // The host re-pushes the layout on every poll; only rebuild the colliders and
+    // mesh when something actually moved, or a steady view would churn entities.
+    const signature = renderedPlacements.map(p => `${p.id}:${p.center_xz[0]},${p.center_xz[1]},${p.center_y},${p.size.join("x")},${p.yaw_deg}`).join("|");
+    if (signature === placedSignature) return;
+    placedSignature = signature;
+    rebuildPlacements();
+  }
+
+  function sceneBounds() {
+    // Frame on the SUBJECT, not the cameras: the collider/ground shell is what a
+    // user measures and walks, and it is tighter than the full splat AABB (which
+    // carries distant floaters and the ground skirt that push the fit far out).
+    // Camera positions are only a last-resort fallback for a scene with no ground.
+    const corners = [];
+    colliderEnt?.findComponents("render").forEach(render => {
+      for (const mi of render.meshInstances) {
+        const lo = mi.aabb.getMin(), hi = mi.aabb.getMax();
+        corners.push([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
+      }
+    });
+    const modelBounds = boundsFromPoints(corners);
+    if (modelBounds) return modelBounds;
+    const localBox = splatEnt?.gsplat?.customAabb;
+    if (localBox) {
+      const box = new BoundingBox();
+      box.setFromTransformedAabb(localBox, splatEnt.getWorldTransform());
+      const bounds = boundsFromPoints([
+        [box.getMin().x, box.getMin().y, box.getMin().z],
+        [box.getMax().x, box.getMax().y, box.getMax().z],
+      ]);
+      if (bounds) return bounds;
+    }
+    const camFallback = boundsFromPoints(allCameras.map(cam => cam.pos));
+    if (camFallback) return camFallback;
+    if (HF) {
+      let low = Infinity, high = -Infinity;
+      for (const h of HF.data) if (Number.isFinite(h)) { low = Math.min(low, h); high = Math.max(high, h); }
+      return boundsFromPoints([[HF.ox, low, HF.oz], [HF.ox + HF.nx * HF.cell, high, HF.oz + HF.nz * HF.cell]]);
+    }
+    return null;
+  }
+
+  function syncWorkspaceFly() {
+    const eye = cameraEnt.getPosition(), f = cameraEnt.forward;
+    dronePos.copy(eye);
+    P.yaw = Math.atan2(-f.x, -f.z);
+    P.pitch = Math.asin(Math.max(-1, Math.min(1, f.y)));
+    workspaceLookDirty = false;
+  }
+  function applyWorkspaceOrbit() {
+    const eye = orbitEye(workspaceOrbit);
+    cameraEnt.setPosition(...eye);
+    cameraEnt.lookAt(new Vec3(...workspaceOrbit.target));
+    syncWorkspaceFly();
+  }
+  function setWorkspaceMode(mode) {
+    if (mode === workspaceMode) return;
+    clearActiveKeys();
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
+    if (mode === "walk") {
+      if (!workspaceCapabilities().collider || !HF) throw new Error("Walk requires a collision surface and heightfield");
+      const eye = cameraEnt.getPosition();
+      let x = eye.x, z = eye.z, hit = groundProbe(x, z);
+      if (!hit && col.spawn) { x = col.spawn.x; z = col.spawn.z; hit = groundProbe(x, z); }
+      if (!hit) throw new Error("No walkable surface near this view; fit or select another camera first");
+      syncWorkspaceFly();
+      isDrone = false;
+      P.firstPerson = true;
+      P.prev = null;
+      P.lastGood = null;
+      playerEnt.enabled = true;
+      playerRb.type = "dynamic";
+      playerRb.teleport(x, hit.point.y + CHAR_H * 0.86, z);
+      playerRb.linearVelocity = new Vec3();
+    } else {
+      syncWorkspaceFly();
+      if (mode === "orbit") {
+        const eye = cameraEnt.getPosition(), f = cameraEnt.forward;
+        workspaceOrbit = orbitFromPose([eye.x, eye.y, eye.z], [f.x, f.y, f.z], workspaceOrbit?.distance || CHAR_H * 5);
+      }
+      isDrone = true;
+      playerRb.linearVelocity = new Vec3();
+      playerRb.type = "kinematic";
+      playerEnt.enabled = false;
+    }
+    workspaceMode = mode;
+    autopilot.phase = "idle";
+  }
+  function fitWorkspace(top = false) {
+    clearActiveKeys();
+    setWorkspaceMode("orbit");
+    cameraEnt.camera.fov = 70;
+    workspaceOrbit = fitOrbit(sceneBounds(), 70, canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    // A top-down "plan" view looks almost straight down at the floor — the angle a
+    // person expects when laying out furniture — instead of the outside of the room.
+    if (top) { workspaceOrbit.yaw = 0; workspaceOrbit.pitch = 1.32; }
+    markerSize = Math.max(0.001, workspaceOrbit.distance * 0.003);
+    cameraEnt.camera.farClip = Math.max(3000, workspaceOrbit.maxDistance * 2);
+    cameraEnt.camera.nearClip = Math.min(0.08 * CHAR_SCALE, workspaceOrbit.minDistance * 0.5);
+    applyWorkspaceOrbit();
+    selectedCamIdx = -1;
+    if (selectedCamEntity) selectedCamEntity.enabled = false;
+  }
+  function setWorkspaceLayers(layer, value) {
+    const layers = layerState(workspaceLayers(), layer, value, workspaceCapabilities());
+    splatVisible = layers.splats; showCameras = layers.cameras; showPoints = layers.points;
+    showCoverage = layers.coverage; showCollider = layers.collider; showSemantics = layers.semantics;
+    splatEnt.enabled = splatVisible;
+    if (camerasEntity) camerasEntity.enabled = showCameras;
+    if (trajectoryEntity) trajectoryEntity.enabled = showCameras;
+    if (selectedCamEntity) selectedCamEntity.enabled = showCameras && selectedCamIdx >= 0;
+    if (sparsePointsEntity) sparsePointsEntity.enabled = showPoints;
+    if (semanticsEntity) semanticsEntity.enabled = showSemantics;
+    if (coverageGridEntity) coverageGridEntity.enabled = showCoverage;
+    colliderEnt?.findComponents("render").forEach(render => { render.enabled = showCollider; });
+    if (objectsEnt) objectsEnt.enabled = showCollider;
+  }
+  function frameWorkspace(index) {
+    const cam = allCameras[index];
+    if (!cam || !finitePoint(cam.pos) || !finitePoint(cam.forward) || Math.hypot(...cam.forward) === 0) {
+      throw new Error("Selected source camera is unavailable or has an invalid pose");
+    }
+    clearActiveKeys();
+    if (workspaceMode === "walk") setWorkspaceMode("fly");
+    workspaceOrbit = orbitFromPose(cam.pos, cam.forward, workspaceOrbit?.distance || CHAR_H * 5);
+    selectedCamIdx = index;
+    if (Array.isArray(cam.corners) && cam.corners.length === 4 && cam.corners.every(finitePoint) && finitePoint(cam.top_mark)) {
+      updateSelectedCameraMesh(device, cam);
+      selectedCamEntity.enabled = showCameras;
+    }
+    cameraEnt.setPosition(...cam.pos);
+    const target = new Vec3(...cam.pos).add(new Vec3(...cam.forward));
+    const up = finitePoint(cam.up) && Math.hypot(...cam.up) > 0 ? new Vec3(...cam.up) : Vec3.UP;
+    cameraEnt.lookAt(target, up);
+    if (Number.isFinite(cam.fov_y_deg) && cam.fov_y_deg > 1 && cam.fov_y_deg < 179) cameraEnt.camera.fov = cam.fov_y_deg;
+    syncWorkspaceFly();
+  }
+  function rebuildPickLines() {
+    pickLines = [];
+    for (let i = 0; i < pickPoints.length; i++) {
+      const p = pickPoints[i];
+      for (let axis = 0; axis < 3; axis++) {
+        const a = [...p], b = [...p];
+        a[axis] -= markerSize; b[axis] += markerSize;
+        pickLines.push(new Vec3(...a), new Vec3(...b));
+      }
+      if (i) pickLines.push(new Vec3(...pickPoints[i - 1]), new Vec3(...p));
+    }
+  }
+  function surfacePointAt(clientX, clientY) {
+    const xy = canvasPoint(clientX, clientY, canvas.getBoundingClientRect());
+    if (!xy) return null;
+    const camera = cameraEnt.camera;
+    const start = camera.screenToWorld(xy[0], xy[1], camera.nearClip);
+    const end = camera.screenToWorld(xy[0], xy[1], camera.farClip);
+    // Only the loaded collision mesh is measurable; splat opacity and synthesized
+    // furniture boxes are not a measured surface.
+    const hit = application.systems.rigidbody.raycastFirst(start, end, {
+      filterCollisionMask: BODYMASK_STATIC,
+      filterCallback: entity => collisionMeshEntities.has(entity),
+    });
+    return collisionSurfacePoint(hit, collisionMeshEntities);
+  }
+  function pickWorkspace(clientX, clientY) {
+    if (!workspace.ready || !workspacePick) return;
+    try {
+      const point = surfacePointAt(clientX, clientY);
+      if (!point) {
+        workspace.emit("pick-miss", { message: "No collision surface at this pixel. Splats are not a measured surface." });
+        return;
+      }
+      pickPoints = appendPick(pickPoints, point, workspacePickLimit);
+      if (pickPoints.length >= workspacePickLimit) workspacePick = false;
+      rebuildPickLines();
+      workspace.emit("pick", { point, geometry: "collision_surface" });
+    } catch (e) { workspace.emit("error", { message: e.message || String(e) }); }
+  }
+  if (EMBED) workspaceCommand = cmd => {
+    switch (cmd.command) {
+      case "mode": setWorkspaceMode(cmd.value); break;
+      case "fit": fitWorkspace(); break;
+      case "layer": setWorkspaceLayers(cmd.layer, cmd.value); break;
+      case "frame": frameWorkspace(cmd.index); break;
+      case "pick":
+        if (cmd.value && !workspaceCapabilities().collider) throw new Error("Measurement requires a collision surface");
+        workspacePickLimit = cmd.limit ?? 128;
+        workspacePick = cmd.value; break;
+      case "clear-picks": pickPoints = []; pickLines = []; previewPoint = null; break;
+      case "set-picks": pickPoints = (cmd.value || []).filter(finitePoint).slice(0, MAX_PICKS); rebuildPickLines(); break;
+      case "measurements": setRenderedMeasurements(cmd.value); break;
+      case "placements": setRenderedPlacements(cmd.value); break;
+      case "select": selectedMeasureId = typeof cmd.id === "string" ? cmd.id : null; break;
+      case "labels": showMeasureLabels = !!cmd.value; break;
+      case "view": fitWorkspace(cmd.value === "top"); break;
+      case "snapshot": snapshotCapture.request(); break;
+    }
+  };
 
   // Camera Inspector events
   document.getElementById("btn-inspect")?.addEventListener("click", () => {
@@ -1186,6 +1650,11 @@ async function boot() {
 
   // ---------------- main loop ----------------
   let frames = 0;
+  let renderedSplat = !EMBED;
+  if (EMBED) application.systems.gsplat.on("frame:ready", (camera, layer, ready, loadingCount) => {
+    // The sort worker can finish later than frame three. Do not announce a blank overview.
+    if (camera === cameraEnt.camera && ready && !loadingCount) renderedSplat = true;
+  });
   application.on("update", (dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     step(dt);
@@ -1207,6 +1676,11 @@ async function boot() {
       }
     }
 
+    if (EMBED) {
+      if (pickLines.length) application.drawLines(pickLines, pickColor, false);
+      drawMeasurementGeometry();
+      return;
+    }
     const splatLabel = splatCountLabel();
     const camStatus = showCameras ? `ON (${allCameras.length} cams)` : "OFF";
     const covStatus = allCoverageGrid ? `${allCoverageGrid.covered_pct}% cov` : "N/A";
@@ -1229,12 +1703,17 @@ async function boot() {
 
   application.on("postrender", () => {
     frames++;
-    if (frames === 3 && !window.__ready) {
+    if (frames >= 3 && renderedSplat && !window.__ready && !window.__loadError && (!EMBED || workspaceOrbit)) {
       window.__ready = true;
       setLoad("");
-      loadEl.style.opacity = "0";
-      setTimeout(() => loadEl.remove(), 500);
+      if (loadEl) {
+        loadEl.style.opacity = "0";
+        loadEl.style.pointerEvents = "none";
+        if (!EMBED) setTimeout(() => { if (!loadEl.textContent) loadEl.remove(); }, 500);
+      }
+      workspace?.markReady();
     }
+    if (workspace?.ready) { updateMeasureLabels(); snapshotCapture.postrender(() => canvas.toDataURL("image/png")); }
   });
 
   application.systems.rigidbody.gravity.set(0, -18, 0);
@@ -1244,6 +1723,10 @@ async function boot() {
   window.__setCam = (eye, target) => {
     cameraEnt.setPosition(eye[0], eye[1], eye[2]);
     cameraEnt.lookAt(new Vec3(target[0], target[1], target[2]));
+    if (EMBED) {
+      workspaceOrbit = orbitFromPose(eye, target.map((v, i) => v - eye[i]), Math.hypot(...target.map((v, i) => v - eye[i])));
+      syncWorkspaceFly();
+    }
   };
   window.__playerPos = () => {
     const p = playerEnt.getPosition();
@@ -1252,12 +1735,20 @@ async function boot() {
 
   // Pick a spawn
   window.__stage = "spawn-pick";
-  window.__chosenSpawn = await chooseSpawn(col);
+  // Workspace overview must not spend seconds walking a hidden player to score spawns.
+  window.__chosenSpawn = EMBED ? null : await chooseSpawn(col);
   window.__stage = "live";
   spawnFrom(col);
   setTimeout(() => buildUnderlay(), 500);
 
   if (isDrone) toggleDroneMode(true);
+  if (EMBED) {
+    P.firstPerson = true;
+    playerEnt.findComponents("render").forEach(render => { render.enabled = false; });
+    showCameras = showCameras && !!camerasEntity;
+    showCollider = showCollider && collisionMeshEntities.size > 0;
+    fitWorkspace();
+  }
   if (COMBAT) {
     P.firstPerson = true;
     import("./pc/scripts/combat.js")
@@ -1296,6 +1787,79 @@ async function boot() {
   updateToolbarUI();
 
   // ---------------- input handlers ----------------
+  if (EMBED) {
+    let gesture = null;
+    canvas.addEventListener("contextmenu", e => e.preventDefault());
+    canvas.addEventListener("pointerdown", e => {
+      if (!workspace.ready || (e.button !== 0 && e.button !== 2) || gesture) return;
+      e.preventDefault();
+      canvas.focus({ preventScroll: true });
+      gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY,
+        pan: e.button === 2 || e.shiftKey, button: e.button, moved: false };
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", e => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      if (Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY) > 4) gesture.moved = true;
+      if (!gesture.moved) return;
+      const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+      gesture.x = e.clientX; gesture.y = e.clientY;
+      if (workspaceMode === "orbit") {
+        workspaceOrbit = gesture.pan || e.shiftKey
+          ? panOrbit(workspaceOrbit, dx, dy, canvas.clientHeight, cameraEnt.camera.fov)
+          : rotateOrbit(workspaceOrbit, -dx * 0.005, dy * 0.005);
+        applyWorkspaceOrbit();
+      } else {
+        P.yaw -= dx * 0.0025;
+        P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch - dy * 0.0022));
+        workspaceLookDirty = true;
+      }
+    });
+    // Live rubber-band: track the cursor's surface point while placing a measurement.
+    canvas.addEventListener("pointermove", e => {
+      if (!workspacePick || gesture) return;
+      try { const p = surfacePointAt(e.clientX, e.clientY); if (p) previewPoint = p; } catch { /* ignore transient raycast errors */ }
+    });
+    canvas.addEventListener("pointerup", e => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      const click = !gesture.moved && !gesture.pan && gesture.button === 0 &&
+        Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY) <= 4;
+      gesture = null;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      if (click) pickWorkspace(e.clientX, e.clientY);
+    });
+    const cancelGesture = () => {
+      if (gesture && canvas.hasPointerCapture(gesture.id)) canvas.releasePointerCapture(gesture.id);
+      gesture = null;
+    };
+    canvas.addEventListener("pointercancel", cancelGesture);
+    canvas.addEventListener("lostpointercapture", () => { gesture = null; });
+    window.addEventListener("blur", cancelGesture);
+    canvas.addEventListener("wheel", e => {
+      e.preventDefault();
+      if (!workspace.ready || workspaceMode !== "orbit") return;
+      const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1);
+      workspaceOrbit = zoomOrbit(workspaceOrbit, delta);
+      applyWorkspaceOrbit();
+    }, { passive: false });
+    window.addEventListener("keydown", e => {
+      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+      if (e.code === "KeyR" && workspace.ready && !e.repeat) {
+        try { fitWorkspace(); workspace.state(); }
+        catch (error) { workspace.emit("error", { message: error.message }); }
+      }
+    });
+    canvas.addEventListener("webglcontextlost", e => {
+      e.preventDefault();
+      clearActiveKeys();
+      workspacePick = false;
+      window.__ready = false;
+      window.__loadError = "WebGL context lost; reload the viewer to continue";
+      workspace.fail(window.__loadError);
+      setLoad(window.__loadError, true);
+    });
+    return; // No legacy pointer lock, combat, tour, or inspector shortcuts in the workspace.
+  }
   let isDragging = false;
   let lastMouseX = 0, lastMouseY = 0;
 
@@ -1422,6 +1986,8 @@ function stepBlocked(dx, dz, pos) {
 }
 
 function step(dt) {
+  // Orbit is event-driven. Never overwrite a fitted or selected pose in the fly loop.
+  if (EMBED && (!workspace.ready || workspaceMode === "orbit")) return;
   if (SHOOT) {
     const tp0 = playerEnt.getPosition();
     const w0 = window.__walk;
@@ -1462,8 +2028,11 @@ function step(dt) {
       dronePos.z += mz * stepDist;
     }
 
-    cameraEnt.setPosition(dronePos.x, dronePos.y, dronePos.z);
-    cameraEnt.lookAt(new Vec3(dronePos.x + fx * 5, dronePos.y + fy * 5, dronePos.z + fz * 5));
+    if (!EMBED || len > 0.0001 || workspaceLookDirty) {
+      cameraEnt.setPosition(dronePos.x, dronePos.y, dronePos.z);
+      cameraEnt.lookAt(new Vec3(dronePos.x + fx * 5, dronePos.y + fy * 5, dronePos.z + fz * 5));
+      workspaceLookDirty = false;
+    }
 
     const w = window.__walk;
     w.pos = [+dronePos.x.toFixed(3), +dronePos.y.toFixed(3), +dronePos.z.toFixed(3)];
@@ -1527,10 +2096,10 @@ function step(dt) {
 
   const px = playerEnt.getPosition();
   if (P.prev !== null) {
-    // A frame that moved more than a body-length was not a step, it was a respawn
-    // teleport. Unscaled, a room-scale mover counts whole teleports as distance.
-    const jump = Math.hypot(px.x - P.prev.x, px.z - P.prev.z);
-    P.walked += (jump < 1.0 * CHAR_SCALE ? jump : 0);
+    // Count only grounded travel: a fall, a jump, the fall-recovery teleport or
+    // wall-grinding jitter is not distance walked, and summing them is what made
+    // the walk report more metres than the route actually covered.
+    P.walked += walkDistance([P.prev.x, P.prev.z], [px.x, px.z], P.grounded, 1.0 * CHAR_SCALE);
   }
   P.prev = { x: px.x, z: px.z };
 
