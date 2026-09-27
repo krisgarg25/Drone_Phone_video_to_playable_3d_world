@@ -69,6 +69,10 @@ export class Bot {
     this.deadT = 0;
     this.alive = true;
     this.stats = { shots: 0, hits: 0 };
+    // Mission rehearsal: a planned post (see mission.js botSettings). Null for arena bots.
+    this.mission = opts.mission || null;
+    this.post = this.mission ? { x: this.pos.x, y: this.pos.y, z: this.pos.z } : null;
+    this.patrolIndex = 0;
     this._buildMesh();
   }
 
@@ -298,6 +302,10 @@ export class Bot {
       default:
         break;
     }
+    if (this.mission?.stayPut && (this.state === STATE.SEARCH || this.state === STATE.RELOCATE || this.state === STATE.FLANK)) {
+      this.state = fresh < 1.2 ? STATE.ENGAGE : STATE.HOLD;
+      this.path.length = 0;          // a held post (maybe a rooftop) never walks off it
+    }
   }
 
   /** Only these states mean "walk to where the player was last seen". */
@@ -315,7 +323,8 @@ export class Bot {
     if (!this.lastKnown) return 0;
     if (now - this.lastSeen > 1.4) return 0;
     const dist = this.dist ?? Math.sqrt(this.distSq);
-    const aim = clamp(1 - (dist - 3) / 30, 0.25, 1);
+    // Arena bots are close-range fighters; a planned sniper or machine gun engages at its range.
+    const aim = clamp(1 - (dist - 3) / (this.mission?.engageRange ?? 30), 0.25, 1);
     // Winds up while it holds aim, so the first instant of contact is not the shot.
     const wound = clamp(0.35 + this.seenMs / 0.8, 0, 1);
     // How steady they hold still, not whether they shoot at all: this used to floor
@@ -350,7 +359,8 @@ export class Bot {
     // chest, and five bots killed a standing player in 0.7 s. So it grows with
     // range and with how fast the target is moving, which is the difference
     // between a firefight and an execution.
-    const err = (0.06 + this.dist * 0.02) * (1 + (player.speed ?? 0) * 0.12) / this.skill;
+    const fire = this.mission?.fire;
+    const err = (0.06 + this.dist * 0.02) * (1 + (player.speed ?? 0) * 0.12) / this.skill * (fire?.aimScale ?? 1);
     const aim = {
       x: target.x + (this.ctx.rng() - 0.5) * err * 2,
       y: target.y + (this.ctx.rng() - 0.5) * err * 1.4,
@@ -377,12 +387,15 @@ export class Bot {
     this.burst++;
     this.sinceOwnShot = 0;
     this.wantYaw = angleYaw(dx, dz);
-    if (this.burst >= 2 + Math.floor(this.ctx.rng() * 4)) {
+    // A planned post fires to its role (single aimed rounds for a sniper); arena bots keep rifle bursts.
+    const burstLen = fire ? fire.burstMin + Math.floor(this.ctx.rng() * (fire.burstMax - fire.burstMin + 1)) : 2 + Math.floor(this.ctx.rng() * 4);
+    if (this.burst >= burstLen) {
       this.burst = 0;
-      this.burstGap = 0.55 + this.ctx.rng() * (1.5 - this.skill);
+      this.burstGap = fire?.betweenS ? fire.betweenS[0] + this.ctx.rng() * (fire.betweenS[1] - fire.betweenS[0])
+        : 0.55 + this.ctx.rng() * (1.5 - this.skill);
       this.nextShot = now + this.burstGap;
     } else {
-      this.nextShot = now + 0.11 + this.ctx.rng() * 0.08;
+      this.nextShot = now + (fire?.withinS ?? 0.11) + this.ctx.rng() * 0.08;
     }
     this.awareness = 1;
   }
@@ -442,6 +455,16 @@ export class Bot {
       }
     } else if (this.pursuesLastKnown() && this.lastKnown) {
       this.routeTo(this.lastKnown.x, this.lastKnown.z);
+    } else if (this.mission && this.state === STATE.HOLD && this.ctx.now() - this.lastSeen > 6) {
+      const m = this.mission;
+      if (m.patrol) {
+        const w = m.patrol[this.patrolIndex % m.patrol.length];
+        if (Math.hypot(w[0] - this.pos.x, w[2] - this.pos.z) < 1.2) this.patrolIndex++;
+        const next = m.patrol[this.patrolIndex % m.patrol.length];
+        this.routeTo(next[0], next[2]);
+      } else if (!this.noise) {
+        this.wantYaw = m.baseYaw + m.scanAmp * Math.sin(this.ctx.now() * Math.PI * 2 / 9 + this.id);
+      }
     }
     const want = this.ctx.groundAt(this.pos.x, this.pos.z, this.ctx.nav.heightAt(this.pos.x, this.pos.z, 1.6));
     if (want !== null && isFinite(want)) {

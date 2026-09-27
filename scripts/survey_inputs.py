@@ -318,7 +318,8 @@ _IMU_HINTS = {"ax", "ay", "az", "gx", "gy", "gz", "accel_x", "gyro_x"}
 _BARO_HINTS = {"pressure_hpa", "barometric_pressure", "baro_altitude", "abs_pressure"}
 _EXTENSION_KINDS = {"gpx": {".gpx"}, "srt": {".srt"}, "dji_csv": {".csv", ".txt"},
                     "telemetry_csv": {".csv", ".jsonl"}, "imu": {".csv", ".txt"},
-                    "barometer": {".csv", ".txt"}, "unknown": set()}
+                    "barometer": {".csv", ".txt"}, "klv_ts": {".ts", ".m2ts", ".mpg", ".mpeg"},
+                    "unknown": set()}
 
 
 def _bare(cell: str) -> str:
@@ -334,6 +335,13 @@ def sniff_format(path) -> DetectedFormat:
     path = Path(path)
     if not path.is_file():
         raise ValueError(f"{path.name}: no such file")
+    with path.open("rb") as stream:
+        head = stream.read(3 * 188)
+    if len(head) >= 377 and head[0] == head[188] == head[376] == 0x47:
+        extension = path.suffix.lower()
+        return DetectedFormat(kind="klv_ts", via="content", extension=extension,
+                              extension_agrees=extension in _EXTENSION_KINDS["klv_ts"],
+                              detail="MPEG transport stream (STANAG 4609 KLV is read from it)")
     with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as stream:
         text = stream.read(_SNIFF_BYTES)
     lines = [line.strip() for line in text.splitlines()]
@@ -1040,7 +1048,15 @@ def _safe(token):
 
 # ---------------------------------------------------------------------------- dispatch
 _PARSERS = {"gpx": "parse_gpx", "srt": "parse_srt", "dji_csv": "parse_dji_csv",
-            "telemetry_csv": "parse_telemetry_csv"}
+            "telemetry_csv": "parse_telemetry_csv", "klv_ts": "parse_klv"}
+
+
+def parse_klv(path, *, horizontal_std_m: float | None = None, vertical_std_m: float | None = None,
+              strict: bool = True) -> list[dict]:
+    """MISB ST 0601 KLV from a STANAG 4609 transport stream; see survey_klv."""
+    import survey_klv
+    return survey_klv.parse_klv(path, horizontal_std_m=horizontal_std_m,
+                                vertical_std_m=vertical_std_m, strict=strict)
 
 
 def from_flight_log(path, **kwargs) -> list[dict]:
@@ -1058,7 +1074,7 @@ def from_flight_log(path, **kwargs) -> list[dict]:
         hint = {"imu": "use survey_inputs.read_imu",
                 "barometer": "use survey_inputs.read_barometer"}.get(
                     detected.kind,
-                    "recognised kinds are gpx, srt, dji_csv and telemetry_csv")
+                    "recognised kinds are gpx, srt, dji_csv, telemetry_csv and klv_ts")
         raise ValueError(f"{path.name}: unrecognised flight-log format ({detected.detail}); {hint}")
     target = globals()[name]
     accepted = set(inspect.signature(target).parameters)

@@ -26,10 +26,14 @@ try:  # imported as scripts.survey_deliver by the tests
     from scripts import survey_crs as crs
     from scripts import survey_export as exporter
     from scripts import survey_georef as georef
+    from scripts import survey_geoid as geoid
+    from scripts import survey_formats as formats
 except ImportError:  # imported flat by the workflow, which puts scripts/ on sys.path
     import survey_crs as crs
     import survey_export as exporter
     import survey_georef as georef
+    import survey_geoid as geoid
+    import survey_formats as formats
 
 # The six containers named in the problem statement, in the order it lists them.
 OFFICIAL_FORMATS = ("obj", "ply", "las", "geotiff", "glb/gltf", "fbx")
@@ -60,7 +64,13 @@ def read_mesh_ply(path):
     if all(k in vertices.dtype.names for k in ("red", "green", "blue")):
         colors = np.column_stack([vertices[k].astype(np.uint8) for k in
                                   ("red", "green", "blue")])
-    faces_raw = np.asarray(list(data["face"].data["vertex_indices"]), dtype=object)
+    # PoissonRecon names the list "vertex_indices"; COLMAP's Delaunay mesher names it
+    # "vertex_index". Both are the PLY convention, so both are read.
+    names = data["face"].data.dtype.names
+    field = next((name for name in ("vertex_indices", "vertex_index") if name in names), None)
+    if field is None:
+        raise ValueError(f"{path.name}: the face element has no vertex_indices/vertex_index list")
+    faces_raw = np.asarray(list(data["face"].data[field]), dtype=object)
     counts = {len(row) for row in faces_raw}
     if counts and counts != {3}:
         raise ValueError(f"{path.name}: faces with {sorted(counts)} corners; only triangles "
@@ -93,26 +103,43 @@ def official_ledger(manifest):
 
 
 def write_wgs84_positions(geodetic, path, *, max_rows=MAX_WGS84_ROWS):
-    """A decimated lat/lon/height table, with the decimation stated in the header."""
+    """A decimated lat/lon/height table, with the decimation stated in the header.
+
+    Both heights are written when the EGM96 grid is installed, each column named for its
+    datum, so nobody has to guess which one a number is; without the grid the MSL
+    column is simply absent.
+    """
     path = Path(path)
     total = len(geodetic)
     step = max(1, int(np.ceil(total / max_rows))) if max_rows else 1
     kept = geodetic[::step]
+    try:
+        msl = geoid.to_orthometric(kept[:, 0], kept[:, 1], kept[:, 2])
+    except geoid.GeoidUnavailable:
+        msl = None
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(["# latitude_deg", "longitude_deg", "ellipsoidal_height_m",
-                         "datum=WGS84", "height_not_orthometric=yes",
+                         "datum=WGS84",
+                         "egm96_height_m=EGM96 geoid (mean sea level)" if msl is not None
+                         else "height_not_orthometric=yes (no geoid grid installed)",
                          f"rows_written={len(kept)}", f"rows_total={total}",
                          f"decimation_every_nth_row={step}"])
-        writer.writerow(["latitude_deg", "longitude_deg", "ellipsoidal_height_m"])
-        for row in kept:
-            writer.writerow([f"{row[0]:.9f}", f"{row[1]:.9f}", f"{row[2]:.4f}"])
+        writer.writerow(["latitude_deg", "longitude_deg", "ellipsoidal_height_m"]
+                        + (["egm96_height_m"] if msl is not None else []))
+        for index, row in enumerate(kept):
+            writer.writerow([f"{row[0]:.9f}", f"{row[1]:.9f}", f"{row[2]:.4f}"]
+                            + ([f"{msl[index]:.4f}"] if msl is not None else []))
     return {"path": path.name, "rows_written": int(len(kept)), "rows_total": int(total),
-            "decimation_every_nth_row": int(step), "units": "degrees and ellipsoidal metres"}
+            "decimation_every_nth_row": int(step),
+            "units": "degrees; ellipsoidal metres" + ("; EGM96 metres" if msl is not None
+                                                     else ""),
+            "egm96_heights": msl is not None}
 
 
 def deliver(points, colors, alignment, output_dir, *, mesh_path=None, crs_wkt=None,
-            cell_size_m=0.5, source_sha256=None, triangles=None, max_wgs84_rows=MAX_WGS84_ROWS):
+            cell_size_m=0.5, source_sha256=None, triangles=None, max_wgs84_rows=MAX_WGS84_ROWS,
+            vertical_datum="ellipsoidal", texture_source=None):
     """Write the local and georeferenced product sets and the ledger between them.
 
     ``mesh_path`` is a meshed PLY from the run; when it is absent, or holds no faces,
@@ -120,7 +147,19 @@ def deliver(points, colors, alignment, output_dir, *, mesh_path=None, crs_wkt=No
     cannot be derived from the scene's own GPS origin does not stop delivery: the
     local set is still written and the georeferenced set is reported as refused with
     the reason, rather than being faked in a made-up projection.
+
+    ``vertical_datum`` picks the georeferenced set's heights: ``"ellipsoidal"`` (WGS84, what
+    GPS measures) or ``"egm96"`` (mean sea level through the EGM96 geoid, with a compound
+    UTM + EGM96 height CRS in the files). Asking for EGM96 without the grid installed keeps
+    ellipsoidal heights and records the refusal; it never writes a height it cannot label.
+
+    ``texture_source`` - ``{"model_dir": ..., "image_dir": ...}``, a COLMAP model in the
+    mesh's own frame and the frames its image names point at - bakes a UV texture onto
+    the mesh (``survey_texture``). A bake that fails leaves the mesh untextured and
+    records why; it never blocks the geometry.
     """
+    if vertical_datum not in geoid.VERTICAL_DATUMS:
+        raise ValueError(f"vertical_datum must be one of {geoid.VERTICAL_DATUMS}")
     output_dir = Path(output_dir)
     cloud_count = int(len(points))
     mesh_note = None
@@ -138,9 +177,23 @@ def deliver(points, colors, alignment, output_dir, *, mesh_path=None, crs_wkt=No
                                    "are the mesher's isosurface, not individually measured "
                                    "points, and its colours are interpolated")}
             points, colors, triangles = mesh_points, mesh_colors, mesh_faces
+    texture, texture_report, texture_refusal = None, None, None
+    if texture_source is not None and triangles is not None:
+        try:
+            try:
+                from scripts import survey_texture as baker
+            except ImportError:
+                import survey_texture as baker
+            cameras, images = baker.read_model(texture_source["model_dir"])
+            image, uvs, texture_report = baker.bake(
+                points, triangles, cameras, images,
+                baker.frame_loader(texture_source["image_dir"]), vertex_colors=colors)
+            texture = (uvs, image)
+        except (ValueError, KeyError, OSError) as error:
+            texture_refusal = {"set": "texture", "reason": str(error)}
     local_dir, geo_dir = output_dir / "enu", output_dir / "georeferenced"
     base = {"points": points, "colors": colors, "triangles": triangles,
-            "source_sha256": source_sha256, "cell_size_m": cell_size_m}
+            "source_sha256": source_sha256, "cell_size_m": cell_size_m, "texture": texture}
     local = exporter.export_products(alignment=alignment, output_dir=local_dir, **base)
     result = {"schema_version": 1, "point_count": local["point_count"],
               "cloud_point_count": cloud_count,
@@ -148,20 +201,43 @@ def deliver(points, colors, alignment, output_dir, *, mesh_path=None, crs_wkt=No
               "triangle_count": int(len(triangles)) if triangles is not None else 0,
               "local_enu": {"dir": "enu", "manifest": local,
                             "formats": official_ledger(local)},
-              "georeferenced": None, "refusals": []}
+              "georeferenced": None, "refusals": [texture_refusal] if texture_refusal else [],
+              "texture": texture_report}
     try:
         scene_crs = crs.crs_from_alignment(alignment) if crs_wkt is None else \
             {"wkt": crs_wkt, "name": "declared CRS", "epsg": None}
         enu = georef.transform_points(points, alignment)
         utm, geodetic, _ = crs.enu_to_crs(enu, alignment, crs=scene_crs)
+        product_wkt, heights = scene_crs["wkt"], {"datum": "ellipsoidal", "model": None}
+        if vertical_datum == "egm96":
+            try:
+                utm = utm.copy()
+                utm[:, 2] = geoid.to_orthometric(geodetic[:, 0], geodetic[:, 1], geodetic[:, 2])
+                product_wkt = geoid.compound_wkt(scene_crs["wkt"], scene_crs["name"])
+                heights = {"datum": "EGM96 orthometric (mean sea level)", **geoid.describe()}
+            except geoid.GeoidUnavailable as error:
+                result["refusals"].append({"set": "vertical_datum", "requested": "egm96",
+                                           "reason": str(error)})
+        egm96 = heights["model"] == "EGM96"
         frame = {"type": "UTM", "units": "m", "epsg": scene_crs["epsg"],
                  "name": scene_crs["name"], "geodetic_crs": "EPSG:4979",
-                 "altitude_datum": "ellipsoidal",
+                 "altitude_datum": "EGM96 orthometric" if egm96 else "ellipsoidal",
+                 "vertical_epsg": geoid.VERTICAL_EPSG if egm96 else None,
                  "origin": scene_crs["origin_geodetic"]}
         geo = exporter.export_products(points, colors, alignment, geo_dir,
-                                       triangles=triangles, crs_wkt=scene_crs["wkt"],
+                                       triangles=triangles, crs_wkt=product_wkt,
                                        source_sha256=source_sha256, cell_size_m=cell_size_m,
-                                       positions=utm, coordinate_frame=frame, crs=scene_crs)
+                                       positions=utm, coordinate_frame=frame, crs=scene_crs,
+                                       texture=texture)
+        if texture_source is not None:
+            ortho_record, ortho_refusal = _orthomosaic(alignment, scene_crs, product_wkt,
+                                                       geo_dir, cell_size_m, texture_source,
+                                                       egm96=egm96, utm=utm)
+            if ortho_record:
+                geo["files"].insert(0, ortho_record)
+                geo["orthomosaic"] = ortho_record["report"]
+            if ortho_refusal:
+                result["refusals"].append(ortho_refusal)
         positions = write_wgs84_positions(geodetic, geo_dir / "positions_wgs84.csv",
                                           max_rows=max_wgs84_rows)
         geo["files"].append({"format": "csv", "path": positions["path"], "geometry": "points",
@@ -171,12 +247,40 @@ def deliver(points, colors, alignment, output_dir, *, mesh_path=None, crs_wkt=No
                                                                    ("epsg", "name", "zone",
                                                                     "hemisphere", "validity")
                                                                    if k in scene_crs},
+                                   "heights": heights,
                                    "manifest": geo, "formats": official_ledger(geo)}
     except (ValueError, KeyError) as error:
         result["refusals"].append({"set": "georeferenced", "reason": str(error)})
     output_dir.mkdir(parents=True, exist_ok=True)
     _write_json(result, output_dir / "delivery_manifest.json")
     return result
+
+
+def _orthomosaic(alignment, scene_crs, product_wkt, geo_dir, cell_size_m, texture_source,
+                 *, egm96, utm):
+    """(file record, refusal) for ortho.tif draped on this product set's own DSM."""
+    try:
+        try:
+            from scripts import survey_ortho as ortho
+            from scripts import survey_texture as baker
+        except ImportError:
+            import survey_ortho as ortho
+            import survey_texture as baker
+        cameras, images = baker.read_model(texture_source["model_dir"])
+        raster, transform, _, _ = exporter.dsm_grid(utm, float(cell_size_m))
+        to_local = ortho.utm_to_local(alignment, scene_crs, egm96=egm96, geoid=geoid)
+        rgb, alpha, grid, report = ortho.orthomosaic(
+            raster, transform, to_local, cameras, images,
+            baker.frame_loader(texture_source["image_dir"]),
+            metres_per_local_unit=float(alignment["scale"]))
+        written = formats.write_rgba_geotiff(rgb, alpha, geo_dir / "ortho.tif",
+                                             transform=grid, crs_wkt=product_wkt)
+        return ({"format": "geotiff", "path": "ortho.tif", "geometry": "orthomosaic",
+                 "bytes": (geo_dir / "ortho.tif").stat().st_size, "verified": written["verified"],
+                 "externally_validated": written["externally_validated"],
+                 "cell_size_m": report["cell_m"], "report": report}, None)
+    except (ValueError, KeyError, OSError) as error:
+        return None, {"set": "orthomosaic", "reason": str(error)}
 
 
 def _write_json(value, path):

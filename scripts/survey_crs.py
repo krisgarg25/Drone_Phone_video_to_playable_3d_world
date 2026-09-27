@@ -166,8 +166,14 @@ def central_meridian(zone) -> float:
     return (_zone(zone) - 1) * 6.0 - 180.0 + 3.0
 
 
-def utm_forward(latitudes_deg, longitudes_deg, zone):
+def utm_forward(latitudes_deg, longitudes_deg, zone, hemisphere=None):
     """(easting, northing) in metres on the ellipsoid, Snyder's 6th-order series.
+
+    ``hemisphere`` fixes the false northing for every point, which is what a projected
+    CRS means: EPSG:32617 keeps a point south of the equator at a negative northing, and
+    EPSG:32717 keeps one north of it above 10,000 km. Left as ``None``, each point takes
+    its own hemisphere - fine for one point, and a 10,000 km tear through the middle of
+    any product whose scene crosses the equator (pyproj caught it).
 
     Points more than ``MAX_OFF_MERIDIAN_DEG`` from the zone's central meridian raise:
     the series is a truncated expansion around that meridian, and a silently
@@ -201,7 +207,11 @@ def utm_forward(latitudes_deg, longitudes_deg, zone):
                                             + (5 - t + 9 * c + 4 * c ** 2) * a ** 4 / 24
                                             + (61 - 58 * t + t ** 2 + 600 * c - 330 * ep2)
                                             * a ** 6 / 720))
-    return easting, np.where(lat < 0, northing + FALSE_NORTHING_SOUTH, northing)
+    if hemisphere is None:
+        return easting, np.where(lat < 0, northing + FALSE_NORTHING_SOUTH, northing)
+    if hemisphere not in ("N", "S"):
+        raise ValueError("hemisphere must be 'N' or 'S'")
+    return easting, northing + (FALSE_NORTHING_SOUTH if hemisphere == "S" else 0.0)
 
 
 def utm_inverse(eastings, northings, zone, hemisphere="N"):
@@ -211,8 +221,12 @@ def utm_inverse(eastings, northings, zone, hemisphere="N"):
     zone = _zone(zone)
     if hemisphere not in ("N", "S"):
         raise ValueError("hemisphere must be 'N' or 'S'")
-    if np.any(e <= 0) or np.any(nn <= 0):
-        raise ValueError("UTM easting and northing must be positive in the declared hemisphere")
+    # A northern-zone product may hold points just south of the equator at a small
+    # negative northing (and a southern one points above 10,000 km); anything past a
+    # quarter-meridian beyond the equator is a wrong hemisphere, not a coordinate.
+    if np.any(e <= 0) or np.any(nn < -1_000_000.0) or np.any(nn > 2 * FALSE_NORTHING_SOUTH):
+        raise ValueError("UTM easting must be positive and northing within the declared "
+                         "hemisphere's range")
     lam0 = math.radians(central_meridian(zone))
     y = nn - (FALSE_NORTHING_SOUTH if hemisphere == "S" else 0.0)
     x = e - FALSE_EASTING
@@ -269,7 +283,7 @@ def crs_from_origin(origin_lat_deg, origin_lon_deg, origin_height_m=0.0) -> dict
     and that a scene reaching far across it needs checking.
     """
     zone, hemisphere, epsg = utm_zone_for(origin_lat_deg, origin_lon_deg)
-    easting, northing = utm_forward([origin_lat_deg], [origin_lon_deg], zone)
+    easting, northing = utm_forward([origin_lat_deg], [origin_lon_deg], zone, hemisphere)
     return {"schema_version": 1, "kind": "projected", "epsg": epsg,
             "name": f"WGS 84 / UTM zone {zone}{hemisphere}", "zone": zone,
             "hemisphere": hemisphere, "central_meridian_deg": central_meridian(zone),
@@ -315,5 +329,6 @@ def enu_to_crs(enu, alignment, crs=None):
     origin = crs["origin_geodetic"]
     geodetic = enu_to_geodetic(points, origin["latitude_deg"], origin["longitude_deg"],
                                origin["height_m"])
-    easting, northing = utm_forward(geodetic[:, 0], geodetic[:, 1], crs["zone"])
+    easting, northing = utm_forward(geodetic[:, 0], geodetic[:, 1], crs["zone"],
+                                    crs["hemisphere"])
     return (np.column_stack([easting, northing, geodetic[:, 2]]), geodetic, crs)

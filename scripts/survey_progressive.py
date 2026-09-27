@@ -329,8 +329,13 @@ def read_model_stats(txt_dir):
 def execute_plan(root, run, plan, *, image_dir="frames_match", database_path=None,
                  match_overlap=DEFAULT_MATCH_OVERLAP,
                  max_image_size=DEFAULT_MAX_IMAGE_SIZE,
-                 max_features=DEFAULT_MAX_FEATURES, timeout=COLMAP_TIMEOUT_S):
+                 max_features=DEFAULT_MAX_FEATURES, timeout=COLMAP_TIMEOUT_S,
+                 on_window=None):
     """Execute a ``progressive_plan()`` over a run's written frames.
+
+    ``on_window(index, accumulated_txt_dir, stats)`` runs after every merged window
+    (the first-map preview, ``survey_firstmap``); anything it raises is printed and
+    ignored, so a preview can never cost the run.
 
     Returns the checkpoint payload (the same dict that is atomically rewritten at
     ``progressive/checkpoints.json`` after every window). Per-window failures are
@@ -548,6 +553,14 @@ def execute_plan(root, run, plan, *, image_dir="frames_match", database_path=Non
             print(f"[progressive] window {index}: done in {window['secs']} s (measured), "
                   f"{stats['registered_images']} registered images, {stats['points']} "
                   f"points", flush=True)
+            if on_window is not None:
+                try:
+                    preview = on_window(index, txt / f"accumulated_{index:02d}", stats)
+                    if isinstance(preview, dict):
+                        window["preview"] = {k: preview.get(k) for k in
+                                             ("status", "georeferenced", "path", "reason")}
+                except Exception as error:  # noqa: BLE001 - a preview never kills a window
+                    print(f"[progressive] window {index}: preview failed - {error}", flush=True)
         except _CHECKPOINT_ERRORS as error:
             # The checkpoint is served to a browser: an unexpected OSError text
             # must not smuggle absolute local paths into it.

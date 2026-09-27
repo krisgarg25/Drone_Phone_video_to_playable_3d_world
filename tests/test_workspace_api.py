@@ -4,6 +4,7 @@ import http.client
 import io
 import json
 import os
+import struct
 import sys
 import tempfile
 import threading
@@ -16,6 +17,46 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import _serve
+
+
+def make_glb(positions, indices, mn, mx, node=None):
+    """A minimal self-contained glTF 2.0 .glb with POSITION accessor min/max."""
+    binarr = bytearray(b"".join(struct.pack("<3f", *p) for p in positions))
+    while len(binarr) % 4:
+        binarr += b"\x00"
+    idx_start = len(binarr)
+    idx_bytes = b"".join(struct.pack("<H", i) for i in indices)
+    binarr += idx_bytes
+    while len(binarr) % 4:
+        binarr += b"\x00"
+    nodes = node if node is not None else [{"mesh": 0, "name": "cube"}]
+    doc = {
+        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": nodes,
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+        "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": len(positions), "type": "VEC3", "min": mn, "max": mx},
+            {"bufferView": 1, "componentType": 5123, "count": len(indices), "type": "SCALAR"},
+        ],
+        "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": len(positions) * 12},
+            {"buffer": 0, "byteOffset": idx_start, "byteLength": len(idx_bytes)},
+        ],
+        "buffers": [{"byteLength": len(binarr)}],
+    }
+    j = json.dumps(doc).encode("utf-8")
+    while len(j) % 4:
+        j += b" "
+    jp = struct.pack("<II", len(j), 0x4E4F534A) + j
+    bp = struct.pack("<II", len(binarr), 0x004E4942) + bytes(binarr)
+    return b"glTF" + struct.pack("<II", 2, 12 + len(jp) + len(bp)) + jp + bp
+
+
+def cube_glb(size=2.4, depth=1.1, height=0.9):
+    hx, hy, hz = size / 2, height / 2, depth / 2
+    pts = [(-hx, -hy, -hz), (hx, -hy, -hz), (hx, hy, -hz), (-hx, hy, -hz),
+           (-hx, -hy, hz), (hx, -hy, hz), (hx, hy, hz), (-hx, hy, hz)]
+    idx = [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]
+    return make_glb(pts, idx, [-hx, -hy, -hz], [hx, hy, hz])
 
 
 class WorkspaceApiTests(unittest.TestCase):
@@ -65,6 +106,85 @@ class WorkspaceApiTests(unittest.TestCase):
         status, result, _ = self.request("POST", "/api/workspace/" + route, body, headers)
         self.assertEqual(status, expected, result)
         return result
+
+    def test_a_finished_world_with_a_failed_check_is_ready_and_says_which_check(self):
+        # A high-quality take that renders perfectly but fails its walk test is not
+        # a broken run. Labelling it "failed" hides a usable model behind the
+        # Ready filter, so the check failure must surface as a named warning.
+        self.model()
+        self.file("work/flight/logs/13-gate.log", "[ok] 1.0s\n")
+        self.file("work/flight/logs/14-walktest.log", "[exit 1] 61.0s\n")
+        detail = self.detail()
+        self.assertEqual(detail["status"], "ready")
+        self.assertEqual([s["status"] for s in detail["steps"] if s["name"] == "walktest"], ["failed"])
+        self.assertTrue(any("walktest" in w for w in detail["warnings"]), detail["warnings"])
+
+    def test_room_layout_is_a_published_artifact(self):
+        # detect_rooms.py ships viewer_assets/rooms.json, but the artefact list only
+        # accepted model extensions, so a finished deliverable never appeared in Exports.
+        self.post("project", {"scene": "flight", "name": "Flight"})
+        before = self.detail()["model_revision"]
+        self.model()
+        self.file("work/flight/viewer_assets/rooms.json", json.dumps({"rooms": [{"name": "main"}]}))
+        row = next((a for a in self.detail()["artifacts"] if a["name"] == "viewer_assets/rooms.json"), None)
+        self.assertIsNotNone(row, self.detail()["artifacts"])
+        self.assertEqual(row["kind"], "rooms", "a room layout is not a model")
+        status, body, _ = self.request("GET", "/api/workspace/file?path=" + quote(
+            "work/flight/viewer_assets/rooms.json"))
+        self.assertEqual(status, 200)
+        self.assertEqual(body["rooms"][0]["name"], "main")
+        # It is scene content, so re-segmenting a room changes the model identity the
+        # placements are pinned to - exactly like objects.json already does.
+        self.assertNotEqual(self.detail()["model_revision"], before)
+
+    def test_bundle_holds_the_listed_deliverables_and_nothing_else(self):
+        import zipfile
+        self.post("project", {"scene": "flight", "name": "Flight"})
+        self.model()
+        self.file("work/flight/scenario.json", json.dumps({"preset": "drone"}))
+        self.file("work/flight/frames_train/00000.jpg", b"source frame, not a deliverable")
+        self.file("work/flight/database.db", b"colmap internals")
+        for name in ("textured.obj", "textured.mtl", "textured.jpg", "texture_report.json"):
+            self.file("work/flight/textured/" + name, b"baked " + name.encode())
+        self.file("work/flight/textured/mesh_sparse_delaunay.ply", b"intermediate mesh")
+        listed = {a["name"]: a["kind"] for a in self.detail()["artifacts"]}
+        self.assertTrue(listed["textured/textured.obj"].startswith("textured mesh"))
+        self.assertEqual(listed["textured/texture_report.json"], "report")
+        self.assertNotIn("textured/mesh_sparse_delaunay.ply", listed)
+        self.file("work/flight/measurements.json", json.dumps([
+            {"id": "m1", "label": "Wall", "kind": "distance", "value": 2.5, "unit": "m",
+             "points": [[0, 0, 0], [2.5, 0, 0]], "valid": True, "uncertainty": {"m": 0.02}}]))
+        status, body, headers = self.request("GET", "/api/workspace/bundle?scene=flight")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(headers["Content-Type"], "application/zip")
+        self.assertIn('filename="flight-bundle.zip"', headers["Content-Disposition"])
+        archive = zipfile.ZipFile(io.BytesIO(body))
+        names = set(archive.namelist())
+        self.assertLessEqual({"README.txt", "manifest.json", "crs/README.txt",
+                              "model/viewer_assets/scene.ply",
+                              "model/pc/collision.collision.glb", "reports/scenario.json",
+                              "model/textured/textured.obj", "model/textured/textured.mtl",
+                              "model/textured/textured.jpg",
+                              "measurements/measurements.json",
+                              "measurements/measurements.geojson",
+                              "measurements/measurements.csv"}, names)
+        # Only what the page lists as a deliverable: no source frames, no COLMAP database.
+        self.assertFalse(any("frames_train" in n or n.endswith(".db") for n in names), names)
+        self.assertEqual(archive.read("model/viewer_assets/scene.ply"), b"ply\nreal fixture geometry")
+        manifest = json.loads(archive.read("manifest.json"))
+        for entry in manifest["files"]:
+            import hashlib
+            self.assertEqual(hashlib.sha256(archive.read(entry["path"])).hexdigest(),
+                             entry["sha256"], entry["path"])
+        self.assertIn("NOT georeferenced", archive.read("crs/README.txt").decode())
+        self.assertIn("0.02", archive.read("measurements/measurements.csv").decode())
+        self.assertEqual(self.request("GET", "/api/workspace/bundle?scene=..%2Fwork")[0], 400)
+        self.assertEqual(self.request("GET", "/api/workspace/bundle?scene=nothing")[0], 404)
+
+    def test_a_run_that_produced_no_world_still_reads_failed(self):
+        self.file("videos/flight/clip.mp4", b"x" * 4096)
+        self.file("work/flight/logs/04-train.log", "[exit 1] 3.0s\n")
+        self.assertEqual(self.detail()["status"], "failed")
 
     def test_rebound_hostname_cannot_write_to_local_service(self):
         authority = "untrusted.invalid:" + str(self.server.server_port)
@@ -246,6 +366,10 @@ class WorkspaceApiTests(unittest.TestCase):
             self.assertEqual(measurement["points"], points)
             self.assertFalse(measurement["stale"])
             self.assertEqual(measurement["geometry"], "viewer-pick")
+            if kind != "point":
+                self.assertFalse(measurement["valid"])
+                self.assertFalse(measurement["engine"])
+                self.assertIn("raw", measurement["reason"])
         self.assertEqual(len(self.detail()["measurements"]), 4)
         self.assertTrue(any("proxy" in w and "accuracy" in w for w in body["warnings"]))
         deleted = self.post("measurements/delete", {"scene": "flight", "id": measurement["id"]})
@@ -299,8 +423,47 @@ class WorkspaceApiTests(unittest.TestCase):
         m = self.post("measurements", {"scene": "flight", "kind": "volume", "label": "Pile",
                                        "points": square, "model_revision": revision})["measurements"][-1]
         self.assertTrue(m["engine"])
-        self.assertEqual(m["unit"], "m³")
+        self.assertEqual(m["unit"], "units³")
         self.assertAlmostEqual(m["value"], 4.0, delta=0.8)
+
+    def test_cloud_backed_polyline_and_relative_area_keep_the_contract(self):
+        import numpy as np
+        self.model()
+        g = np.linspace(-4, 4, 25)
+        cloud = [[float(x), 0.0, float(z)] for x in g for z in g]
+        self.file("work/flight/viewer_assets/sparse_points.json", json.dumps({"points": cloud}))
+        revision = self.detail()["model_revision"]
+        for kind, points, value, unit in (
+                ("distance", [[-2, 0, 0], [0, 0, 0], [0, 0, 2], [2, 0, 2]], 6, "units"),
+                ("area", [[-2, 0, -2], [2, 0, -2], [2, 0, 2], [-2, 0, 2]], 16, "units²")):
+            with self.subTest(kind=kind):
+                rec = self.post("measurements", {"scene": "flight", "kind": kind, "label": kind,
+                                                 "points": points, "model_revision": revision})["measurements"][-1]
+                self.assertTrue(rec["valid"], rec.get("reason"))
+                self.assertAlmostEqual(rec["value"], value, places=6)
+                self.assertEqual(rec["unit"], unit)
+
+    def test_height_does_not_turn_engine_support_failure_into_validity(self):
+        self.model()
+        # Both clicks snap, but two isolated points lack the engine's required support.
+        self.file("work/flight/viewer_assets/sparse_points.json",
+                  json.dumps({"points": [[0, 0, 0], [0, 3, 0]]}))
+        revision = self.detail()["model_revision"]
+        rec = self.post("measurements", {"scene": "flight", "kind": "height", "label": "Unsupported",
+                                         "points": [[0, 0, 0], [0, 3, 0]],
+                                         "model_revision": revision})["measurements"][-1]
+        self.assertEqual(rec["value"], 3)
+        self.assertFalse(rec["support"])
+        self.assertFalse(rec["valid"])
+        self.assertIn("endpoint", rec["reason"])
+
+    def test_invalid_engine_area_keeps_supplied_squared_unit(self):
+        import workspace_api
+        rec = workspace_api.measurement_value(
+            {"kind": "area", "label": "Line", "points": [[0, 0, 0], [1, 0, 0], [2, 0, 0]]},
+            "units", cloud=[[0, 0, 0], [1, 0, 0]])
+        self.assertFalse(rec["valid"])
+        self.assertEqual(rec["unit"], "units²")
 
     def test_semantics_detail_carries_per_class_summary(self):
         import numpy as np
@@ -382,12 +545,118 @@ class WorkspaceApiTests(unittest.TestCase):
         created = self.post("placements", {"scene": "flight", "item": "desk",
                                            "point": [2.0, 0.0, 2.0], "model_revision": revision})
         pid = created["placements"][-1]["id"]
+        resting = created["placements"][-1]["center_y"]
         moved = self.post("placements/update", {"scene": "flight", "id": pid, "item": "desk",
-                                                "point": [3.0, 0.0, 3.0], "yaw_deg": 45.0, "model_revision": revision})
+                                                "point": [3.0, resting, 3.0], "yaw_deg": 45.0, "model_revision": revision})
         self.assertEqual(len(moved["placements"]), 1)
         self.assertEqual(moved["placements"][0]["id"], pid)
         self.assertEqual(moved["placements"][0]["center_xz"], [3.0, 3.0])
         self.assertEqual(moved["placements"][0]["yaw_deg"], 45.0)
+        # Carrying the same height back must not sink or float the piece.
+        self.assertAlmostEqual(moved["placements"][0]["center_y"], resting, places=3)
+        self.assertEqual(moved["placements"][0]["lift_m"], 0.0)
+
+    def test_placement_editor_writes_size_and_lift(self):
+        self.model()
+        self.place_grid()
+        revision = self.detail()["model_revision"]
+        created = self.post("placements", {"scene": "flight", "item": "coffee_table",
+                                           "point": [2.5, 0.0, 2.5], "model_revision": revision})["placements"][0]
+        # A fresh drop always rests on the measured floor, whatever y was clicked.
+        self.assertEqual(created["lift_m"], 0.0)
+        self.assertAlmostEqual(created["center_y"], created["size"][1] / 2, places=3)
+        resized = self.post("placements/update", {"scene": "flight", "id": created["id"],
+                                                  "item": "coffee_table", "point": [2.5, created["center_y"], 2.5],
+                                                  "size": [1.6, 0.6, 0.9], "model_revision": revision})["placements"][0]
+        self.assertEqual(resized["size"], [1.6, 0.6, 0.9])
+        self.assertEqual(resized["footprint_m2"], round(1.6 * 0.9, 3))
+        # The centre is what the editor holds, so a taller box keeps its centre and
+        # its base reaches lower — recorded honestly, not silently re-seated.
+        self.assertAlmostEqual(resized["center_y"], 0.225, places=3)
+        self.assertAlmostEqual(resized["lift_m"], -0.075, places=3)
+        lifted = self.post("placements/update", {"scene": "flight", "id": created["id"],
+                                                 "item": "coffee_table", "point": [2.5, resized["center_y"] + 0.3, 2.5],
+                                                 "model_revision": revision})["placements"][0]
+        self.assertAlmostEqual(lifted["center_y"], 0.525, places=3)
+        self.assertAlmostEqual(lifted["lift_m"], 0.225, places=3)
+        self.assertEqual(lifted["size"], resized["size"], "an omitted field is kept, not reset")
+        # Rotating without a point keeps both the edited size and the lift.
+        turned = self.post("placements/update", {"scene": "flight", "id": created["id"],
+                                                 "item": "coffee_table", "yaw_deg": 90,
+                                                 "model_revision": revision})["placements"][0]
+        self.assertEqual(turned["size"], [1.6, 0.6, 0.9])
+        self.assertAlmostEqual(turned["center_y"], lifted["center_y"], places=3)
+        self.assertEqual(turned["yaw_deg"], 90.0)
+
+    def test_placement_size_is_validated_before_it_is_stored(self):
+        self.model()
+        self.place_grid()
+        revision = self.detail()["model_revision"]
+        created = self.post("placements", {"scene": "flight", "item": "desk", "point": [2.5, 0, 2.5],
+                                           "model_revision": revision})["placements"][0]
+        for bad in ([1.2, 0.75], [1.2, float("nan"), 0.6], [1.2, 0.75, 900], "1.2,0.75,0.6", [1.2, 0.75, True]):
+            self.post("placements/update", {"scene": "flight", "id": created["id"], "item": "desk",
+                                            "point": [2.5, 0, 2.5], "size": bad,
+                                            "model_revision": revision}, 400)
+        self.assertEqual(self.detail()["placements"][0]["size"], created["size"])
+
+    def test_placement_partial_updates_preserve_custom_fields_and_identity(self):
+        self.model()
+        self.place_grid()
+        revision = self.detail()["model_revision"]
+        original = self.post("placements", {"scene": "flight", "item": "desk", "label": "My desk",
+                                            "scale": 1.25, "yaw_deg": 30, "point": [2.5, 0, 2.5],
+                                            "model_revision": revision})["placements"][0]
+        moved = self.post("placements/update", {"scene": "flight", "id": original["id"],
+                                                "point": [3, 0, 3], "model_revision": revision,
+                                                "created_at": "not allowed to replace creation time"})["placements"][0]
+        for field in ("id", "created_at", "item", "label", "scale", "yaw_deg", "size"):
+            self.assertEqual(moved[field], original[field], field)
+        self.assertEqual(moved["center_xz"], [3, 3])
+        renamed = self.post("placements/update", {"scene": "flight", "id": original["id"],
+                                                  "label": "Renamed", "scale": 0.75,
+                                                  "model_revision": revision})["placements"][0]
+        self.assertEqual(renamed["label"], "Renamed")
+        self.assertEqual(renamed["scale"], 0.75)
+        self.assertEqual(renamed["center_xz"], [3, 3])
+        self.assertEqual(renamed["created_at"], original["created_at"])
+
+    def test_placement_numeric_fields_reject_bools_nonfinite_and_huge_integers(self):
+        self.model()
+        self.place_grid()
+        revision = self.detail()["model_revision"]
+        base = {"scene": "flight", "item": "sofa", "point": [2, 0, 2], "model_revision": revision}
+        for change in ({"point": [True, 0, 2]}, {"point": [2, False, 2]}, {"yaw_deg": True},
+                       {"scale": True}, {"point": [10 ** 500, 0, 2]}, {"yaw_deg": 10 ** 500},
+                       {"scale": 10 ** 500}, {"yaw_deg": float("inf")}, {"scale": float("nan")},
+                       {"scale": 0.01}, {"point": [1e8, 0, 2]}):
+            with self.subTest(change=change):
+                self.post("placements", dict(base, **change), 400)
+        self.assertFalse((self.root / "work/flight/placements.json").exists())
+
+    def test_placement_checks_fresh_revision_under_the_process_lock(self):
+        import workspace_api
+        self.model()
+        self.place_grid()
+        detail = self.detail()
+        original = self.post("placements", {"scene": "flight", "item": "desk", "point": [2, 0, 2],
+                                            "model_revision": detail["model_revision"]})["placements"][0]
+        path = self.root / "work/flight/placements.json"
+        saved = path.read_bytes()
+        # Simulate reconstruction finishing after the initial detail snapshot.
+        self.file("work/flight/frame.json", '{"scale_m_per_unit":2}')
+        real_revision = workspace_api.model_revision
+
+        def locked_revision(root, work):
+            self.assertTrue(_serve.process_lock.locked())
+            return real_revision(root, work)
+
+        with patch.object(workspace_api, "summary", return_value=detail), \
+                patch.object(workspace_api, "model_revision", side_effect=locked_revision):
+            for route in ("placements", "placements/update"):
+                self.post(route, {"scene": "flight", "id": original["id"], "item": "desk",
+                                  "point": [3, 0, 3], "model_revision": detail["model_revision"]}, 409)
+        self.assertEqual(path.read_bytes(), saved)
 
     def test_placement_delete_removes_only_that_item(self):
         self.model()
@@ -465,7 +734,7 @@ class WorkspaceApiTests(unittest.TestCase):
             self.assertIn(status, (400, 403, 404), body)
             self.assertNotIn("SECRET", str(body))
             self.assertNotIn(str(self.root), str(body))
-        for path in ("viewer/pc.html", "viewer/pc.js", "viewer/workspace.js", "viewer/pc/ammo/ammo.wasm.wasm", "viewer/assets/models/cesium_man.glb"):
+        for path in ("viewer/pc.html", "viewer/pc.js", "viewer/workspace.js", "viewer/measurement_math.js", "viewer/furniture_geometry.js", "viewer/plan_core.js", "viewer/pc/ammo/ammo.wasm.wasm", "viewer/assets/models/cesium_man.glb"):
             self.file(path, b"allowed")
             self.assertEqual(self.request("GET", "/api/workspace/file?path=" + quote(path))[1], b"allowed")
 
@@ -557,8 +826,9 @@ class WorkspaceApiTests(unittest.TestCase):
         observed = []
 
         class Process:
-            stdout = io.StringIO("[survey] dense\nfixture survey output\n")
             returncode = 0
+            def __init__(self):
+                self.stdout = io.StringIO("[survey] dense\nfixture survey output\n")
             def wait(self, **kwargs):
                 return 0
             def poll(self):
@@ -570,8 +840,15 @@ class WorkspaceApiTests(unittest.TestCase):
 
         with patch.object(_serve.subprocess, "Popen", side_effect=launch), patch.object(_serve, "spawn_pipeline_job", side_effect=_serve.run_pipeline_thread):
             self.post("run", {"scene": "flight", "preset": "auto", "quality": "high", "engine": "survey", "dense_profile": "budget"})
-        self.assertEqual(observed[0][1:], [str(self.root / "survey.py"), "reconstruct", "flight", "--allow-gpu", "--dense-profile", "budget"])
+        self.assertEqual(observed[0][1:], [str(self.root / "survey.py"), "reconstruct", "flight", "--allow-gpu", "--dense-profile", "budget", "--vertical-datum", "ellipsoidal"])
         self.assertIn("fixture survey output", next((self.root / "work/flight/logs").glob("*.log")).read_text())
+        # The height datum travels to the CLI verbatim, and only the survey engine takes one.
+        observed.clear()
+        with patch.object(_serve.subprocess, "Popen", side_effect=launch), patch.object(_serve, "spawn_pipeline_job", side_effect=_serve.run_pipeline_thread):
+            self.post("run", {"scene": "flight", "preset": "auto", "quality": "high", "engine": "survey", "vertical_datum": "egm96"})
+        self.assertEqual(observed[0][-2:], ["--vertical-datum", "egm96"])
+        self.post("run", {"scene": "flight", "preset": "auto", "quality": "high", "engine": "survey", "vertical_datum": "navd88"}, 400)
+        self.post("run", {"scene": "flight", "preset": "auto", "quality": "high", "vertical_datum": "egm96"}, 400)
         self.file("videos/flight/telemetry.csv", telemetry + "4,28,77,103,1,2\n")
         self.post("run", {"scene": "flight", "preset": "auto", "quality": "high", "engine": "survey"}, 409)
 
@@ -698,6 +975,149 @@ class WorkspaceApiTests(unittest.TestCase):
             _serve.active_job_info = {"status": "running", "scene": "flight", "step": "scan", "logs": []}
         body, headers = self.multipart([("good.mp4", b"valid")])
         self.post("upload", body, 409, headers)
+
+    # ---- imported glTF/GLB models ------------------------------------------------
+    def import_glb(self, data, name="my sofa.glb", expected=200):
+        self.model()
+        self.place_grid()
+        body, headers = self.multipart([(name, data)])
+        return self.post("model/import", body, expected=expected, headers=headers)
+
+    def test_import_registers_model_with_its_real_size(self):
+        self.file("work/flight/frame.json", json.dumps(
+            {"scale_m_per_unit": 1.0, "scale_source": "AR pose-prior metric path"}))
+        detail = self.import_glb(cube_glb(2.4, 1.1, 0.9))
+        imported = [f for f in detail["furniture"] if f.get("imported")]
+        self.assertEqual(len(imported), 1)
+        self.assertEqual(imported[0]["label"], "my sofa")
+        self.assertEqual(imported[0]["size"], [2.4, 0.9, 1.1])
+        self.assertEqual(imported[0]["model"]["scale_status"], "metric")
+        # The 12 built-in primitives must still be offered (no regression).
+        self.assertIn("sofa", {f["item"] for f in detail["furniture"]})
+        # The file is stored under the scene's own work dir and served back verbatim.
+        status, served, _ = self.request("GET", "/api/workspace/file?path=" + quote(
+            "work/flight/models/" + imported[0]["model"]["file"]))
+        self.assertEqual(status, 200)
+        self.assertEqual(served[:4], b"glTF")
+
+    def test_imported_model_places_persists_and_edits(self):
+        detail = self.import_glb(cube_glb(2.4, 1.1, 0.9))
+        mid = next(f for f in detail["furniture"] if f.get("imported"))["item"]
+        rev = detail["model_revision"]
+        placed = self.post("placements", {"scene": "flight", "item": mid,
+                                          "point": [2.5, 0, 2.5], "model_revision": rev})
+        p = placed["placements"][-1]
+        self.assertEqual(p["size"], [2.4, 0.9, 1.1])
+        self.assertTrue(p["model"]["file"].endswith(".glb"))
+        self.assertTrue(p["fit"]["supported"], p["fit"])
+        # Reload: the placement still carries its model and true size.
+        again = self.detail()
+        self.assertEqual(again["placements"][-1]["model"]["size"], [2.4, 0.9, 1.1])
+        # Move + rotate keeps the model descriptor and the real (file) size.
+        moved = self.post("placements/update", {"scene": "flight", "id": p["id"], "item": mid,
+                                                "point": [3.0, p["center_y"], 3.0], "yaw_deg": 45,
+                                                "size": p["size"], "model_revision": rev})["placements"][-1]
+        self.assertEqual(moved["yaw_deg"], 45.0)
+        self.assertEqual(moved["center_xz"], [3.0, 3.0])
+        self.assertTrue(moved.get("model"))
+
+    def test_import_refuses_unsupported_file(self):
+        status, result, _ = self.request("POST", "/api/workspace/model/import",
+                                         *self.multipart([("chair.txt", b"just text")]))
+        self.assertEqual(status, 400)
+        self.assertIn("glb or .gltf", result["error"])
+
+    def test_import_refuses_model_without_readable_bounds(self):
+        doc = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+               "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+               "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"}],
+               "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}], "buffers": [{"byteLength": 36}]}
+        status, result, _ = self.request("POST", "/api/workspace/model/import",
+                                         *self.multipart([("ghost.gltf", json.dumps(doc).encode())]))
+        self.assertEqual(status, 400)
+        self.assertIn("cannot be read", result["error"])
+
+    def test_import_refuses_nan_accessor(self):
+        doc = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+               "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+               "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                              "min": [0.0, 0.0, 0.0], "max": [float("nan"), 1.0, 1.0]}],
+               "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}], "buffers": [{"byteLength": 36}]}
+        status, result, _ = self.request("POST", "/api/workspace/model/import",
+                                         *self.multipart([("nan.gltf", json.dumps(doc).encode())]))
+        self.assertEqual(status, 400)
+        self.assertIn("cannot be read", result["error"])
+
+    def test_import_refuses_traversal_external_buffer_without_writing(self):
+        self.model()
+        self.place_grid()
+        doc = {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+               "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+               "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+                              "min": [0, 0, 0], "max": [1, 1, 1]}],
+               "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}],
+               "buffers": [{"byteLength": 36, "uri": "../../../../etc/passwd"}]}
+        status, result, _ = self.request("POST", "/api/workspace/model/import",
+                                         *self.multipart([("evil.gltf", json.dumps(doc).encode())]))
+        self.assertEqual(status, 400)
+        self.assertIn("traversing", result["error"])
+        self.assertFalse((self.root / "work/flight/models").exists())
+        self.assertFalse(self.detail()["furniture"] and any(
+            f.get("imported") for f in self.detail()["furniture"]))
+
+    def gltf_doc(self, accessor=None, buffers=None, nodes=None):
+        """A minimal .gltf: one mesh, one POSITION accessor, no embedded geometry."""
+        box = {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
+               "min": [0, 0, 0], "max": [1, 1, 1]}
+        if accessor is not None:
+            box.update(accessor)
+        return {"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}],
+                "nodes": nodes if nodes is not None else [{"mesh": 0}],
+                "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}], "accessors": [box],
+                "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}],
+                "buffers": buffers if buffers is not None else [{"byteLength": 36}]}
+
+    def refuse_gltf(self, name, doc):
+        """Import ``doc`` and return the refusal text, asserting nothing was stored."""
+        self.model()
+        self.place_grid()
+        status, result, _ = self.request("POST", "/api/workspace/model/import",
+                                         *self.multipart([(name, json.dumps(doc).encode())]))
+        self.assertEqual(status, 400, result)
+        self.assertFalse((self.root / "work/flight/models").exists(), "a refused model leaves no bytes behind")
+        self.assertFalse(any(f.get("imported") for f in self.detail()["furniture"]),
+                         "a refused model never joins the catalogue")
+        return result["error"]
+
+    def test_import_refuses_absurd_extent(self):
+        # A model claiming a 1000 km axis is a corrupt or hostile file, not a sofa.
+        error = self.refuse_gltf("huge.gltf", self.gltf_doc(accessor={"max": [1e6, 1, 1]}))
+        self.assertIn("beyond the", error)
+        self.assertIn("m", error)
+
+    def test_import_refuses_self_referencing_buffer(self):
+        # A .gltf that names itself as its buffer would be read back into itself.
+        error = self.refuse_gltf("loop.gltf",
+                                 self.gltf_doc(buffers=[{"byteLength": 36, "uri": "loop.gltf"}]))
+        self.assertIn("external buffer file", error)
+
+    def test_import_refuses_self_referencing_nodes(self):
+        error = self.refuse_gltf("cycle.gltf", self.gltf_doc(nodes=[{"mesh": 0, "children": [0]}]))
+        self.assertIn("self-referencing", error)
+
+    def test_import_refuses_oversized_glb_before_parsing(self):
+        # The header lies about the length: refuse on the declared size, not the read.
+        header = b"glTF" + struct.pack("<II", 2, (1 << 32) - 1)
+        status, result, _ = self.request("POST", "/api/workspace/model/import",
+                                         *self.multipart(([("big.glb", header)])))
+        self.assertEqual(status, 400, result)
+        self.assertIn("truncated or corrupt", result["error"])
+
+    def test_placing_an_unknown_item_is_refused(self):
+        self.import_glb(cube_glb())
+        rev = self.detail()["model_revision"]
+        self.post("placements", {"scene": "flight", "item": "spaceship",
+                                 "point": [2.5, 0, 2.5], "model_revision": rev}, 400)
 
 
 if __name__ == "__main__":

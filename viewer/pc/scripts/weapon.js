@@ -45,13 +45,15 @@ export class Weapon {
     this.shots++;
     this.spread = Math.min(this.config.maxSpread, this.spread + this.config.spreadPerShot);
 
-    const origin = this.camera.getPosition();
-    const fwd = this.camera.forward;
+    // In VR the round leaves along the tracked controller's pointer, not the head.
+    const ray = this.hooks.aimRay?.();
+    const origin = ray ? ray.origin : this.camera.getPosition();
+    const fwd = ray ? ray.dir : this.camera.forward;
     const dir = this._coneDirection(fwd);
     // From the barrel, not from the eye. A round that starts at the camera reads
     // as a beam coming out of the wall the muzzle is buried in, and it hands
     // escapeSolid a starting point inside the player's own collider.
-    const muzzle = this.hooks.muzzle?.() ?? {
+    const muzzle = ray ? { x: origin.x + fwd.x * 0.15, y: origin.y + fwd.y * 0.15, z: origin.z + fwd.z * 0.15 } : this.hooks.muzzle?.() ?? {
       x: origin.x + fwd.x * 0.5 + this.camera.right.x * 0.13,
       y: origin.y + fwd.y * 0.5 + this.camera.right.y * 0.13 - 0.14,
       z: origin.z + fwd.z * 0.5 + this.camera.right.z * 0.13,

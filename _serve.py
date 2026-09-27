@@ -274,7 +274,8 @@ def cancel_job(scene=None):
 
 def run_pipeline_thread(scene: str, preset: str, quality: str, extra_args: list,
                         *, root=None, action="run", engine="pipeline",
-                        dense_profile="survey", reservation=None):
+                        dense_profile="survey", vertical_datum="ellipsoidal",
+                        reservation=None):
     global active_process
     import workspace_api as workspace
     root = Path(root or ROOT).resolve()
@@ -282,7 +283,8 @@ def run_pipeline_thread(scene: str, preset: str, quality: str, extra_args: list,
     py_exe = str(py_exe) if py_exe.exists() else sys.executable
     if engine == "survey":
         cmd = [py_exe, str(root / "survey.py"), "reconstruct", scene,
-               "--allow-gpu", "--dense-profile", dense_profile]
+               "--allow-gpu", "--dense-profile", dense_profile,
+               "--vertical-datum", vertical_datum]
     else:
         cmd = [py_exe, str(root / "pipeline.py"), action, scene,
                "--preset", preset, "--quality", quality] + extra_args
@@ -484,7 +486,8 @@ class H(http.server.SimpleHTTPRequestHandler):
                     self._survey_json({"error": refused}, 403)
                     return
                 actions = {"inputs": survey.save_inputs, "prepare": survey.prepare_scene,
-                           "align": survey.align_scene, "evaluate": survey.evaluate_scene}
+                           "align": survey.align_scene, "evaluate": survey.evaluate_scene,
+                           "checkpoints": survey.save_checkpoints, "advance": survey.advance}
                 if action not in actions:
                     self._survey_json({"error": "Unknown survey action. GPU execution is available only through the explicit CLI gate."}, 404)
                     return
@@ -499,6 +502,11 @@ class H(http.server.SimpleHTTPRequestHandler):
                 arguments = [Path(self.directory), scene]
                 if action == "inputs":
                     arguments += [request.get("telemetry_csv"), request.get("metadata")]
+                if action == "checkpoints":
+                    arguments += [request.get("csv"),
+                                  request.get("reference_height_datum", "ellipsoidal"),
+                                  request.get("model_height_datum", "ellipsoidal"),
+                                  request.get("withheld", False)]
                 with process_lock:
                     if job_busy_locked():
                         self._survey_json({"error": "Wait for the running reconstruction before changing survey evidence."}, 409)

@@ -1,0 +1,165 @@
+<!doctype html>
+<!-- Standalone orbit viewer for a baked deliverable, e.g. the G1 textured mesh.
+
+     http://127.0.0.1:8137/viewer/textured_preview.html?model=work/rocks/textured/textured.glb
+     &alt=<second model> overlays a switch (key C) for a visual before/after. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Textured mesh preview</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #101114; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; left: 12px; top: 10px; color: #e8e8ea; font: 13px/1.5 system-ui, sans-serif;
+         text-shadow: 0 1px 2px #000; pointer-events: none; }
+  #hud b { font-weight: 600; }
+  #hud .keys { color: #9a9aa2; }
+  #switch { position: fixed; right: 12px; top: 10px; padding: 6px 10px; font: 13px system-ui, sans-serif;
+            background: #24252b; color: #e8e8ea; border: 1px solid #3a3b44; border-radius: 6px; cursor: pointer; }
+  #error { position: fixed; inset: 0; display: grid; place-items: center; color: #ffb4b4;
+           font: 14px/1.5 system-ui, sans-serif; padding: 8vw; text-align: center; }
+</style>
+<script type="importmap">
+{ "imports": { "playcanvas": "./pc/playcanvas.mjs" } }
+</script>
+</head>
+<body>
+<canvas id="app"></canvas>
+<div id="hud"></div>
+<button id="switch" hidden>switch (C)</button>
+<div id="error" hidden></div>
+<script type="module">
+import {
+  AppBase, AppOptions, Asset, AssetListLoader, CameraComponentSystem, Color, ContainerHandler,
+  Entity, FILLMODE_FILL_WINDOW, Keyboard, Mouse, RenderComponentSystem,
+  RESOLUTION_AUTO, TextureHandler, Vec3, createGraphicsDevice,
+} from "playcanvas";
+import { fitOrbit, orbitEye, panOrbit, rotateOrbit, zoomOrbit } from "./workspace_core.js";
+
+const query = new URLSearchParams(location.search);
+const models = [query.get("model") || "work/rocks/textured/textured.glb"];
+if (query.get("alt")) models.push(query.get("alt"));
+const canvas = document.getElementById("app");
+const hud = document.getElementById("hud");
+const switchButton = document.getElementById("switch");
+
+function fail(message) {
+  const box = document.getElementById("error");
+  box.hidden = false;
+  box.textContent = message;
+  hud.hidden = true;
+}
+
+function localPath(value) {
+  const path = String(value).replace(/^\/+/, "");
+  if (path.includes("..") || !/^work\//.test(path)) {
+    throw new Error(`Only files under work/ can be previewed, got ${value}`);
+  }
+  return "/" + path;
+}
+
+function naturalBounds(entity) {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  const corner = new Vec3(), out = new Vec3();
+  entity.findComponents("render").forEach(render => {
+    for (const instance of render.meshInstances || []) {
+      const box = instance.mesh && instance.mesh.aabb;
+      if (!box || !box.halfExtents || !instance.node) continue;
+      const c = box.center, h = box.halfExtents;
+      const world = instance.node.getWorldTransform();
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+        corner.set(c.x + sx * h.x, c.y + sy * h.y, c.z + sz * h.z);
+        world.transformPoint(corner, out);
+        min[0] = Math.min(min[0], out.x); max[0] = Math.max(max[0], out.x);
+        min[1] = Math.min(min[1], out.y); max[1] = Math.max(max[1], out.y);
+        min[2] = Math.min(min[2], out.z); max[2] = Math.max(max[2], out.z);
+      }
+    }
+  });
+  return [min, max].every(a => a.every(Number.isFinite)) ? { min, max } : null;
+}
+
+try {
+  const device = await createGraphicsDevice(canvas, { deviceTypes: ["webgl2"], antialias: true });
+  const options = new AppOptions();
+  options.graphicsDevice = device;
+  options.componentSystems = [RenderComponentSystem, CameraComponentSystem];
+  options.resourceHandlers = [TextureHandler, ContainerHandler];
+  const app = new AppBase(canvas);
+  app.init(options);
+  app.setCanvasFillMode(FILLMODE_FILL_WINDOW);
+  app.setCanvasResolution(RESOLUTION_AUTO);
+  app.scene.ambientLight = new Color(0.85, 0.85, 0.88);
+
+  const light = new Entity("sun");
+  light.addComponent("light", { type: "directional", intensity: 1.6, color: new Color(1, 1, 1) });
+  light.setEulerAngles(52, 34, 0);
+  app.root.addChild(light);
+
+  const camera = new Entity("camera");
+  camera.addComponent("camera", { fov: 45, nearClip: 0.05, farClip: 2000 });
+  app.root.addChild(camera);
+
+  const assets = models.map((name, index) => new Asset(`model${index}`, "container",
+    { url: localPath(name) }));
+  await new Promise((resolve, reject) => {
+    new AssetListLoader(assets, app.assets).load(err => (err ? reject(err) : resolve()));
+  });
+  const entities = assets.map((asset, index) => {
+    const entity = asset.resource.instantiateRenderEntity({ castShadows: false });
+    entity.name = models[index];
+    app.root.addChild(entity);
+    return entity;
+  });
+
+  let shown = 0;
+  entities.forEach((entity, index) => { entity.enabled = index === 0; });
+  let orbit = naturalBounds(entities[0]);
+  if (!orbit) throw new Error("The model reported no bounds; is it empty?");
+  orbit = fitOrbit(orbit, 45, canvas.clientWidth / Math.max(1, canvas.clientHeight));
+  if (models.length > 1) switchButton.hidden = false;
+
+  function paint() {
+    const eye = orbitEye(orbit);
+    camera.setPosition(eye[0], eye[1], eye[2]);
+    camera.lookAt(new Vec3(orbit.target[0], orbit.target[1], orbit.target[2]));
+    camera.camera.nearClip = Math.max(0.01, orbit.distance / 1000);
+    camera.camera.farClip = orbit.distance * 20;
+    hud.innerHTML = `<b>${entities[shown].name}</b><br>` +
+      `<span class="keys">drag orbit · wheel zoom · right-drag pan${
+        models.length > 1 ? " · C switches model" : ""}</span>`;
+  }
+
+  function show(index) {
+    shown = index % entities.length;
+    entities.forEach((entity, i) => { entity.enabled = i === shown; });
+    paint();
+  }
+
+  const mouse = new Mouse(canvas);
+  mouse.disableContextMenu();
+  const keyboard = new Keyboard(window);
+  let dragging = null;
+  mouse.on("mousedown", event => { dragging = event.button; });
+  window.addEventListener("mouseup", () => { dragging = null; });
+  mouse.on("mousemove", event => {
+    if (dragging === 0) orbit = rotateOrbit(orbit, -event.dx * 0.005, event.dy * 0.005);
+    else if (dragging === 2) orbit = panOrbit(orbit, event.dx, event.dy, canvas.clientHeight, 45);
+    else return;
+    paint();
+  });
+  mouse.on("wheel", event => {
+    orbit = zoomOrbit(orbit, -event.wheelDelta);
+    paint();
+  });
+  keyboard.on("keydown", event => { if (event.key === "c" || event.key === "C") show(shown + 1); });
+  switchButton.addEventListener("click", () => show(shown + 1));
+
+  app.start();
+  paint();
+} catch (error) {
+  fail(`${error && error.message ? error.message : error}`);
+}
+</script>
+</body>
+</html>

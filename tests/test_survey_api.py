@@ -210,6 +210,19 @@ class SurveyApiTests(unittest.TestCase):
         status, result = self.request("POST", "/api/survey/evaluate", {"scene": "flight"})
         self.assertEqual(status, 200, result)
         self.assertTrue(all(c["status"] == "not_evaluated" for c in result["evaluation"]["criteria"]))
+        # One click prepares nothing twice and stops where only the operator can act.
+        status, result = self.request("POST", "/api/survey/advance", {"scene": "flight"})
+        self.assertEqual(status, 200, result)
+        self.assertEqual(result["trace"][-1]["stage"], "reconstruct")
+        self.assertEqual(result["trace"][-1]["status"], "needs_you")
+        self.assertEqual([s["id"] for s in result["state"]["steps"]],
+                         ["inputs", "prepare", "reconstruct", "align", "checkpoints", "evaluate"])
+        # Checkpoints need a georeferenced frame to be compared in, and say so.
+        status, result = self.request("POST", "/api/survey/checkpoints",
+                                      {"scene": "flight", "csv": "id,ref_e_m,ref_n_m,ref_u_m,"
+                                       "model_e_m,model_n_m,model_u_m\nA,0,0,0,0,0,0\n"})
+        self.assertEqual(status, 400)
+        self.assertIn("Align the scene", result["error"])
         (source / "telemetry.csv").write_text(telemetry + "4,28,77,103,1,2\n")
         status, result = self.request("GET", "/api/survey?scene=flight")
         self.assertEqual(status, 200)

@@ -118,6 +118,254 @@ style2 = cd.classify(med_rot=0.4, med_trn=0.08, rot_dom_pct=0, weak_pct=5,
                      blur_p={"p25": 60})
 ok(style2 == "translation_sweep", f"classify sweep got {style2}")
 
+# ------------------------------------------- challenge D3: measure the light, then decide
+# The trigger has to separate three things the probe cannot confuse. A scene whose
+# lighting is steady, a whole-frame gain (auto-exposure riding the sun - which
+# flattening provably cannot remove, because it divides by the field and re-anchors on
+# the field's own mean, so a uniform gain cancels), and a shadow that moves ACROSS the
+# frame (the case it exists for). Same texture, same pan, same resolution throughout:
+# only the light differs, so a threshold that could not tell these apart would be
+# measuring the scene, not the illumination.
+import cv2 as _cv2  # noqa: E402
+import survey_photometry as _ph  # noqa: E402
+sys.path.insert(0, str(ROOT))            # pipeline.py lives at the repo root
+import pipeline  # noqa: E402
+
+
+def lit_frames(kind, n=26):
+    """A panned slice of one fixed random scene, with `kind` applied to the light only.
+
+    The scene is deliberately mid-tone and evenly reflective (140 +/- 22 grey, so no
+    block of it sits under the 0.62x-of-lit-level rule on its own): otherwise the
+    "steady" control would be a scene whose own albedo is a low-frequency dark region,
+    which is the one thing this module cannot distinguish from a shadow.
+    """
+    rng = np.random.default_rng(11)
+
+    def noise(sigma):
+        b = _cv2.GaussianBlur((rng.random((256, 512)) * 255).astype(np.uint8), (0, 0),
+                              sigma).astype(np.float64)
+        return (b - b.mean()) / b.std()
+
+    scene = np.clip(140 + 22 * noise(1.2) + 16 * noise(1.2), 0, 255).astype(np.uint8)
+    out = []
+    for i in range(n):
+        u = i / (n - 1)
+        frame = np.roll(scene, 4 * i, axis=1)[8:248, 8:328].copy()   # a translating camera
+        w = frame.shape[1]
+        x = np.arange(w, dtype=np.float64)[None, :]
+        if kind == "gain":                       # sun behind cloud: uniform, whole frame
+            frame = frame * (0.5 + 1.4 * u)
+        elif kind == "shadow":                   # a cast shadow edge sweeping the scene
+            frame = frame * (0.42 + 0.58 / (1 + np.exp(-(x - (0.25 + 0.6 * u) * w) / (w / 12))))
+        elif kind == "darkwall":                 # permanent dark material, never a shadow
+            frame = frame * np.where(x < 0.45 * w, 0.42, 1.0)
+        out.append(np.clip(frame, 0, 255).astype(np.uint8))
+    return out
+
+
+lit = {k: cd.probe_illumination(lit_frames(k)) for k in ("steady", "gain", "shadow", "darkwall")}
+ok(not lit["steady"]["variable_lighting"] and lit["steady"]["shadow_area_p90"] < 0.05,
+   "steady lighting does not ask for normalisation", lit["steady"]["shadow_area_p90"])
+ok(lit["shadow"]["variable_lighting"],
+   "a shadow sweeping the frame asks for normalisation",
+   {k: lit["shadow"][k] for k in ("shadow_area_p90", "shadow_area_spread")})
+ok(not lit["gain"]["variable_lighting"] and lit["gain"]["exposure_drift_ratio"] > 1.8,
+   "a whole-frame gain is REPORTED as drift but does not trigger flattening, which cannot fix it",
+   {k: lit["gain"][k] for k in ("exposure_drift_ratio", "shadow_area_p90", "variable_lighting")})
+ok(not lit["darkwall"]["variable_lighting"],
+   "a permanently dark surface is albedo, not variable light",
+   {k: lit["darkwall"][k] for k in ("shadow_area_p90", "shadow_area_spread", "variable_lighting")})
+ok(lit["gain"]["shadow_area_median"] <= lit["steady"]["shadow_area_median"] + 0.02,
+   "the trigger is gain-invariant by construction: a 3x whole-frame gain does not raise "
+   "the suspect area at all",
+   f"{lit['steady']['shadow_area_median']} -> {lit['gain']['shadow_area_median']}")
+ok(cd.probe_illumination([])["frames_probed"] == 0
+   and not cd.probe_illumination([])["variable_lighting"],
+   "no frames sampled reads as 'not measured', never as 'stable'")
+ok(cd.probe_illumination([np.full((24, 24), 128, np.uint8)] * 3)["frames_probed"] == 0,
+   "frames under the block grid report as unmeasured instead of raising")
+
+agg_lit = pipeline.aggregate_diag({"clips": [{"clip": "a", "illumination": lit["steady"]},
+                                             {"clip": "b", "illumination": lit["shadow"]}]})
+ok(agg_lit["lighting_measured"] and agg_lit["variable_lighting"],
+   "one clip with moving light is enough to owe the pass to the whole scene")
+ok(pipeline.aggregate_diag({"clips": [{"clip": "a"}]})["lighting_measured"] is False,
+   "a cached probe from before the illumination block is not read as 'stable'")
+ok(pipeline.diag_uptodate(tmp, {"videos": [], "poses": {}}) is False,
+   "and a scene with no diagnostics.json is simply stale")
+
+vals = {}
+pipeline._resolve_photometric(vals, agg_lit, "auto", False)
+ok(vals["photometric"] == "on" and vals["image_dir"] == "frames_match",
+   "auto + measured variable light -> COLMAP is pointed at the flattened copy", vals)
+forced = {}
+pipeline._resolve_photometric(forced, agg_lit, "off", False)
+ok(forced["image_dir"] == "frames_train",
+   "--photometric off overrides the measurement and keeps the raw frames", forced)
+none = {}
+pipeline._resolve_photometric(none, pipeline.aggregate_diag(None), "auto", False)
+ok(none["photometric"] == "off" and none["image_dir"] == "frames_train",
+   "no measurement at all falls back to the raw frames, never to a pass nobody measured")
+
+base_cfg = {"name": "t", "work": Path("work/t"), "preset": "drone", "variant": "v",
+            "target": 400, "width": 640, "steps": 100, "cap": 100, "voxel": "0.3",
+            "sources": {"videos": [], "poses": {}, "frames_dirs": {}},
+            "cull": pipeline.CULL_CANOPY}
+
+
+def _steps(**extra):
+    steps = pipeline.build_steps(dict(base_cfg, **extra))
+    return [s["name"] for s in steps], {s["name"]: s for s in steps}
+
+
+names, by_name = _steps(photometric="on", image_dir="frames_match")
+ok(names.index("keyframes") < names.index("frames") < names.index("colmap"),
+   "the frames step sits between keyframes and colmap", names[:4])
+ok("survey_frames.py" in str(by_name["frames"]["argv"][1])
+   and "--flatten" in by_name["frames"]["argv"] and "--keep-all" in by_name["frames"]["argv"],
+   "and it is the built capability, run pose-free, with the frame budget left alone")
+ok(by_name["frames"]["outputs"] and all(str(o).endswith(("frames_match.json", "frames_match"))
+   for o in by_name["frames"]["outputs"]),
+   "its declared outputs are the report and the directory it writes")
+off_names, off_steps = _steps(photometric="off", image_dir="frames_train")
+ok("frames" not in off_names, "off pays for nothing: no frames step at all")
+_, plain_steps = _steps()                      # a cfg from before this wiring existed
+plan_digest = lambda step: step["argv"][step["argv"].index("--plan-hash") + 1]  # noqa: E731
+ok(plan_digest(off_steps["colmap"]) == plan_digest(plain_steps["colmap"]),
+   "choosing the raw directory hashes to exactly the pre-wiring plan, so no finished "
+   "COLMAP step went stale because image_dir joined the whitelist")
+ok(plan_digest(by_name["colmap"]) != plan_digest(plain_steps["colmap"]),
+   "and choosing the flattened one changes the plan hash: the decision sits inside what "
+   "staleness is judged by, so a run cannot skip normalisation and still look current")
+
+# And the step itself, run the way the pipeline runs it: no GPS, no reconstruction,
+# no telemetry. It used to be unable to start at all without one of the two.
+import survey_frames as _sf  # noqa: E402
+
+
+def lit_scene(root, n=3, size=(320, 240)):
+    """frames_full + frames_train + keyframes.jsonl, as extract_keyframes leaves them."""
+    frames = lit_frames("shadow", n=max(n, 3))
+    rows = []
+    for i in range(n):
+        colour = np.dstack([frames[i]] * 3)
+        for folder, img in (("frames_full", colour),
+                            ("frames_train", _cv2.resize(colour, size))):
+            d = root / folder / "clip"
+            d.mkdir(parents=True, exist_ok=True)
+            _cv2.imwrite(str(d / f"{i:05d}.jpg"), img, [_cv2.IMWRITE_JPEG_QUALITY, 95])
+        rows.append({"file": f"clip/{i:05d}.jpg", "clip": "clip", "frame_index": i,
+                     "t_sec": i * 0.5, "sharpness": 100.0})
+    (root / "keyframes.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows),
+                                          encoding="utf-8")
+    return [r["file"] for r in rows]
+
+
+with tempfile.TemporaryDirectory() as sfd:
+    run = Path(sfd) / "keepall"
+    names = lit_scene(run)
+    train_before = {run / "frames_train" / n: (run / "frames_train" / n).read_bytes()
+                    for n in names}
+    rc_flat = _sf.main(["--work", str(run), "--flatten", "--keep-all",
+                        "--out", str(run / "frames_match.json")])
+    rep = json.loads((run / "frames_match.json").read_text(encoding="utf-8"))
+    ok(rc_flat == 0 and rep["frames_out"] == len(names),
+       "survey_frames flattens with no pose source at all", rep.get("position_source"))
+    ok(rep["operations"] == {"select": False, "flatten": True, "mask": False}
+       and all(s.get("matching_copy") == ["illumination_flattened"] for s in rep["frame_scores"]),
+       "and the report says what ran, per frame")
+    ok(sorted(p.relative_to(run / "frames_match").as_posix()
+              for p in (run / "frames_match").rglob("*.jpg")) == names,
+       "the matching copy holds exactly the keyframes, no more and no fewer")
+    ok(all(_cv2.imread(str(run / "frames_match" / n)).shape[:2] == (240, 320) for n in names),
+       "written at the trained frames' pixel size, so masks and cameras still line up")
+    ok(all(p.read_bytes() == b for p, b in train_before.items()),
+       "frames_train is byte-identical after the pass: flattening never reaches the colour copy")
+    copy = rep["colour_copy"]
+    ok(copy["unchanged"] and copy["digest_before"] == copy["digest_after"]
+       and copy["digest_before"],
+       "and the step records that fact as a digest either side of itself, so a finished "
+       "run can be audited without re-deriving it", copy)
+    flat_field = _ph.illumination_field(_cv2.imread(str(run / "frames_match" / names[0]),
+                                                    _cv2.IMREAD_GRAYSCALE), sigma_cells=2.0)
+    raw_field = _ph.illumination_field(_cv2.imread(str(run / "frames_train" / names[0]),
+                                                   _cv2.IMREAD_GRAYSCALE), sigma_cells=2.0)
+    ok((np.percentile(flat_field, 95) - np.percentile(flat_field, 5)) / flat_field.mean()
+       < (np.percentile(raw_field, 95) - np.percentile(raw_field, 5)) / raw_field.mean(),
+       "the low-frequency field really is smaller in the copy COLMAP reads",
+       f"field std {raw_field.std():.1f} -> {flat_field.std():.1f}")
+
+    # --keep-all has to be a real difference and not luck about easy frames: fail every
+    # quality score, and only the flag keeps the directory one-for-one with the manifest.
+    real_assess = _sf.capture.assess_frame
+    _sf.capture.assess_frame = lambda gray, **kw: dict(real_assess(gray, **kw),
+                                                       keep=False, weight=0.0)
+    try:
+        _sf.main(["--work", str(run), "--flatten", "--keep-all",
+                  "--out", str(run / "forced.json")])
+        forced = json.loads((run / "forced.json").read_text(encoding="utf-8"))
+        dropper = Path(sfd) / "dropper"
+        lit_scene(dropper)
+        _sf.main(["--work", str(dropper), "--flatten", "--out", str(dropper / "gone.json")])
+        dropped = json.loads((dropper / "gone.json").read_text(encoding="utf-8"))
+    finally:
+        _sf.capture.assess_frame = real_assess
+    ok(forced["frames_out"] == len(names) and forced["dropped_by_quality"] == []
+       and all("kept_despite" in s for s in forced["frame_scores"]),
+       "--keep-all writes a matching copy for a frame the score would drop, and says so",
+       forced["frames_out"])
+    ok(dropped["frames_out"] == 0 and len(dropped["dropped_by_quality"]) == len(names)
+       and not any((dropper / "frames_match").rglob("*.jpg")),
+       "without it the survey lane still drops them, and leaves nothing on disk for COLMAP "
+       "to match by accident", dropped["frames_out"])
+
+    def _cli(args):
+        try:
+            return _sf.main(args)
+        except SystemExit as e:                    # parser.exit raises; it does not return
+            return e.code
+
+    ok(_cli(["--work", str(run), "--select", "--out", str(run / "nope.json")]) == 2
+       and not (run / "nope.json").exists(),
+       "--select still refuses to run without camera centres instead of guessing")
+    ok(_cli(["--work", str(run), "--preparation", str(run / "a.json"),
+             "--poses", str(run / "b.jsonl"), "--flatten"]) == 2,
+       "and still will not take both pose sources at once")
+
+    # A receipt that cannot fail is decoration. Fault-inject the exact bug it guards
+    # against - the flattening path leaking a frame into the colourised copy mid-pass -
+    # and require the step to notice, record it and refuse to continue.
+    with tempfile.TemporaryDirectory() as td:
+        proof = Path(td) / "scene"
+        files = lit_scene(proof)
+        digest = _sf._colour_copy_digest(proof / "frames_train")
+        _sf.main(["--work", str(proof), "--flatten", "--out", str(proof / "clean.json")])
+        clean = json.loads((proof / "clean.json").read_text(encoding="utf-8"))["colour_copy"]
+        ok(clean["digest_before"] == digest and clean["unchanged"],
+           "the recorded digest is the directory as it stands either side of the pass", clean)
+
+        real_prep = _sf.capture.prepare_for_matching
+        seen = []
+
+        def prep_that_leaks(gray, **kw):
+            out = real_prep(gray, **kw)
+            if not seen:                      # first frame: mid-pass for the digest
+                seen.append(1)
+                (proof / "frames_train" / files[0]).write_bytes(b"the leak this guards")
+            return out
+
+        _sf.capture.prepare_for_matching = prep_that_leaks
+        try:
+            caught_rc = _cli(["--work", str(proof), "--flatten", "--out",
+                              str(proof / "caught.json")])
+        finally:
+            _sf.capture.prepare_for_matching = real_prep
+        caught = json.loads((proof / "caught.json").read_text(encoding="utf-8"))["colour_copy"]
+        ok(caught_rc != 0 and not caught["unchanged"] and caught["digest_before"] == digest,
+           "a colour copy that moved mid-pass fails the step and records it, rather than "
+           "shipping a model with the light painted in", (caught_rc, caught))
+
 # ------------------------------------------- priors injection (sqlite direct)
 db_path = tmp / "selftest.db"
 con = sqlite3.connect(str(db_path))
@@ -175,31 +423,70 @@ with tempfile.TemporaryDirectory() as td:
     finally:
         pipeline.VIDEOS = old
 
-# ------------------------------------------------- auto preset: capture beats motion
-# room_w_jsonl is an indoor phone scan whose camera walked a circle around the
-# room. Its motion style reads "orbit_mixed", which used to route it at the
-# aerial presets: the canopy cull switched on against a white painted ceiling,
-# and clip_gap - what keeps a room's walls in the collider - was never passed.
-ok(pipeline.pick_preset(["orbit_mixed"], handheld=True) == "room",
-   "a handheld orbit stays indoor even though it moved like a drone orbit")
-ok(pipeline.pick_preset(["orbit_mixed"], handheld=False) == "drone",
-   "a drone orbit still gets the aerial preset")
-ok(pipeline.pick_preset(["translation_sweep"], handheld=True) == "room",
-   "a phone walking a straight line is not proof of flight")
-ok(pipeline.pick_preset(["translation_sweep"], handheld=False) == "drone",
-   "a straight push-forward with no pose log stays aerial")
-ok(pipeline.pick_preset(["rotation_dominant"], handheld=True) == "room",
-   "the rotation-heavy case the room preset was written for")
-ok(pipeline.pick_preset([], handheld=True) == "room",
-   "no diagnostics falls back to the general-purpose indoor preset, not an aerial one")
+# ------------------------------------------------- auto preset: measured evidence only
+# The classifier used to have exactly one input that mattered - was there a pose log -
+# because an essential matrix normalises its translation, so a drone at 12 m/s and a hand
+# at 0.3 m/s produce identical numbers. Every clip on this machine classified as
+# "orbit_mixed", so `room` and `drone` were the only reachable answers and six of the
+# eight presets could not be chosen at all. These cases use the REAL measurements from
+# videos/ (recorded in docs/GAPS_AND_OPTIMIZATIONS.md, E2).
+def AGG(**kw):
+    a = {"motion_measured": False, "mount_residual_px": None, "styles": [],
+         "walked_m": None, "max_speed_m_per_s": None, "max_straightness": None,
+         "sky_fraction_p90": None, "expansion_gain": None}
+    a.update(kw)
+    return a
+
+
+def picks(agg, handheld):
+    return pipeline.pick_preset(agg, handheld)
+
+
+name, ev = picks(AGG(motion_measured=True, walked_m=43.0, max_speed_m_per_s=0.309,
+                     max_straightness=0.025), True)
+ok(name == "room", "room_w_jsonl's own log - 43 m at 0.31 m/s, closed - is a person in "
+                   "a room")
+ok(ev and all({"signal", "value", "because"} <= set(e) for e in ev),
+   "every preset decision carries the number that made it, in words")
+ok(picks(AGG(motion_measured=True, walked_m=200.0, max_speed_m_per_s=8.4,
+             max_straightness=0.9), False)[0] == "drone",
+   "a pose log that moves faster than a walk is a vehicle, not a handset")
+ok(picks(AGG(motion_measured=True, walked_m=30.0, max_speed_m_per_s=0.9,
+             max_straightness=0.8), True)[0] == "corridor",
+   "a straight run at walking pace is the hallway preset, not the room preset")
+ok(picks(AGG(motion_measured=True, walked_m=95.0, max_speed_m_per_s=0.5,
+             max_straightness=0.1), True)[0] == "indoor_large",
+   "95 m of slow walking in one pass is a floorplate, not a room")
+ok(picks(AGG(mount_residual_px=5.86), False)[0] == "room",
+   "rocks' shakier cousin: 5.9 px of frame bob is a walk even with no pose log")
+ok(picks(AGG(mount_residual_px=0.008), False)[0] == "drone",
+   "0.008 px of bob is a gimbal or an airframe, and that is how rocks and temple are "
+   "recognised here without any telemetry")
+ok(picks(AGG(mount_residual_px=0.3), False)[0] == "room",
+   "between the two calibration bands it declines to claim flight and falls back")
+ok(picks(AGG(sky_fraction_p90=0.386, mount_residual_px=5.86), False)[0] == "room"
+   and not any("sky" in e["signal"] for e in picks(
+       AGG(sky_fraction_p90=0.386, mount_residual_px=5.86), False)[1]),
+   "sky area never decides the preset: a white painted ceiling measured 38.6% 'sky' on "
+   "room_w_jsonl, so the signal is recorded and refused")
+ok(picks(AGG(sky_fraction_p90=0.047, expansion_gain=0.9), False)[0] == "room",
+   "a strong expansion signature alone is not proof of flight either")
+name, ev = picks(AGG(), False)
+ok(name == "room", "no measurements at all falls back to the indoor preset, not aerial")
+ok(any("not a finding" in e["because"] for e in ev),
+   "and it says out loud that a default is not a diagnosis")
+# The bug this ordering was written for, still guarded: routing a handheld orbit at the
+# aerial presets switched the canopy cull on against a painted ceiling.
+for style in ("orbit_mixed", "translation_sweep", "rotation_dominant", "low_texture_or_blur"):
+    hand = picks(AGG(styles=[style], mount_residual_px=3.9), True)[0]
+    ok(pipeline.PRESETS[hand]["cull"] == pipeline.CULL_NONE,
+       f"a handheld {style} clip never lands on a preset that culls the ceiling")
+ok(pipeline.PRESETS[picks(AGG(mount_residual_px=0.01), False)[0]]["cull"]
+   == pipeline.CULL_CANOPY, "an aerial pass does get the canopy cull it needs")
 AERIAL = [p for p, v in pipeline.PRESETS.items()
           if v.get("cull") == pipeline.CULL_CANOPY and p != "auto"]
-for st in (["orbit_mixed"], ["translation_sweep"], ["rotation_dominant"],
-           ["static_or_unknown"], []):
-    got = pipeline.pick_preset(st, handheld=True)
-    ok(got not in AERIAL and pipeline.PRESETS[got].get("cull") == pipeline.CULL_NONE,
-       f"handheld + {st or 'no style'} -> '{got}': cull off and clip_gap "
-       f"{pipeline.PRESETS[got].get('clip_gap', 'MISSING')} reaches the collider")
+ok(AERIAL and set(AERIAL) <= {"drone", "drone_mapping", "outdoor_building", "sky_heavy"},
+   f"only the open-sky presets cull a canopy: {AERIAL}")
 
 # ------------------------------------------------------------ runner: --only is a restriction
 # Stubbing run_step keeps this a test of the pass itself: which steps do_run
@@ -517,11 +804,18 @@ with tempfile.TemporaryDirectory() as _td:
        "editing the script a step runs invalidates its marker")
 
 # The evidence and enhancement steps are the last things to fail and the least
-# load-bearing: a take still ships its world if a browser cannot hand over a jpg
-# or the semantic labeller cannot run.
-ok(set(pipeline.ADVISORY) == {"evals", "pairs", "semantics"},
+# load-bearing: a take still ships its world if a browser cannot hand over a jpg,
+# the semantic labeller cannot run, the navmesh bake produces nothing usable, the
+# monocular second ruler cannot load, or the scenario audit finds nothing to read —
+# the game then falls back to the heightfield instead of the run aborting.
+# `gate` is deliberately NOT in here: it is the one step with a bespoke failure branch,
+# because a world that fails a hard check must be reported as failed, not shrugged off.
+ok(set(pipeline.ADVISORY) == {"evals", "pairs", "semantics", "nav", "rooms", "depth",
+                              "audit", "texture"},
    "evidence and labelling steps are advisory, so none can abort the walk test",
    ", ".join(pipeline.ADVISORY))
+ok("gate" not in pipeline.ADVISORY and "audit" not in ("gate",),
+   "the world gate stays load-bearing while its audit is optional")
 
 # ------------------------------------------- one locked screenshot is not a failed run
 # Image.save() used to write straight onto the target, truncating it in place.

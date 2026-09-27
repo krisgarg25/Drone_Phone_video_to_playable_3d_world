@@ -24,7 +24,21 @@ import robust as rb  # noqa: E402
 
 CAPSULE_R = 0.34   # m — Ammo capsule radius of a 1.75 m mover; the viewer scales
                    # this by character_height, so route against the scaled value
-CLEARANCE_M = 0.9  # m of clearance a 1.75 m mover wants in a corridor
+CLEARANCE_BODY_MULT = 1.35
+"""Lateral clearance a mover wants, as a multiple of its OWN capsule radius.
+
+It used to be `0.9 m for a 1.75 m body`, which is 2.65 capsule radii: two full shoulder
+widths of empty air on each side. That is not what protects a walker, and inside a scanned
+room it is what made the answer wrong — a real flat yields about 6 m2 of measured floor,
+its widest open run measures 1.02 m from boundary, and a 0.9 m demand therefore routes the
+human out of the room entirely (1.07 m2 walkable, `room_w_jsonl`). The 0.15 m "hamster"
+character height in the room preset existed to make that number pass by shrinking the
+person, which broke walk mode in a different way instead.
+
+1.35 radii is the body plus a hand's width: 0.46 m for a person, which is a real minimum
+aisle width and still leaves the room's measured floor walkable at human scale.
+"""
+CLEARANCE_M = CLEARANCE_BODY_MULT * CAPSULE_R  # m, for a FULL_HEIGHT mover
 FULL_HEIGHT = 1.75   # m — the character height viewer/pc.js divides by
 MIN_CHAR_H = 0.05    # m — the floor viewer/pc.js puts under character_height
 

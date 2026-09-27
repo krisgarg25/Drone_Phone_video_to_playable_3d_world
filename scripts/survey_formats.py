@@ -4,29 +4,23 @@ Covered: ASCII Wavefront OBJ (v/vt/f), glTF 2.0 (.gltf plus a .bin buffer, or an
 ``data:`` URI), a deliberately minimal ASCII FBX 6.1 geometry node set, LAS 1.4, a
 single-band float32 GeoTIFF, and dependency-free XYZ/CSV cloud fallbacks.
 
-READ THIS BEFORE TRUSTING ANY FILE. No reference geospatial library is importable in this
-environment - laspy, rasterio, pyproj, GDAL/osgeo and PDAL are all absent - so the only
-check that exists here is a round trip through this module's own reader. **A round trip
-proves self-consistency, not spec compliance:** a writer and its reader can agree on a
-wrong layout and nothing in this file would notice. No output has been opened in
-CloudCompare, MeshLab, Blender, QGIS, PDAL or GDAL, and no function claims otherwise.
-Every writer returns ``{"verified": ..., "externally_validated": False, "unverified":
-[...]}``, and :func:`verification_summary` reports the same for the module along with the
-library that would be needed to check each format properly.
+READ THIS BEFORE TRUSTING ANY FILE. The writers need nothing beyond NumPy, and every one
+re-reads its output through this module's own reader - but **a round trip proves
+self-consistency, not spec compliance:** a writer and its reader can agree on a wrong
+layout. That is not hypothetical: until laspy was run against it, ``write_las`` emitted a
+239-byte header of its own invention that every real LAS reader refused, and
+``write_geotiff`` put nodata in tag 42112 (GDAL_METADATA) where GDAL reads 42113.
 
-What real verification would take, in priority order:
-  * ``laspy`` (or PDAL) - ``laspy.read`` compares header fields, scales, offsets, counts
-    and every point against ``write_las`` output, and settles the point format 3 field
-    order that is *assumed* here (see ``LAS_POINT_FORMATS``).
-  * ``rasterio`` (or GDAL) - ``rasterio.open`` confirms transform, CRS and values, and
-    resolves the GeoKey directory against the EPSG registry.
-  * the Khronos ``glTF-Validator`` - conformance checking beyond the accessor, bufferView
-    and buffer invariants that ``_validate_gltf`` applies by hand.
-  * the Autodesk FBX SDK or Blender's importer - ``write_fbx`` emits a small documented
-    subset of ASCII FBX 6.1 and nothing outside this module has ever read it.
-Layouts live in named module constants and every claim a writer cannot support is refused
-rather than approximated, so a later run with a real library can diff field by field
-instead of rediscovering which ones were guessed.
+So when the reference libraries are importable they are used as independent readers on
+every write, and a disagreement deletes the file:
+  * ``laspy`` re-reads each LAS - header, scales, offsets, counts, extents, every record,
+    the WKT VLR (``_laspy_check``);
+  * ``rasterio``/GDAL re-opens each GeoTIFF - geotransform, pixels, nodata, and the CRS
+    GDAL resolves from the EPSG registry (``_rasterio_check``).
+Each summary's ``verified`` names the reader that actually checked the file, and
+``externally_validated`` is true only then. Without those libraries the files are still
+written and say ``round-trip only``. glTF, FBX and OBJ have no independent reader here:
+the Khronos glTF-Validator and the Autodesk FBX SDK would be next.
 
 XYZ and CSV are the opposite case: documented plain text, verifiable by inspection with no
 library at all, and their summaries say so.
@@ -63,15 +57,25 @@ def _available(name: str) -> bool:
 
 
 def verification_summary() -> dict:
-    """What has and has not been checked about the files these writers produce."""
+    """What has and has not been checked about the files these writers produce.
+
+    LAS and GeoTIFF are re-read by laspy and rasterio/GDAL on every write when those are
+    importable, so their entries depend on this machine; glTF, FBX and OBJ never have been.
+    """
+    has_laspy, has_rasterio = _available("laspy"), _available("rasterio")
+    las_check = "laspy re-read on write" if has_laspy else ROUND_TRIP
+    tiff_check = "rasterio/GDAL re-read on write" if has_rasterio else ROUND_TRIP
     return dict(
         verified=ROUND_TRIP,
         externally_validated=False,
+        externally_validated_formats=[name for name, ok in (("las", has_laspy),
+                                                             ("geotiff", has_rasterio)) if ok],
         reference_libraries_available={name: _available(name) for name in
                                        REFERENCE_LIBRARIES},
         note=("a round trip through this module's own reader proves self-consistency only; "
-              "with no reference library importable here, no output has been checked "
-              "against a specification, an SDK or any viewer application"),
+              "LAS and GeoTIFF are additionally re-read by laspy and GDAL when importable "
+              "(see externally_validated_formats), while glTF, FBX and OBJ have never been "
+              "opened by an independent reader"),
         revalidate_with=dict(las="laspy.read, or `pdal info`",
                              geotiff="rasterio.open, or gdalinfo",
                              gltf="the Khronos glTF-Validator",
@@ -98,46 +102,33 @@ def verification_summary() -> dict:
                                  "no materials, textures, normals, UVs, takes or axis setup",
                                  "the point-cloud form (Vertices with no PolygonVertexIndex "
                                  "at all) is as untested as the empty index it replaces"]),
-            las=dict(verified=ROUND_TRIP, round_trip_only=True,
-                     validator="read_las in this module",
-                     validated_by="write_las and read_las, both in this module",
-                     claims=["239-byte header block declaring version 1.4",
+            las=dict(verified=las_check, round_trip_only=not has_laspy,
+                     validator="laspy.read, field by field, on every write" if has_laspy
+                     else "read_las in this module",
+                     claims=["375-byte LAS 1.4 R15 public header, published field offsets",
                              "stored integer = round((value - offset) / scale)",
                              "a coordinate that cannot fit int32 is refused, never wrapped",
-                             "the 32-bit and 64-bit point counts hold the same value",
-                             "54-byte VLR headers with GeoKey and WKT VLRs"],
-                     unverified=["the header FIELD OFFSETS are this module's own layout: the "
-                                 "published LAS 1.4 header is longer than 239 bytes and places "
-                                 "the point format and the scale doubles elsewhere, so a real "
-                                 "LAS reader is expected to reject or misread these bytes "
-                                 "(needs the ASPRS 1.4 table or laspy)",
-                                 "the per-return point counts of a 1.4 header are not written "
-                                 "at all",
-                                 "the point format 3 field order after the base record is an "
-                                 "assumption (needs laspy or the ASPRS 1.4 table)",
-                                 "point formats 6-10 with the wider 1.4 bit fields are not "
-                                 "implemented",
-                                 "no laspy or PDAL comparison is available here"]),
-            geotiff=dict(verified=ROUND_TRIP, round_trip_only=True,
-                         validator="read_geotiff in this module",
+                             "legacy and 64-bit point counts and per-return counts agree",
+                             "one CRS record: WKT (global encoding bit 4) or a user-defined "
+                             "GeoKey directory, both under LASF_Projection"],
+                     unverified=([] if has_laspy else
+                                 ["laspy is not importable here: only this module's reader "
+                                  "has parsed the bytes"])
+                     + ["point formats 6-10 with the wider 1.4 bit fields are not "
+                        "implemented"]),
+            geotiff=dict(verified=tiff_check, round_trip_only=not has_rasterio,
+                         validator="rasterio/GDAL open, on every write" if has_rasterio
+                         else "read_geotiff in this module",
                          claims=["little-endian classic TIFF, one uncompressed strip",
                                  "SampleFormat 3 (IEEE float32) with 32 bits per sample",
-                                 "the 13 tags read_geotiff requires, by number: 256, 257, "
-                                 "258, 259, 262, 273, 277, 278, 279, 339, 33550, 33922, "
-                                 "34735",
                                  "ModelPixelScaleTag plus ModelTiepointTag, north-up only",
-                                 "Software(305) and GeoAsciiParams(34737) always, and "
-                                 "GDAL_NODATA(42112) when a nodata value is given"],
-                         unverified=["no GDAL or rasterio comparison is available here",
-                                     "the CRS was carried, never resolved against the EPSG "
-                                     "registry",
-                                     "the GeoKey directory holds 3 keys only: no "
-                                     "GeographicType pairing, no projected-CRS parameters "
-                                     "(3101/3102/...) and no ModelTransformationTag, so a "
-                                     "user-defined CRS stays under-specified",
-                                     "the TIFF baseline also expects the resolution tags "
-                                     "(282, 283, 296), which are not written here",
-                                     "single strip, north-up, one band, float32 only"]),
+                                 "GDAL_NODATA(42113) when a nodata value is given",
+                                 "the CRS GDAL resolves equals the EPSG code in the WKT"],
+                         unverified=([] if has_rasterio else
+                                     ["rasterio/GDAL is not importable here: only this "
+                                      "module's reader has parsed the bytes"])
+                         + ["the TIFF baseline resolution tags (282, 283, 296) are not "
+                            "written", "single strip, north-up, one band, float32 only"]),
             xyz=dict(verified=PLAIN_TEXT, round_trip_only=False, unverified=[]),
             csv=dict(verified=PLAIN_TEXT, round_trip_only=False, unverified=[])))
 
@@ -931,25 +922,54 @@ def _fbx_row(path, text: str, key: str, integer: bool = False):
 
 
 # ------------------------------------------------------------------------------------ LAS
-LAS_HEADER_SIZE = 239
+# The public header block of LAS 1.4 R15 (ASPRS, 2019), transcribed field by field. Every
+# offset below is the published one; laspy re-reads each written file when it is importable
+# (see ``_laspy_check``), so the table is checked on every write rather than trusted.
+LAS_HEADER_SIZE = 375
+_LAS_HEADER = struct.Struct(
+    "<4s"    # 0   file signature "LASF"
+    "H"      # 4   file source id
+    "H"      # 6   global encoding (bit 4: the CRS is WKT)
+    "16s"    # 8   project GUID
+    "BB"     # 24  version major, minor
+    "32s"    # 26  system identifier
+    "32s"    # 58  generating software
+    "HH"     # 90  creation day of year, year
+    "H"      # 94  header size
+    "I"      # 96  offset to point data
+    "I"      # 100 number of VLRs
+    "B"      # 104 point data record format
+    "H"      # 105 point data record length
+    "I"      # 107 legacy number of point records
+    "5I"     # 111 legacy number of points by return
+    "3d"     # 131 x, y, z scale factor
+    "3d"     # 155 x, y, z offset
+    "6d"     # 179 max x, min x, max y, min y, max z, min z
+    "Q"      # 227 start of waveform data packet record
+    "Q"      # 235 start of first EVLR
+    "I"      # 243 number of EVLRs
+    "Q"      # 247 number of point records
+    "15Q")   # 255 number of points by return
+assert _LAS_HEADER.size == LAS_HEADER_SIZE
+_LAS_WKT_BIT = 1 << 4
 _LAS_BASE = [("x", "i4"), ("y", "i4"), ("z", "i4"), ("intensity", "u2"),
              ("return_bits", "u1"), ("classification", "u1"), ("scan_angle", "i1"),
              ("user_data", "u1"), ("point_source_id", "u2")]
 _LAS_GPS = [("gps_time", "f8")]
 _LAS_RGB = [("red", "u2"), ("green", "u2"), ("blue", "u2")]
-# Lengths are the published values (0:20, 1:28, 2:26, 3:34). For format 3 the ORDER of the
-# GPS-time and RGB blocks after the base record is an assumption made without the ASPRS
-# table or laspy, and it is reported in every summary this module returns.
+# The legacy formats 0-3: a 20-byte base record, then GPS time, then RGB (spec tables 7-10).
 LAS_POINT_FORMATS = {
     0: dict(length=20, fields=_LAS_BASE),
     1: dict(length=28, fields=_LAS_BASE + _LAS_GPS),
     2: dict(length=26, fields=_LAS_BASE + _LAS_RGB),
     3: dict(length=34, fields=_LAS_BASE + _LAS_GPS + _LAS_RGB),
 }
-_LAS_GEOTIFF_VLR = dict(user_id=b"LASF_proj", record_id=34735,
+# Both CRS records live under the "LASF_Projection" user id (spec section 2.5).
+_LAS_GEOTIFF_VLR = dict(user_id=b"LASF_Projection", record_id=34735,
                         description="GeoTIFF GeoKeyDirectoryTag")
 _LAS_WKT_VLR = dict(user_id=b"LASF_Projection", record_id=2112,
                     description="OGC WKT Coordinate System")
+_LAS_VLR_HEADER = struct.Struct("<H16sHH32s")  # reserved, user id, record id, length, description
 _PACKED_FIELDS = (("return_number", 0, 0x07), ("number_of_returns", 3, 0x38),
                   ("scan_direction_flag", 6, 0x40), ("edge_of_flight_line", 7, 0x80))
 
@@ -962,33 +982,25 @@ def _las_dtype(point_format: int):
 def write_las(points, out, *, scale, offsets, srs_wkt=None, point_format: int = 3,
               system_identifier: str = "Drone to 3D mesh survey",
               generating_software: str = "scripts/survey_formats.write_las") -> dict:
-    """Write a LAS 1.4 file: public header block, VLRs, then point data records.
+    """Write a LAS 1.4 file: the 375-byte public header, VLRs, then point data records.
 
     ``scale`` and ``offsets`` are three numbers each. A coordinate is stored exactly as
     ``round((value - offset) / scale)`` in int32, so the precision delivered is the scale
     requested and nothing more, and a coordinate that would not fit int32 is refused
-    instead of wrapping. The header carries signature ``LASF``, version 1.4, header_size
-    239, the scale/offset triples, the X/Y/Z max-then-min records with the offsets
-    subtracted, ``offset_to_point_data`` after the VLRs, and the 32-bit and 64-bit point
-    counts set to the same value. **The 239-byte block and the byte offsets used for these
-    fields are this module's own layout, not a transcribed ASPRS 1.4 table - the published
-    1.4 header is longer, carries per-return counts and places these fields elsewhere - so
-    treat the files as self-consistent LAS-shaped data until laspy or PDAL has read one.**
+    instead of wrapping. The header follows the ASPRS LAS 1.4 R15 table (``_LAS_HEADER``):
+    the extents are real coordinates, the legacy and 64-bit counts agree, and the
+    per-return counts are filled from the records.
 
-    VLRs use the 54-byte base header (Reserved, UserID[16], RecordDataFormatID,
-    Description[32], RecordDataLength). A GeoTIFF key-directory VLR (UserID ``LASF_proj``,
-    record id 34735) is always written so the file states *some* CRS; when ``srs_wkt`` is
-    supplied a second VLR (UserID ``LASF_Projection``, record id 2112) carries that WKT
-    text. Key values come from an EPSG code found inside the WKT, or are written as
-    user-defined (32767) when there is none, because no pyproj or EPSG registry is
-    importable here - and no datum or geoid transformation is performed or claimed.
+    The CRS goes in one VLR, never two that could disagree: with ``srs_wkt`` the WKT
+    record (``LASF_Projection``/2112) is written and global-encoding bit 4 says so, as
+    1.4 requires; without it a GeoTIFF key directory (``LASF_Projection``/34735) marks the
+    CRS user-defined (32767), so the file still states that it carries no known CRS.
 
-    ``point_format`` supports 0, 1, 2 and 3 with record lengths 20, 28, 26 and 34. **For
-    format 3 this writer places GPS time before RGB after the 20-byte base record; that
-    ordering is an assumption, not a checked fact, and it appears in the returned
-    ``unverified`` list.** The return-number fields share one byte at 3/3/1/1 bits, so a
-    return number or return count above 7 is refused: the wider 1.4 bit packing lives in
-    point formats 6-10, which are not implemented.
+    ``point_format`` supports 0, 1, 2 and 3 with record lengths 20, 28, 26 and 34. The
+    return-number fields share one byte at 3/3/1/1 bits, so a return number or count
+    above 7 is refused: the wider 1.4 bit packing lives in formats 6-10, which are not
+    implemented. A photogrammetric point has one "return", so an unsupplied
+    ``return_number``/``number_of_returns`` is written as 1 of 1 rather than the invalid 0.
 
     Optional columns: ``intensity``, ``classification``, ``scan_angle``, ``user_data``,
     ``point_source_id``, ``gps_time``, ``red``/``green``/``blue`` (all three or none) and
@@ -998,7 +1010,7 @@ def write_las(points, out, *, scale, offsets, srs_wkt=None, point_format: int = 
     if point_format not in LAS_POINT_FORMATS:
         raise ValueError(f"point_format {point_format} is not implemented: supported values "
                          f"are {sorted(LAS_POINT_FORMATS)}; the 1.4-wide formats 6-10 need a "
-                         "record layout this module cannot verify here")
+                         "record layout this module does not write")
     scale = np.asarray(scale, dtype=float)
     offsets = np.asarray(offsets, dtype=float)
     if scale.shape != (3,) or offsets.shape != (3,):
@@ -1016,6 +1028,9 @@ def write_las(points, out, *, scale, offsets, srs_wkt=None, point_format: int = 
     data, count = _columns(points, ("x", "y", "z"), optional=available + packed_names)
     if {"red", "green", "blue"} & set(data) and not {"red", "green", "blue"} <= set(data):
         raise ValueError("red, green and blue are one field group: supply all three or none")
+    if not count:
+        raise ValueError("write_las refuses an empty cloud: a LAS file with no points is "
+                         "not a survey product")
     record = np.zeros(count, dtype=_las_dtype(point_format))
     for axis in "xyz":
         index = "xyz".index(axis)
@@ -1035,16 +1050,20 @@ def write_las(points, out, *, scale, offsets, srs_wkt=None, point_format: int = 
                 f"this offset: coarsen the scale or move the offset to the data centroid")
         record[axis] = rounded.astype(np.int32)
     packed = np.zeros(count, dtype=np.uint8)
+    returns = {"return_number": np.ones(count, dtype=np.int64),
+               "number_of_returns": np.ones(count, dtype=np.int64)}
     for field, shift, mask in _PACKED_FIELDS:
-        if field not in data:
+        if field not in data and field not in returns:
             continue
-        values = np.asarray(data[field], dtype=np.int64)
+        values = np.asarray(data[field] if field in data else returns[field], dtype=np.int64)
         limit = mask >> shift
         if values.min() < 0 or values.max() > limit:
             raise ValueError(f"{field} must fit its packed bits (0..{limit}) for point "
                              f"format {point_format}; wider return numbers need LAS 1.4 "
                              "formats 6-10, which this writer does not emit")
-        packed |= ((values & mask) << shift).astype(np.uint8)
+        packed |= ((values << shift) & mask).astype(np.uint8)
+        if field in returns:
+            returns[field] = values
     record["return_bits"] = packed
     for name in available:
         if name not in data:
@@ -1061,41 +1080,29 @@ def write_las(points, out, *, scale, offsets, srs_wkt=None, point_format: int = 
                 raise ValueError(f"column {name} must fit the {target} field "
                                  f"({low}..{high})")
         record[name] = values.astype(target)
-    keys = _key_directory(_crs_kind(srs_wkt), _epsg_from_wkt(srs_wkt))
-    vlr_specs: list[tuple[dict, bytes]] = [
-        (_LAS_GEOTIFF_VLR, struct.pack("<" + "H" * len(keys), *keys))]
     if srs_wkt:
-        vlr_specs.append((_LAS_WKT_VLR,
-                          srs_wkt.encode("ascii", errors="replace") + b"\x00"))
-    vlrs = [_las_vlr(spec, payload) for spec, payload in vlr_specs]
-    vlr_bytes = b"".join(vlrs)
-    if len(vlr_bytes) % 4:
-        vlr_bytes += b"\x00" * (4 - len(vlr_bytes) % 4)
-    if not count:
-        raise ValueError("write_las refuses an empty cloud: a LAS file with no points is "
-                         "not a survey product")
+        keys = None
+        vlr_specs = [(_LAS_WKT_VLR, srs_wkt.encode("ascii", errors="replace") + b"\x00")]
+    else:
+        keys = _key_directory("unknown", None)
+        vlr_specs = [(_LAS_GEOTIFF_VLR, struct.pack("<" + "H" * len(keys), *keys))]
+    vlr_bytes = b"".join(_las_vlr(spec, payload) for spec, payload in vlr_specs)
     offset_to_points = LAS_HEADER_SIZE + len(vlr_bytes)
-    adjusted = [record[axis] * scale[index] for index, axis in enumerate("xyz")]
+    actual = [record[axis] * scale[index] + offsets[index] for index, axis in enumerate("xyz")]
+    by_return = [int(np.count_nonzero(returns["return_number"] == number))
+                 for number in range(1, 16)]
+    legacy = count < 2 ** 32
     now = datetime.datetime.now(datetime.timezone.utc)
-    # Field offsets, as read back by read_las and by the tests' independent parser:
-    # 94 header_size, 96 offset_to_point_data, 100 n_vlrs, 104 vlr_bytes, 108 point_format,
-    # 109 record_length, 111 the 32-bit count, 135 the 64-bit count (set to the same value,
-    # never to a second batch of records), 143 scale, 167 offset, 191 max then min per axis.
-    # There is no room here for the per-return counts, and these offsets are this module's
-    # own layout rather than a checked ASPRS 1.4 table: see verification_summary.
-    header = struct.pack(
-        "<4sHH16sBB32s32sHHHIIIBHIQQIQ",
-        b"LASF", 0, 0, bytes(16), 1, 4,
+    header = _LAS_HEADER.pack(
+        b"LASF", 0, _LAS_WKT_BIT if srs_wkt else 0, bytes(16), 1, 4,
         _fixed(system_identifier, 32), _fixed(generating_software, 32),
         now.timetuple().tm_yday, now.year, LAS_HEADER_SIZE, offset_to_points,
-        len(vlrs), len(vlr_bytes), point_format, spec["length"], count, 0, 0, 0, count)
-    header += struct.pack("<3d3d", *[float(v) for v in scale], *[float(v) for v in offsets])
-    header += struct.pack("<6d", float(adjusted[0].max()), float(adjusted[0].min()),
-                          float(adjusted[1].max()), float(adjusted[1].min()),
-                          float(adjusted[2].max()), float(adjusted[2].min()))
-    if len(header) != LAS_HEADER_SIZE:
-        raise ValueError(f"internal error: the header built here is {len(header)} bytes, "
-                         f"not {LAS_HEADER_SIZE}")
+        len(vlr_specs), point_format, spec["length"],
+        count if legacy else 0, *(by_return[:5] if legacy else [0] * 5),
+        *[float(v) for v in scale], *[float(v) for v in offsets],
+        float(actual[0].max()), float(actual[0].min()), float(actual[1].max()),
+        float(actual[1].min()), float(actual[2].max()), float(actual[2].min()),
+        0, 0, 0, count, *by_return)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("wb") as stream:
@@ -1119,20 +1126,16 @@ def write_las(points, out, *, scale, offsets, srs_wkt=None, point_format: int = 
                                  f"more than half the {float(scale[index])} m step")
         if bool(srs_wkt) != bool(read["srs_wkt"]):
             raise ValueError("the CRS VLR did not survive the round trip")
+        checked_by = _laspy_check(out, record, point_format, scale, offsets, srs_wkt)
     except ValueError as exc:
-        _reject(out, f"{out.name}: refused LAS that this module's reader rejected: {exc}")
-    return _summary(out, verified=ROUND_TRIP,
-                    unverified=["no laspy or PDAL is importable here, so read_las in this "
-                                "module is the only reader that has parsed these bytes",
-                                "the 239-byte header layout and its field offsets are this "
-                                "module's own, not a transcribed ASPRS 1.4 table, and the "
-                                "per-return counts are absent",
-                                "point format field order after the 20-byte base record is an "
-                                "assumption, not a checked fact"
-                                + (" (gps_time before red/green/blue)" if point_format == 3
-                                   else ""),
-                                "the wider LAS 1.4 return-number bit fields (formats 6-10) "
-                                "are not written, so returns are limited to 0..7"],
+        _reject(out, f"{out.name}: refused LAS that a reader rejected: {exc}")
+    unverified = ["the wider LAS 1.4 return-number bit fields (formats 6-10) are not "
+                  "written, so returns are limited to 0..7"]
+    if checked_by is None:
+        unverified.insert(0, "laspy is not importable here, so read_las in this module is the "
+                             "only reader that has parsed these bytes")
+    return _summary(out, verified=checked_by or ROUND_TRIP, unverified=unverified,
+                    externally_validated=checked_by is not None,
                     n_points=count, point_format=point_format,
                     record_length=spec["length"], offset_to_point_data=offset_to_points,
                     scale=[float(v) for v in scale],
@@ -1140,6 +1143,54 @@ def write_las(points, out, *, scale, offsets, srs_wkt=None, point_format: int = 
                     vlr_record_ids=[spec["record_id"] for spec, _payload in vlr_specs],
                     columns=list(record.dtype.names), supplied=sorted(data),
                     quantisation_m=float(np.max(scale)), wkt_written=bool(srs_wkt))
+
+
+def _laspy_check(path, record, point_format, scale, offsets, srs_wkt):
+    """Re-read a written LAS with laspy, field by field. None when laspy is absent.
+
+    This is the check a round trip cannot give: laspy decodes the header, the VLRs and
+    every record by the published layout, so a writer and a reader that agreed on the
+    wrong table would fail here.
+    """
+    if not _available("laspy"):
+        return None
+    import laspy
+    try:
+        las = laspy.read(str(path))
+    except Exception as error:  # laspy raises its own exception types
+        raise ValueError(f"laspy {laspy.__version__} could not read the file: {error}")
+    header = las.header
+    problems = []
+    if (header.version.major, header.version.minor) != (1, 4):
+        problems.append(f"version {header.version}")
+    if header.point_format.id != point_format:
+        problems.append(f"point format {header.point_format.id}")
+    if header.point_count != len(record):
+        problems.append(f"point count {header.point_count}")
+    if list(header.scales) != [float(v) for v in scale]:
+        problems.append(f"scales {header.scales}")
+    if list(header.offsets) != [float(v) for v in offsets]:
+        problems.append(f"offsets {header.offsets}")
+    for axis in "xyz":
+        if not np.array_equal(np.asarray(las.points.array[axis.upper()]), record[axis]):
+            problems.append(f"{axis} records")
+    for name in ("intensity", "classification", "point_source_id", "gps_time",
+                 "red", "green", "blue"):
+        if name in record.dtype.names and not np.array_equal(np.asarray(las[name]),
+                                                              record[name]):
+            problems.append(name)
+    if not np.array_equal(np.asarray(las.return_number), record["return_bits"] & 0x07):
+        problems.append("return_number")
+    mins = [float((record[a] * scale[i] + offsets[i]).min()) for i, a in enumerate("xyz")]
+    if list(header.mins) != mins:
+        problems.append(f"extents {list(header.mins)} != {mins}")
+    wkt_records = [v for v in las.vlrs if getattr(v, "record_id", None) == 2112]
+    if srs_wkt and (not wkt_records or wkt_records[0].string.rstrip("\x00") != srs_wkt):
+        problems.append("WKT VLR")
+    if problems:
+        raise ValueError(f"laspy {laspy.__version__} read the file differently: "
+                         + ", ".join(problems))
+    return f"laspy {laspy.__version__} re-read"
 
 
 def _fixed(text: str, width: int) -> bytes:
@@ -1155,8 +1206,11 @@ def _fixed(text: str, width: int) -> bytes:
 
 
 def _las_vlr(spec: dict, payload: bytes) -> bytes:
-    return struct.pack("<H16sH32sH", 0, spec["user_id"], spec["record_id"],
-                       _fixed(spec["description"], 32), len(payload)) + payload
+    if len(payload) > 65535:
+        raise ValueError("a VLR payload above 65535 bytes needs an EVLR, which is not written")
+    return _LAS_VLR_HEADER.pack(0, _fixed(spec["user_id"].decode("ascii"), 16),
+                                spec["record_id"], len(payload),
+                                _fixed(spec["description"], 32)) + payload
 
 
 _EPSG_PATTERN = re.compile(r'AUTHORITY\s*\[\s*"EPSG"\s*,\s*"(\d+)"\s*\]'
@@ -1172,12 +1226,30 @@ def _epsg_from_wkt(wkt):
     """
     if not wkt:
         return None
+    wkt = _split_compound(wkt)[0]
     matches = _EPSG_PATTERN.findall(wkt)
     if not matches:
         return None
     code = int(next((m[0] for m in reversed(matches) if m[0]),
                     next((m[1] for m in reversed(matches) if m[1]), 0)))
     return code if 1000 <= code < 100000 else None
+
+
+def _split_compound(wkt):
+    """(horizontal WKT, vertical EPSG code or None) for a WKT1 COMPD_CS, else (wkt, None).
+
+    A compound CRS names the vertical system last, so the "last authority" rule that
+    finds a projected CRS's own code would otherwise return the height datum's.
+    """
+    text = wkt.strip()
+    if not text.upper().startswith("COMPD_CS"):
+        return wkt, None
+    vertical_at = text.upper().rfind("VERT_CS[")
+    if vertical_at < 0:
+        return wkt, None
+    vertical = text[vertical_at:]
+    codes = [int(a or b) for a, b in _EPSG_PATTERN.findall(vertical)]
+    return text[:vertical_at], (codes[-1] if codes else None)
 
 
 def _check_wkt(wkt) -> None:
@@ -1195,11 +1267,17 @@ def _crs_kind(wkt) -> str:
     return "unknown"
 
 
-def _key_directory(kind: str, code) -> list[int]:
-    """GeoTIFF key directory: version, revision, minor, count, then key quadruples."""
+def _key_directory(kind: str, code, vertical=None) -> list[int]:
+    """GeoTIFF key directory: version, revision, minor, count, then key quadruples.
+
+    3072 is ProjectedCSTypeGeoKey and 2048 GeographicTypeGeoKey; ``vertical`` adds
+    VerticalCSTypeGeoKey (4096) and metre VerticalUnitsGeoKey (4099) for a compound CRS.
+    """
     model_type = {"projected": 1, "geographic": 2}.get(kind, 32767)
     keys = [(1024, 0, 1, model_type), (1025, 0, 1, 1),
-            (3072 if kind == "projected" else 1026, 0, 1, 32767 if code is None else code)]
+            (3072 if kind == "projected" else 2048, 0, 1, 32767 if code is None else code)]
+    if vertical is not None:
+        keys += [(4096, 0, 1, int(vertical)), (4099, 0, 1, 9001)]
     out = [1, 1, 0, len(keys)]
     for item in keys:
         out.extend(item)
@@ -1227,13 +1305,12 @@ def read_las(path) -> dict:
     if version != (1, 4):
         raise ValueError(f"{path.name}: only LAS 1.4 is read here, found "
                          f"{version[0]}.{version[1]}")
-    header_size, offset_to_points, n_vlrs, vlr_bytes = struct.unpack_from("<HIII", text, 94)
-    point_format = text[108]
-    record_length, n_points = struct.unpack_from("<HI", text, 109)
-    n_points_64 = struct.unpack_from("<Q", text, 135)[0]
-    scale = struct.unpack_from("<3d", text, 143)
-    offsets = struct.unpack_from("<3d", text, 167)
-    extremes = struct.unpack_from("<6d", text, 191)
+    fields = _LAS_HEADER.unpack_from(text, 0)
+    (header_size, offset_to_points, n_vlrs, point_format, record_length,
+     n_points) = fields[10:16]
+    scale, offsets, extremes = fields[21:24], fields[24:27], fields[27:33]
+    global_encoding, n_points_64 = fields[2], fields[36]
+    by_return = fields[37:52]
     if point_format not in LAS_POINT_FORMATS:
         raise ValueError(f"{path.name}: point format {point_format} has a record layout "
                          "this module does not claim to know")
@@ -1258,8 +1335,8 @@ def read_las(path) -> dict:
     for _ in range(n_vlrs):
         if cursor + 54 > len(text):
             raise ValueError(f"{path.name}: truncated VLR header at byte {cursor}")
-        _reserved, user_id, record_id, description, length = \
-            struct.unpack_from("<H16sH32sH", text, cursor)
+        _reserved, user_id, record_id, length, description = \
+            _LAS_VLR_HEADER.unpack_from(text, cursor)
         payload = text[cursor + 54:cursor + 54 + length]
         if len(payload) != length:
             raise ValueError(f"{path.name}: truncated VLR payload at byte {cursor}")
@@ -1311,7 +1388,8 @@ def read_las(path) -> dict:
                 maxs=(extremes[0], extremes[2], extremes[4]),
                 mins=(extremes[1], extremes[3], extremes[5]),
                 geokeys=geokeys, srs_wkt=wkt, vlrs=vlrs, n_vlrs=int(n_vlrs),
-                vlr_bytes=int(vlr_bytes),
+                wkt_bit=bool(global_encoding & _LAS_WKT_BIT),
+                points_by_return=[int(v) for v in by_return],
                 system_id=text[26:58].split(b"\x00")[0].decode("ascii", errors="replace"),
                 software_id=text[58:90].split(b"\x00")[0].decode("ascii", errors="replace"),
                 verified=ROUND_TRIP, externally_validated=False)
@@ -1323,7 +1401,8 @@ _TIFF_WIDTH = {TIFF_BYTE: 1, TIFF_ASCII: 1, TIFF_SHORT: 2, TIFF_LONG: 4, TIFF_DO
 _TIFF_CODES = {TIFF_BYTE: "B", TIFF_ASCII: "s", TIFF_SHORT: "H", TIFF_LONG: "I",
                TIFF_DOUBLE: "d"}
 _GEOTIFF_REQUIRED = (256, 257, 258, 259, 262, 273, 277, 278, 279, 339, 33550, 33922, 34735)
-_GEOTIFF_ASCII_PARAMS, _GDAL_NODATA, _TIFF_SOFTWARE = 34737, 42112, 305
+# 42113 is GDAL_NODATA; 42112 is GDAL_METADATA, which GDAL reads as XML and ignores here.
+_GEOTIFF_ASCII_PARAMS, _GDAL_NODATA, _TIFF_SOFTWARE = 34737, 42113, 305
 
 
 def write_geotiff(raster, out, *, transform, crs_wkt, nodata=None,
@@ -1341,7 +1420,7 @@ def write_geotiff(raster, out, *, transform, crs_wkt, nodata=None,
     SamplesPerPixel(277)=1, RowsPerStrip(278), StripByteCounts(279), SampleFormat(339)=3
     (IEEE floating point), ModelPixelScaleTag(33550), ModelTiepointTag(33922),
     GeoKeyDirectoryTag(34735), GeoAsciiParamsTag(34737) carrying ``crs_wkt``, Software(305)
-    and GDAL_NODATA(42112) when a nodata value is given. The GeoKey directory is built from
+    and GDAL_NODATA(42113) when a nodata value is given. The GeoKey directory is built from
     an EPSG code found in the WKT text, or marked user-defined (32767) when there is none:
     no EPSG registry or pyproj is available here, so the CRS is carried and never validated,
     and no datum transformation is implied.
@@ -1383,7 +1462,8 @@ def write_geotiff(raster, out, *, transform, crs_wkt, nodata=None,
         np.where(holes, float(nodata if nodata is not None else 0.0), values), dtype="<f4")
     rows, columns = payload.shape
     strip = payload.tobytes()
-    keys = _key_directory(_crs_kind(crs_wkt), _epsg_from_wkt(crs_wkt))
+    keys = _key_directory(_crs_kind(crs_wkt), _epsg_from_wkt(crs_wkt),
+                          _split_compound(crs_wkt)[1])
     entries: list[list] = []
 
     def numeric(tag: int, type_id: int, items, code: str) -> None:
@@ -1417,6 +1497,41 @@ def write_geotiff(raster, out, *, transform, crs_wkt, nodata=None,
             # "1e+20" and hand the consumer a nodata value for the wrong number.
             label = label.rstrip("0").rstrip(".")
         ascii_tag(_GDAL_NODATA, label)
+    out = _emit_tiff(out, strip, entries)
+    try:
+        read = read_geotiff(out)
+        if read["shape"] != (rows, columns):
+            raise ValueError(f"shape read back as {read['shape']}")
+        if tuple(read["transform"]) != (a, b, c, d, e, f):
+            raise ValueError(f"transform read back as {read['transform']}")
+        finite = ~holes
+        limit = max(1e-6, float(np.max(np.abs(values[finite]))) * 1e-6) if finite.any() else 1e-6
+        if not np.allclose(read["raster"][finite], values[finite], atol=limit):
+            raise ValueError("raster values did not survive the float32 round trip")
+        checked_by = _rasterio_check(out, payload, (a, b, c, d, e, f), nodata, crs_wkt)
+    except ValueError as exc:
+        _reject(out, f"{out.name}: refused GeoTIFF that a reader rejected: {exc}")
+    unverified = ["single strip, north-up, one band and float32 only"]
+    if checked_by is None:
+        unverified[:0] = ["rasterio/GDAL is not importable here, so read_geotiff in this "
+                          "module is the only reader that has parsed these bytes",
+                          "the GeoKey values were derived from the WKT text handed in and "
+                          "never resolved against the EPSG registry"]
+    return _summary(out, verified=checked_by or ROUND_TRIP, width=columns, height=rows,
+                    dtype="float32", externally_validated=checked_by is not None,
+                    tags=[item[0] for item in entries],
+                    transform=[a, b, c, d, e, f], geokeys=keys,
+                    epsg=_epsg_from_wkt(crs_wkt),
+                    nodata=None if nodata is None else float(nodata),
+                    unverified=unverified)
+
+
+def _emit_tiff(out, strip, entries):
+    """Write header, one strip, out-of-line tag values and the IFD. Returns the Path.
+
+    ``entries`` are ``[tag, type, count, packed bytes]``; the strip offset tag (273) must
+    already say 8, because the strip always follows the 8-byte header.
+    """
     entries.sort(key=lambda item: item[0])
     # Layout: TIFF header (8 bytes), the strip, out-of-line tag values, then the IFD.
     values_start = 8 + len(strip)
@@ -1447,29 +1562,141 @@ def write_geotiff(raster, out, *, transform, crs_wkt, nodata=None,
         for tag, type_id, count, field, _blob in fields:
             stream.write(struct.pack("<HHI", tag, type_id, count) + field[:4])
         stream.write(struct.pack("<I", 0))       # no next IFD
+    return out
+
+
+def write_rgba_geotiff(rgb, alpha, out, *, transform, crs_wkt,
+                       description: str = "scripts/survey_formats.write_rgba_geotiff") -> dict:
+    """Write a north-up 8-bit RGBA GeoTIFF (an orthomosaic): chunky, one strip, no compression.
+
+    Alpha is unassociated (ExtraSamples = 2): 255 where a pixel was observed, 0 where it
+    was not. That keeps "no camera saw this" distinct from a black pixel, which a nodata
+    value cannot do for three 8-bit bands. Re-opened with rasterio/GDAL when available and
+    deleted if GDAL reads different pixels, transform or CRS.
+    """
+    rgb = np.asarray(rgb)
+    alpha = np.asarray(alpha)
+    if rgb.ndim != 3 or rgb.shape[2] != 3 or not rgb.size:
+        raise ValueError("rgb must be a non-empty (rows, columns, 3) array")
+    if alpha.shape != rgb.shape[:2]:
+        raise ValueError("alpha must match rgb's rows and columns")
+    if rgb.dtype != np.uint8 or alpha.dtype != np.uint8:
+        raise ValueError("rgb and alpha must be uint8")
+    if rgb.shape[0] > 65535:
+        raise ValueError("more than 65535 rows needs tiling, which this writer does not emit")
+    affine = np.asarray(transform, dtype=float)
+    if affine.shape != (6,) or not np.isfinite(affine).all():
+        raise ValueError("transform must be six finite numbers (a, b, c, d, e, f)")
+    a, b, c, d, e, f = (float(v) for v in affine)
+    if c != 0.0 or e != 0.0 or not b > 0 or not f < 0:
+        raise ValueError("only a north-up, unrotated transform is supported")
+    _check_wkt(crs_wkt)
+    payload = np.ascontiguousarray(np.dstack([rgb, alpha]), dtype=np.uint8)
+    rows, columns = payload.shape[:2]
+    strip = payload.tobytes()
+    keys = _key_directory(_crs_kind(crs_wkt), _epsg_from_wkt(crs_wkt),
+                          _split_compound(crs_wkt)[1])
+    entries: list[list] = []
+
+    def numeric(tag, type_id, items, code):
+        cast = int if code in "HI" else float
+        entries.append([tag, type_id, len(items),
+                        struct.pack("<" + code * len(items), *[cast(v) for v in items])])
+
+    def ascii_tag(tag, text):
+        blob = (text + chr(0)).encode("ascii", errors="replace")
+        entries.append([tag, TIFF_ASCII, len(blob), blob])
+
+    numeric(256, TIFF_LONG, [columns], "I")
+    numeric(257, TIFF_LONG, [rows], "I")
+    numeric(258, TIFF_SHORT, [8, 8, 8, 8], "H")
+    numeric(259, TIFF_SHORT, [1], "H")
+    numeric(262, TIFF_SHORT, [2], "H")            # RGB
+    numeric(273, TIFF_LONG, [8], "I")
+    numeric(277, TIFF_SHORT, [4], "H")
+    numeric(278, TIFF_SHORT, [rows], "H")
+    numeric(279, TIFF_LONG, [len(strip)], "I")
+    numeric(284, TIFF_SHORT, [1], "H")            # chunky (pixel-interleaved)
+    numeric(338, TIFF_SHORT, [2], "H")            # unassociated alpha
+    numeric(339, TIFF_SHORT, [1, 1, 1, 1], "H")   # unsigned integers
+    ascii_tag(_TIFF_SOFTWARE, description)
+    numeric(33550, TIFF_DOUBLE, [b, -f, 0.0], "d")
+    numeric(33922, TIFF_DOUBLE, [0.0, 0.0, 0.0, a, d, 0.0], "d")
+    numeric(34735, TIFF_SHORT, keys, "H")
+    ascii_tag(_GEOTIFF_ASCII_PARAMS, crs_wkt)
+    out = _emit_tiff(out, strip, entries)
+    checked_by = None
+    if _available("rasterio"):
+        import rasterio
+        try:
+            with rasterio.open(str(out)) as dataset:
+                bands = dataset.read()
+                got_transform = tuple(dataset.transform)[:6]
+                got_crs = dataset.crs
+            problems = []
+            if bands.shape != (4, rows, columns) or not np.array_equal(
+                    np.moveaxis(bands, 0, -1), payload):
+                problems.append("pixel values")
+            if not np.allclose(got_transform, (b, c, a, e, f, d), rtol=0, atol=1e-9):
+                problems.append(f"transform {got_transform}")
+            code = _epsg_from_wkt(crs_wkt)
+            if got_crs is None or (code is not None and got_crs.to_epsg() != code):
+                problems.append(f"CRS {got_crs}")
+            if problems:
+                raise ValueError("GDAL read " + ", ".join(problems) + " differently")
+            checked_by = f"rasterio {rasterio.__version__} (GDAL {rasterio.__gdal_version__})"
+        except Exception as exc:  # rasterio raises its own exception types
+            _reject(out, f"{out.name}: refused RGBA GeoTIFF that GDAL rejected: {exc}")
+    return _summary(out, verified=checked_by or "written; no independent reader available",
+                    width=columns, height=rows, dtype="uint8 RGBA",
+                    externally_validated=checked_by is not None, transform=[a, b, c, d, e, f],
+                    epsg=_epsg_from_wkt(crs_wkt))
+
+
+def _rasterio_check(path, payload, transform, nodata, crs_wkt):
+    """Re-open a written GeoTIFF with GDAL (through rasterio). None when it is absent.
+
+    GDAL resolves the GeoKey directory against its EPSG registry, so this settles the
+    three things a round trip cannot: that the geotransform is the one intended, that the
+    nodata tag is the one GDAL honours, and that the CRS GDAL reports is the one written.
+    """
+    if not _available("rasterio"):
+        return None
+    import rasterio
     try:
-        read = read_geotiff(out)
-        if read["shape"] != (rows, columns):
-            raise ValueError(f"shape read back as {read['shape']}")
-        if tuple(read["transform"]) != (a, b, c, d, e, f):
-            raise ValueError(f"transform read back as {read['transform']}")
-        finite = ~holes
-        limit = max(1e-6, float(np.max(np.abs(values[finite]))) * 1e-6) if finite.any() else 1e-6
-        if not np.allclose(read["raster"][finite], values[finite], atol=limit):
-            raise ValueError("raster values did not survive the float32 round trip")
-    except ValueError as exc:
-        _reject(out, f"{out.name}: refused GeoTIFF that this module's reader rejected: {exc}")
-    return _summary(out, verified=ROUND_TRIP, width=columns, height=rows, dtype="float32",
-                    tags=[item[0] for item in entries],
-                    transform=[a, b, c, d, e, f], geokeys=keys,
-                    epsg=_epsg_from_wkt(crs_wkt),
-                    nodata=None if nodata is None else float(nodata),
-                    unverified=["no GDAL, rasterio or PDAL is importable here, so "
-                                "read_geotiff in this module is the only reader that has "
-                                "parsed these bytes",
-                                "the GeoKey values were derived from the WKT text handed in "
-                                "and never resolved against the EPSG registry",
-                                "single strip, north-up, one band and float32 only"])
+        # GDAL drops a GeoTIFF's vertical keys unless asked to report the compound CRS.
+        with rasterio.Env(GTIFF_REPORT_COMPD_CS=True), rasterio.open(str(path)) as dataset:
+            band = dataset.read(1)
+            got_transform = tuple(dataset.transform)[:6]
+            got_nodata, got_crs = dataset.nodata, dataset.crs
+    except Exception as error:  # rasterio raises its own exception types
+        raise ValueError(f"rasterio {rasterio.__version__} could not open the file: {error}")
+    a, b, c, d, e, f = transform
+    problems = []
+    # rasterio's Affine is (b, c, a, e, f, d) in this module's GDAL-ordered naming.
+    if not np.allclose(got_transform, (b, c, a, e, f, d), rtol=0, atol=1e-9):
+        problems.append(f"transform {got_transform}")
+    if not np.array_equal(band, payload.astype(np.float32)):
+        problems.append("pixel values")
+    if (nodata is None) != (got_nodata is None) or (
+            nodata is not None and float(got_nodata) != float(nodata)):
+        problems.append(f"nodata {got_nodata}")
+    code, vertical = _epsg_from_wkt(crs_wkt), _split_compound(crs_wkt)[1]
+    if got_crs is None:
+        problems.append("no CRS")
+    else:
+        from pyproj import CRS as ProjCRS  # rasterio ships PROJ; pyproj names the parts
+        parts = ProjCRS.from_wkt(got_crs.to_wkt()).sub_crs_list or [
+            ProjCRS.from_wkt(got_crs.to_wkt())]
+        found = [part.to_epsg() for part in parts]
+        if code is not None and found[0] != code:
+            problems.append(f"horizontal CRS {found[0]}")
+        if vertical is not None and (len(found) < 2 or found[1] != vertical):
+            problems.append(f"vertical CRS {found[1:] or None}")
+    if problems:
+        raise ValueError(f"rasterio {rasterio.__version__} read the file differently: "
+                         + ", ".join(problems))
+    return f"rasterio {rasterio.__version__} (GDAL {rasterio.__gdal_version__}) re-read"
 
 
 def read_geotiff(path) -> dict:

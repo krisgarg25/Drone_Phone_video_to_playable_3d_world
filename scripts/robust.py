@@ -36,6 +36,7 @@ OOM = "oom"                      # ran out of VRAM or RAM: shrink, then retry
 VOXEL_OVERFLOW = "voxel-overflow"  # voxel grid exceeded Node's Map limit
 UNSUPPORTED_FLAG = "unsupported-flag"  # binary doesn't know this option
 UNSUPPORTED_ASSET = "unsupported-asset"  # binary refuses to read this data file
+NO_GPU = "no-gpu"                    # SiftGPU got no device; CPU SIFT is the repair
 EMPTY_INPUT = "empty-input"      # an upstream step produced nothing usable
 MISSING_TOOL = "missing-tool"    # binary/npx package not available
 TIMEOUT = "timeout"
@@ -60,6 +61,13 @@ _PATTERNS = [
     # without this pattern the caller only sees 0xC0000409 and a dead solve.
     (UNSUPPORTED_ASSET, r"Failed to read faiss index|legacy flann-based index|"
                         r"Check failed: file_version"),
+    # SiftGPU tries CUDA, then an OpenGL context, and when neither is usable it
+    # aborts the process with a fast-fail (0xC0000409) that carries no exit-code
+    # meaning at all. The wording is SiftGPU's own, so a CUDA-less torch step that
+    # merely prints "no CUDA-capable device" is not swept into this class.
+    (NO_GPU, r"Failed to create (?:feature extractor|matcher)|"
+             r"Switch from CUDA to OpenGL|Shader not supported by your hardware|"
+             r"Framebuffer object not supported"),
     (MISSING_TOOL, r"is not recognized as an internal or external command|"
                    r"cannot find the file|ENOENT|command not found|"
                    r"npm ERR!|npx: installed|Could not resolve"),

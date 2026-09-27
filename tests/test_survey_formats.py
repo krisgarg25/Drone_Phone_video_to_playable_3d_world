@@ -2,12 +2,15 @@
 
 The independent readers here use only ``struct``, ``csv``, ``json`` and ``re`` rather
 than the module's own ``read_*`` helpers, so a mistake in a writer cannot be hidden by
-the matching mistake in its reader. That still proves only self-consistency: no
-PDAL/laspy/GDAL/rasterio is installed here, so nothing in this file proves spec
-compliance or that any output opens in CloudCompare or QGIS.
+the matching mistake in its reader. The LAS parser below reads the published ASPRS 1.4
+R15 offsets, not the writer's constants. Where laspy and rasterio are importable the
+``ExternalReaderTests`` open the same bytes with them, which is the check that caught the
+old 239-byte LAS header and the GDAL_NODATA tag number; without them those tests skip and
+nothing here proves spec compliance.
 """
 import csv
 import importlib
+import importlib.util
 import json
 import math
 import re
@@ -80,25 +83,29 @@ class SurveyFormatsTests(unittest.TestCase):
     def las_header(text):
         return dict(
             signature=text[0:4], version=(text[24], text[25]),
+            global_encoding=struct.unpack_from("<H", text, 6)[0],
             header_size=struct.unpack_from("<H", text, 94)[0],
             offset_to_point_data=struct.unpack_from("<I", text, 96)[0],
             n_vlrs=struct.unpack_from("<I", text, 100)[0],
-            vlr_bytes=struct.unpack_from("<I", text, 104)[0],
-            point_format=text[108],
-            record_length=struct.unpack_from("<H", text, 109)[0],
-            n_points=struct.unpack_from("<I", text, 111)[0],
-            n_points_64=struct.unpack_from("<Q", text, 135)[0],
-            scale=struct.unpack_from("<3d", text, 143),
-            offset=struct.unpack_from("<3d", text, 167),
-            max_min=struct.unpack_from("<6d", text, 191),
+            point_format=text[104],
+            record_length=struct.unpack_from("<H", text, 105)[0],
+            n_points=struct.unpack_from("<I", text, 107)[0],
+            by_return_legacy=struct.unpack_from("<5I", text, 111),
+            scale=struct.unpack_from("<3d", text, 131),
+            offset=struct.unpack_from("<3d", text, 155),
+            max_min=struct.unpack_from("<6d", text, 179),
+            n_evlrs=struct.unpack_from("<I", text, 243)[0],
+            n_points_64=struct.unpack_from("<Q", text, 247)[0],
+            by_return=struct.unpack_from("<15Q", text, 255),
             software_id=text[58:90].split(b"\x00")[0].decode())
 
     @staticmethod
     def las_vlrs(text, offset, count):
         out, cursor = [], offset
         for _ in range(count):
-            reserved, user_id, record_id, description, length = \
-                struct.unpack_from("<H16sH32sH", text, cursor)
+            # Published order: reserved, user id, record id, record length, description.
+            reserved, user_id, record_id, length, description = \
+                struct.unpack_from("<H16sHH32s", text, cursor)
             out.append(dict(reserved=reserved, user_id=user_id.split(b"\x00")[0].decode(),
                             record_id=record_id, description=description.split(b"\x00")[0].decode(),
                             length=length, payload=text[cursor + 54:cursor + 54 + length]))
@@ -144,14 +151,19 @@ class SurveyFormatsTests(unittest.TestCase):
         summary = self.fmt.verification_summary()
         self.assertEqual(summary["verified"], "round-trip only")
         self.assertFalse(summary["externally_validated"])
-        self.assertEqual(summary["reference_libraries_available"],
-                         {"laspy": False, "rasterio": False, "pyproj": False, "osgeo": False})
-        for name in ("obj", "gltf", "fbx", "las", "geotiff"):
+        libraries = summary["reference_libraries_available"]
+        self.assertEqual(set(libraries), {"laspy", "rasterio", "pyproj", "osgeo"})
+        # glTF, FBX and OBJ have no independent reader on any machine this runs on.
+        for name in ("obj", "gltf", "fbx"):
             self.assertTrue(summary["formats"][name]["round_trip_only"], name)
+            self.assertTrue(summary["formats"][name]["unverified"], name)
+        # LAS and GeoTIFF are round-trip only exactly when their reference reader is absent.
+        for name, library in (("las", "laspy"), ("geotiff", "rasterio")):
+            self.assertEqual(summary["formats"][name]["round_trip_only"], not libraries[library])
+            self.assertEqual(name in summary["externally_validated_formats"], libraries[library])
             self.assertTrue(summary["formats"][name]["unverified"], name)
         for name in ("xyz", "csv"):
             self.assertIn("plain text", summary["formats"][name]["verified"])
-        self.assertIn("write_las", summary["formats"]["las"]["validated_by"])
 
     def test_every_writer_returns_the_same_disclaimer(self):
         results = [self.fmt.write_obj(TRIANGLES, VERTICES, self.path("a.obj")),
@@ -163,8 +175,11 @@ class SurveyFormatsTests(unittest.TestCase):
                                           transform=(0, 1, 0, 0, 0, -1), crs_wkt=GEO_WKT),
                    self.fmt.write_xyz(POINTS, self.path("a.xyz")),
                    self.fmt.write_csv(POINTS, self.path("a.csv"))]
-        for result in results:
-            self.assertFalse(result["externally_validated"])
+        external = {3: importlib.util.find_spec("laspy") is not None,
+                    4: importlib.util.find_spec("rasterio") is not None}
+        for index, result in enumerate(results):
+            # Only a file an independent library actually re-read may claim validation.
+            self.assertEqual(result["externally_validated"], external.get(index, False), index)
             self.assertIn("path", result)
         self.assertEqual(results[0]["verified"], "round-trip only")
         self.assertEqual(results[-1]["verified"], "plain text, externally verifiable by inspection")
@@ -405,17 +420,24 @@ class SurveyFormatsTests(unittest.TestCase):
         adjusted = POINTS - np.array(offsets)
         self.assertEqual(header["signature"], b"LASF")
         self.assertEqual(header["version"], (1, 4))
-        self.assertEqual(header["header_size"], 239)
+        self.assertEqual(header["header_size"], 375)
         self.assertEqual(header["n_points"], len(POINTS))
         self.assertEqual(header["n_points_64"], len(POINTS))
+        # Photogrammetric points are "return 1 of 1", and both count tables say so.
+        self.assertEqual(header["by_return_legacy"], (len(POINTS), 0, 0, 0, 0))
+        self.assertEqual(header["by_return"][:2], (len(POINTS), 0))
+        self.assertEqual(header["n_evlrs"], 0)
+        self.assertEqual(header["global_encoding"] & 16, 0)   # no WKT without a CRS
         self.assertEqual(header["point_format"], 3)
         self.assertEqual(header["record_length"], 34)
         self.assertEqual(header["scale"], scale)
         self.assertEqual(header["offset"], offsets)
-        self.assertEqual(header["max_min"][:2], (float(adjusted[:, 0].max()),
-                                                 float(adjusted[:, 0].min())))
-        self.assertEqual(header["max_min"][4:], (float(adjusted[:, 2].max()),
-                                                 float(adjusted[:, 2].min())))
+        # Extents are real coordinates (spec: "actual unscaled extents"), not offset-relative.
+        stored_real = np.round(adjusted / 0.005) * 0.005 + np.array(offsets)
+        np.testing.assert_allclose(header["max_min"][:2], (stored_real[:, 0].max(),
+                                                           stored_real[:, 0].min()), atol=1e-9)
+        np.testing.assert_allclose(header["max_min"][4:], (stored_real[:, 2].max(),
+                                                           stored_real[:, 2].min()), atol=1e-9)
         self.assertEqual(header["software_id"], "scripts/survey_formats.write_las")
         raw = np.frombuffer(text[header["offset_to_point_data"]:][:12], dtype="<3i4")
         np.testing.assert_array_equal(raw[0], np.round(adjusted[0] / 0.005).astype(np.int32))
@@ -423,16 +445,13 @@ class SurveyFormatsTests(unittest.TestCase):
                                               row * header["record_length"])
                            for row in range(len(POINTS))], dtype=np.int32)
         vlrs = self.las_vlrs(text, header["header_size"], header["n_vlrs"])
+        # The point data starts exactly where the VLRs end: no field in 1.4 declares a
+        # VLR byte count, so the offset is the only thing tying the two together.
         self.assertEqual(header["offset_to_point_data"],
-                         header["header_size"] + header["vlr_bytes"])
-        # The declared VLR byte count is the VLR block padded up to a 4-byte boundary, which
-        # is what keeps the point records that follow aligned. Asserting the padding exactly
-        # rather than skipping it: a count below sum(54 + length) would put the point data
-        # inside the VLRs.
-        written = sum(54 + v["length"] for v in vlrs)
-        self.assertEqual(header["vlr_bytes"], written + (-written % 4))
-        self.assertEqual(vlrs[0]["user_id"], "LASF_proj")
+                         header["header_size"] + sum(54 + v["length"] for v in vlrs))
+        self.assertEqual(vlrs[0]["user_id"], "LASF_Projection")
         self.assertEqual(vlrs[0]["record_id"], 34735)
+        self.assertEqual(vlrs[0]["description"], "GeoTIFF GeoKeyDirectoryTag")
         self.assertEqual(self.fmt.read_las(out)["srs_wkt"], None)
         read = self.fmt.read_las(out)
         # read_las returns metres, i.e. int32 * scale + offset, so the error against the
@@ -442,8 +461,8 @@ class SurveyFormatsTests(unittest.TestCase):
         np.testing.assert_array_equal(np.column_stack([read["raw_points"][k] for k in "xyz"]),
                                       stored)
         self.assertEqual(read["n_points"], len(POINTS))
-        self.assertEqual(result["externally_validated"], False)
-        self.assertTrue(any("field order" in item for item in result["unverified"]))
+        self.assertEqual(result["externally_validated"],
+                         importlib.util.find_spec("laspy") is not None)
 
     def test_write_las_wkt_vlr_and_extra_columns(self):
         out = self.path("geo.las")
@@ -459,20 +478,18 @@ class SurveyFormatsTests(unittest.TestCase):
                            srs_wkt=UTM_WKT)
         text = out.read_bytes()
         header = self.las_header(text)
-        self.assertEqual(header["n_vlrs"], 2)
-        vlrs = self.las_vlrs(text, header["header_size"], 2)
-        self.assertEqual(vlrs[1]["user_id"], "LASF_Projection")
-        self.assertEqual(vlrs[1]["record_id"], 2112)
-        self.assertEqual(vlrs[1]["payload"].split(b"\x00")[0].decode(), UTM_WKT)
-        keys = struct.unpack("<" + "H" * (len(vlrs[0]["payload"]) // 2), vlrs[0]["payload"])
-        # struct.unpack hands back a tuple, so the byte-level view is compared as one; the
-        # module's own readers return geokeys as a list everywhere (write_las's summary and
-        # read_las agree on that), which the next block checks.
-        self.assertEqual(keys[:4], (1, 1, 0, 3))
+        # LAS 1.4: a WKT CRS sets global-encoding bit 4 and is the ONLY CRS record, so a
+        # reader can never be handed a GeoKey directory that disagrees with the WKT.
+        self.assertEqual(header["n_vlrs"], 1)
+        self.assertEqual(header["global_encoding"] & 16, 16)
+        vlrs = self.las_vlrs(text, header["header_size"], 1)
+        self.assertEqual(vlrs[0]["user_id"], "LASF_Projection")
+        self.assertEqual(vlrs[0]["record_id"], 2112)
+        self.assertEqual(vlrs[0]["payload"].split(b"\x00")[0].decode(), UTM_WKT)
         read = self.fmt.read_las(out)
         self.assertEqual(read["srs_wkt"], UTM_WKT)
-        self.assertIsInstance(read["geokeys"], list)
-        self.assertEqual(read["geokeys"][:4], [1, 1, 0, 3])
+        self.assertTrue(read["wkt_bit"])
+        self.assertIsNone(read["geokeys"])
         np.testing.assert_array_equal(read["points"]["classification"], [2, 6, 9])
         np.testing.assert_array_equal(read["points"]["intensity"], [10, 20, 30])
         np.testing.assert_array_equal(read["points"]["point_source_id"], [7, 8, 9])
@@ -545,8 +562,8 @@ class SurveyFormatsTests(unittest.TestCase):
         self.assertIn((1024, 0, 1, 1), keys["keys"])
         self.assertIn((1025, 0, 1, 1), keys["keys"])
         self.assertIn((3072, 0, 1, 32632), keys["keys"])
-        self.assertEqual(tags[42112]["count"], len("-9999") + 1)   # ASCII count holds the NUL
-        self.assertEqual(tags[42112]["values"][0].strip("\x00"), "-9999")
+        self.assertEqual(tags[42113]["count"], len("-9999") + 1)   # ASCII count holds the NUL
+        self.assertEqual(tags[42113]["values"][0].strip("\x00"), "-9999")
         offset, length = tags[273]["values"][0], tags[279]["values"][0]
         flat = np.frombuffer(text[offset:offset + length], dtype="<f4")
         np.testing.assert_allclose(flat[:6], [1.5, 2.5, -9999.0, 4.5, 5.5, 6.5], atol=1e-6)
@@ -587,7 +604,8 @@ class SurveyFormatsTests(unittest.TestCase):
                                crs_wkt='GEOGCS["Local survey grid"]')
         keys = self.geo_keys(self.tiff_ifd(out.read_bytes()))["keys"]
         self.assertIn((1024, 0, 1, 2), keys)
-        self.assertIn((1026, 0, 1, 32767), keys)
+        # 2048 is GeographicTypeGeoKey; 1026 (what this once wrote) is a citation string key.
+        self.assertIn((2048, 0, 1, 32767), keys)
         read = self.fmt.read_geotiff(out)
         self.assertIsNone(read["epsg"])
         self.assertTrue(read["user_defined_crs"])
@@ -680,6 +698,74 @@ class SurveyFormatsTests(unittest.TestCase):
         self.assertIn("4294967.296", message)          # the full span the scale allows
         self.assertIn("move the offset to the data centroid", message)
         self.assertFalse(out.exists())                 # refused before writing anything
+
+
+@unittest.skipUnless(importlib.util.find_spec("laspy") and importlib.util.find_spec("rasterio"),
+                     "laspy/rasterio not installed: spec compliance is not checked")
+class ExternalReaderTests(unittest.TestCase):
+    """The same bytes, opened by the libraries a GIS would use."""
+
+    def setUp(self):
+        self.fmt = importlib.import_module("scripts.survey_formats")
+        self.crs = importlib.import_module("scripts.survey_crs")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_laspy_reads_every_field_of_a_utm_cloud(self):
+        import laspy
+        crs = self.crs.crs_from_origin(47.39, 8.51, 400.0)
+        rng = np.random.default_rng(4)
+        count = 2000
+        data = {"x": 465000 + rng.random(count) * 80, "y": 5249000 + rng.random(count) * 80,
+                "z": 400 + rng.random(count) * 12,
+                "red": rng.integers(0, 65536, count), "green": rng.integers(0, 65536, count),
+                "blue": rng.integers(0, 65536, count), "gps_time": rng.random(count) * 60,
+                "classification": rng.integers(0, 20, count)}
+        out = Path(self.tmp.name) / "utm.las"
+        result = self.fmt.write_las(data, out, scale=(0.001,) * 3,
+                                    offsets=(465040.0, 5249040.0, 406.0), srs_wkt=crs["wkt"])
+        self.assertTrue(result["externally_validated"])
+        las = laspy.read(str(out))
+        self.assertEqual(las.header.point_count, count)
+        np.testing.assert_allclose(np.asarray(las.x), data["x"], atol=0.0005 + 1e-9)
+        np.testing.assert_allclose(np.asarray(las.z), data["z"], atol=0.0005 + 1e-9)
+        np.testing.assert_array_equal(np.asarray(las.red), data["red"])
+        np.testing.assert_array_equal(np.asarray(las.classification), data["classification"])
+        np.testing.assert_allclose(np.asarray(las.gps_time), data["gps_time"])
+        self.assertEqual(las.header.parse_crs().to_epsg(), 32632)
+
+    def test_gdal_reads_transform_nodata_and_crs(self):
+        import rasterio
+        crs = self.crs.crs_from_origin(-33.9, 151.2, 30.0)
+        raster = np.arange(12, dtype=float).reshape(3, 4)
+        raster[1, 2] = np.nan
+        out = Path(self.tmp.name) / "dsm.tif"
+        result = self.fmt.write_geotiff(raster, out, transform=(334000.0, 0.5, 0.0,
+                                                                6247000.0, 0.0, -0.5),
+                                        crs_wkt=crs["wkt"], nodata=-9999.0)
+        self.assertTrue(result["externally_validated"])
+        with rasterio.open(str(out)) as dataset:
+            self.assertEqual(dataset.nodata, -9999.0)
+            self.assertEqual(dataset.crs.to_epsg(), crs["epsg"])
+            self.assertEqual(tuple(dataset.transform)[:6], (0.5, 0.0, 334000.0,
+                                                            0.0, -0.5, 6247000.0))
+            band = dataset.read(1, masked=True)
+            self.assertTrue(band.mask[1, 2])
+            self.assertEqual(float(band[2, 3]), 11.0)
+
+    def test_a_file_laspy_disagrees_with_is_deleted(self):
+        out = Path(self.tmp.name) / "bad.las"
+        real = self.fmt._laspy_check
+
+        def disagrees(*args):
+            raise ValueError("laspy read the file differently: offsets")
+        self.fmt._laspy_check = disagrees
+        try:
+            with self.assertRaisesRegex(ValueError, "laspy"):
+                self.fmt.write_las(POINTS, out, scale=(.001,) * 3, offsets=(0, 0, 0))
+        finally:
+            self.fmt._laspy_check = real
+        self.assertFalse(out.exists())
 
 
 if __name__ == "__main__":

@@ -44,22 +44,90 @@ import robust as rb  # noqa: E402
 HARD = "hard"
 SOFT = "soft"
 
+FOOT_SUPPORT_M = 0.5
+"""How much unbroken ground a spawn is judged over, in metres - not in cells.
+
+Half a metre is where a person's two feet land, and it is the length the question
+"is there floor under me" is actually about. Expressed as a cell count the same check
+silently changes meaning with the scene: five cells was 35 cm in a room and 20 m on an
+aerial pass, so the identical constant passed indoors far too easily and failed in the
+sky for reasons nobody could stand in.
+"""
+
 RESULTS = []
 
 
-def check(name: str, ok: bool, detail: str, severity: str = SOFT) -> bool:
-    """Record one verdict. `ok` may be None, which prints as "n/a"."""
+def check(name: str, ok, detail: str, severity: str = SOFT, metric=None) -> bool:
+    """Record one verdict. `ok` may be None, which prints as "n/a".
+
+    `metric` carries the NUMBER the verdict was judged on, separately from the prose:
+    {"value", "unit", "threshold", "better": "lower"|"higher", "basis"}. It exists because
+    the console line and the JSON row were the only copy of the measurement, which meant
+    a UI could show "coverage: fail" and nothing else - no value, no threshold, no way to
+    tell 4% against a 5% bar from 0% against it. Every shipped quality report that works
+    (PIX4D's Quality Check, RealityCapture's alignment table, DroneDeploy's processing
+    report) is a short list of numeric rows with a stated band, so that is the shape here.
+    """
     if ok is None:
         print(f"  [ n/a] {name}: {detail}")
         RESULTS.append({"name": name, "status": "na", "detail": detail,
-                        "severity": severity})
+                        "severity": severity, **({"metric": metric} if metric else {})})
         return True
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}: {detail}")
     RESULTS.append({"name": name, "status": "pass" if ok else "fail",
-                    "detail": detail, "severity": severity})
+                    "detail": detail, "severity": severity,
+                    **({"metric": metric} if metric else {})})
     if not ok:
         print(f"         ^ {'blocking' if severity == HARD else 'quality warning'}")
     return bool(ok)
+
+
+def rooms_evidence(work, asset_dir: Path) -> dict:
+    """Headroom, from the one step that ever looks for a ceiling.
+
+    There is no ceiling array in a viewer asset set: `heights.f32` is a per-column LOW
+    surface of the cloud, which is why nothing before this check could answer "can I
+    stand up here". `detect_rooms` is the only stage that hunts for a horizontal slab
+    above the floor, and on a phone-scanned flat it usually finds none, because the
+    camera never got the roof in frame. So the honest answer is three-way: measured, or
+    bounded below by an observed wall top, or not captured at all.
+    """
+    path = Path(asset_dir) / "rooms.json"
+    if not path.is_file():
+        return {"status": "unknown", "value": None,
+                "detail": "no rooms.json here - nothing has looked for a ceiling in "
+                          "this asset set, so headroom is unmeasured, not ample",
+                "basis": "not measured"}
+    try:
+        rooms = (json.loads(path.read_text(encoding="utf-8")) or {}).get("rooms") or []
+    except (OSError, ValueError):
+        return {"status": "unknown", "value": None,
+                "detail": f"{path.name} could not be read - headroom unmeasured",
+                "basis": "not measured"}
+    clear = [r["ceiling"]["clear_height_above_floor_m"] for r in rooms
+             if isinstance(r.get("ceiling"), dict)
+             and isinstance(r["ceiling"].get("clear_height_above_floor_m"),
+                            (int, float))]
+    if clear:
+        tight = min(clear)          # the LOWEST ceiling governs whether you fit
+        return {"status": "measured", "value": round(float(tight), 3),
+                "detail": f"ceiling measured {tight:.2f} m above the floor (the lowest "
+                          f"of {len(clear)} observed room(s))",
+                "basis": "detect_rooms: a horizontal slab of splats above the fitted floor"}
+    tops = [w.get("height_above_floor_m") for r in rooms
+            for w in (r.get("walls") or [])
+            if isinstance(w.get("height_above_floor_m"), (int, float))]
+    if tops:
+        return {"status": "bounded", "value": None,
+                "detail": f"no ceiling observed; the tallest observed wall top is "
+                          f"{max(tops):.2f} m above the floor, which bounds the room "
+                          f"from below but is not a headroom measurement",
+                "basis": "wall tops only"}
+    return {"status": "not_captured", "value": None,
+            "detail": "no ceiling and no wall of measured height: this capture never "
+                      "saw anything overhead, so headroom is unknown and must not be "
+                      "assumed when placing furniture or walking a human through",
+            "basis": "not measured"}
 
 
 def main() -> None:
@@ -108,6 +176,11 @@ def main() -> None:
     # cannot turn around in) and would make the minimum meaningless.
     min_perimeter = (args.min_perimeter if args.min_perimeter is not None
                      else max(2.0, min(15.0, 0.15 * footprint)))
+    # A world has to be taller than the thing walking through it, and no more: 1.1x is
+    # a doorframe's worth of margin. It scales with character_height rather than being
+    # a flat 2 m, because at the diorama scale several scene on disk run at, an absolute
+    # requirement would fail on a knob the operator set, not on the geometry.
+    min_headroom = 1.1 * char_h
 
     print(f"grid {nx}x{nz} cell {cell:.3f} m, origin ({ox:.1f}, {oz:.1f}), "
           f"footprint {nx * cell:.0f} x {nz * cell:.0f} m")
@@ -126,9 +199,16 @@ def main() -> None:
     check("heightfield has measured ground", meas > 0,
           f"{100 * meas:.0f}% of cells have a measured surface, "
           f"{100 * pose:.0f}% more is camera-derived floor, "
-          f"{100 * max(0.0, 1 - meas - pose):.0f}% nothing", HARD)
+          f"{100 * max(0.0, 1 - meas - pose):.0f}% nothing", HARD,
+          metric={"value": round(100 * meas, 1), "unit": "% of grid cells",
+                  "threshold": "> 0", "better": "higher",
+                  "basis": "coverage.u8 == 1: a height the splats themselves measured"})
     check("heightfield coverage", meas >= min_coverage,
-          f"{100 * meas:.0f}% measured (threshold {100 * min_coverage:.0f}%)")
+          f"{100 * meas:.0f}% measured (threshold {100 * min_coverage:.0f}%)",
+          metric={"value": round(100 * meas, 1), "unit": "% of grid cells",
+                  "threshold": f">= {100 * min_coverage:.1f}", "better": "higher",
+                  "basis": "threshold is 6 m of grid side per measured cell, capped "
+                           "2-10%, so a room is not failed for having no windows"})
     sup = cov > 0
     if sup.any():
         print(f"  H over supported cells: min {rb.safe_min(H[sup], 0.0):.2f} "
@@ -205,7 +285,13 @@ def main() -> None:
             check("cameras above the ground they filmed", cam_ok,
                   f"height above the terrain in front of them: min {arr.min():.1f} m, "
                   f"median {rb.safe_median(arr, 0.0):.1f} m over {len(arr)} cameras "
-                  f"(allowing {sink_limit:.1f} m of relief)")
+                  f"(allowing {sink_limit:.1f} m of relief)",
+                  metric={"value": round(float(rb.safe_median(arr, 0.0)), 2),
+                          "unit": "m above filmed ground",
+                          "threshold": "> 0", "better": "higher",
+                          "basis": f"median over {len(arr)} cameras; this is the scene's "
+                                   "own working height, so it is what says whether the "
+                                   "capture was a hand-held room scan or an aerial pass"})
         else:
             check("cameras above the ground they filmed", None,
                   f"no camera has 10+ supported cells ahead of it across "
@@ -225,21 +311,85 @@ def main() -> None:
                     f"judging the clamped ({i},{j})")
         # A grid too small for a 3x3 or 5x5 neighbourhood cannot fail a check
         # that presumes one -- a tiny scene is not an unsafe scene.
-        want = 2 if (nz >= 5 and nx >= 5) else (1 if (nz >= 3 and nx >= 3) else 0)
-        if want:
-            sl = (slice(i - want, i + want + 1), slice(j - want, j + want + 1))
-            sup_nb = bool(cov[sl].all())
-            relief = float(np.ptp(H[sl]))
+        #
+        # But a CELL COUNT is the wrong unit for this question, and was wrong at both
+        # ends: 5 cells at the room preset's 0.035 m resolution asks for 35 cm of solid
+        # ground (lenient enough to miss a floor tile missing), and 5 cells at temple's
+        # 4.12 m asks for 20 m of contiguous measured earth - a requirement no aerial
+        # capture satisfies and the reason `temple` hard-failed a check that could not
+        # have told anybody anything about standing there. The window is now sized in
+        # METRES, and when the grid cannot express that length the check says so instead
+        # of returning a verdict the resolution did not support.
+        if nz < 3 or nx < 3:
+            check("spawn on supported ground", None,
+                  f"a {nx}x{nz} grid cannot host a neighbourhood - a tiny scene is not "
+                  f"an unsafe scene", HARD)
         else:
-            sup_nb, relief = bool(cov[i, j] > 0), 0.0
-        check("spawn on supported ground", sup_nb,
-              f"x={sp['x']:.1f} z={sp['z']:.1f} H={H[i, j]:.2f} m, "
-              f"{2 * want + 1}x{2 * want + 1} spawn neighbourhood supported={sup_nb}",
-              HARD)
-        max_relief = max(2.0 * char_h, float(cell * 4.0))
-        check("spawn is flat", relief < max_relief,
-              f"spawn local relief {relief:.2f} m (limit {max_relief:.2f} m "
-              f"= 2x character height)")
+            want = max(1, int(round(FOOT_SUPPORT_M / cell)))
+            # Never report a window the grid cannot hold: numpy would silently clip the
+            # slice, and a gate line saying "11x11" over a 3x3 grid is a measurement the
+            # scene did not make.
+            want = min(want, (min(nz, nx) - 1) // 2)
+            if want * cell > 3.0 * FOOT_SUPPORT_M:
+                # The cell is more than three times COARSER than the length being asked
+                # about. Name that as the finding, and withhold a verdict the resolution
+                # cannot support - "n/a" and "pass" must never look the same.
+                check("grid resolves foot-level support", False,
+                      f"one cell is {cell:.2f} m, so the finest window here spans "
+                      f"{want * cell:.2f} m - coarser than the {FOOT_SUPPORT_M:.1f} m "
+                      f"under a person's feet", SOFT,
+                      metric={"value": round(cell, 3), "unit": "m per grid cell",
+                              "threshold": f"<= {3.0 * FOOT_SUPPORT_M:.2f}",
+                              "better": "lower",
+                              "basis": "foot-level support is unjudgeable at this "
+                                       "resolution; the resolution IS the defect"})
+                check("spawn on supported ground", None,
+                      f"x={sp['x']:.1f} z={sp['z']:.1f} H={H[i, j]:.2f} m, but a "
+                      f"{cell:.2f} m cell cannot test {FOOT_SUPPORT_M:.1f} m of ground - "
+                      f"no verdict, not a pass", HARD)
+                check("spawn is flat", None,
+                      f"same reason: relief over a {want * cell:.1f} m window says "
+                      f"nothing about footing")
+            else:
+                sl = (slice(i - want, i + want + 1), slice(j - want, j + want + 1))
+                sup_nb = bool(cov[sl].all())
+                relief = float(np.ptp(H[sl]))
+                side = 2 * want + 1
+                check("spawn on supported ground", sup_nb,
+                      f"x={sp['x']:.1f} z={sp['z']:.1f} H={H[i, j]:.2f} m, "
+                      f"{side}x{side} ({side * cell:.2f} m) spawn neighbourhood "
+                      f"supported={sup_nb}", HARD,
+                      metric={"value": 1 if sup_nb else 0, "unit": "supported",
+                              "threshold": "= 1", "better": "higher",
+                              "basis": f"every one of the {side * side} cells within "
+                                       f"{want * cell:.2f} m of the spawn carries a "
+                                       "measured or camera-derived floor"})
+                max_relief = max(2.0 * char_h, float(cell * 4.0))
+                check("spawn is flat", relief < max_relief,
+                      f"spawn local relief {relief:.2f} m (limit {max_relief:.2f} m "
+                      f"= 2x character height)",
+                      metric={"value": round(relief, 3), "unit": "m of relief underfoot",
+                              "threshold": f"< {max_relief:.2f}", "better": "lower",
+                              "basis": f"peak-to-peak over the spawn window; the limit "
+                                       f"is 2x the {char_h:g} m character height this "
+                                       f"world was built for"})
+
+            # HEADROOM, answered honestly when the capture never has it.
+            # `heights.f32` is a LOW surface (a per-column percentile of the cloud),
+            # not a ceiling, so no array in this directory encodes what is above the
+            # floor. detect_rooms is the only stage that hunts for a horizontal slab
+            # over the floor, and on a phone-scanned flat it usually finds none,
+            # because the camera never got the roof in frame. "unknown" is the point:
+            # a planner that assumed 2.7 m would be inventing a metre nobody scanned.
+            head = rooms_evidence(args.work, w)
+            check("headroom above the walk surface",
+                  None if head["status"] != "measured"
+                  else head["value"] >= min_headroom,
+                  head["detail"],
+                  metric=None if head["status"] != "measured" else
+                  {"value": head["value"], "unit": "m clear above the floor",
+                   "threshold": f">= {min_headroom:.2f}", "better": "higher",
+                   "basis": head["basis"]})
 
     # ---- collider, if built ----
     # Must be the file the viewer actually loads. The glob fallback used to pick
@@ -279,7 +429,10 @@ def main() -> None:
               f"z[{rb.safe_min(V[:, 2], 0.0):.1f}..{rb.safe_max(V[:, 2], 0.0):.1f}]")
         check("collider has vertices", len(V) > 0,
               f"{glb.name} decoded to {len(V)} verts - an empty mesh means the "
-              f"physics floor does not exist", HARD)
+              f"physics floor does not exist", HARD,
+              metric={"value": int(len(V)), "unit": "collider vertices",
+                      "threshold": "> 0", "better": "higher",
+                      "basis": "the exact file the viewer loads, decoded"})
 
     if glb is not None and len(V):
         ymax = rb.safe_max(V[:, 1], 0.0)
@@ -328,10 +481,21 @@ def main() -> None:
                   f"{rm.get('loop_bad_pct', 0):.1f}% of loop samples bad, spawn "
                   f"{rm.get('spawn_above_floor_m', float('nan')):.2f} m above its "
                   f"floor ({min_perimeter:.1f} m is the shortest loop worth "
-                  f"walking here)")
+                  f"walking here)",
+                  metric={"value": round(perim, 1), "unit": "m of walk loop",
+                          "threshold": f">= {min_perimeter:.1f}", "better": "higher",
+                          "basis": f"15% of this grid's own {footprint:.0f} m footprint, "
+                                   "capped at 15 m, so a correct room is not failed for "
+                                   "being a room"})
             check("route has a loop to follow", perim > 0,
-                  f"{perim:.0f} m loop with {rm.get('waypoints', 0)} waypoints - "
-                  f"autopilot has nowhere to go", HARD)
+                  f"{perim:.0f} m loop with {rm.get('waypoints', 0)} waypoints"
+                  + ("" if perim > 0 else " - autopilot has nowhere to go"),
+                  HARD,
+                  metric={"value": int(rm.get("waypoints", 0) or 0),
+                          "unit": "waypoints on the loop", "threshold": "> 0",
+                          "better": "higher",
+                          "basis": "walk_path_from_glb's closed circuit around the "
+                                   "largest supported region"})
         else:
             check("route metrics recorded", None,
                   "collision.json has no route_metrics - tune_collider did not "
@@ -361,7 +525,16 @@ def main() -> None:
         "thresholds": {"min_coverage": round(min_coverage, 4),
                        "min_perimeter_m": round(min_perimeter, 2),
                        "character_height_m": char_h,
+                       "min_headroom_m": round(min_headroom, 3),
                        "cell_m": cell,
+                       "footprint_m": round(footprint, 1),
+                       "grid": [nx, nz],
+                       "character_height_source":
+                           ("collision.json, written by the capture preset"
+                            if col.get("character_height") else
+                            "absent - defaulted to 1.75 m, which is NOT this "
+                            "preset's choice and the reason a re-exported room "
+                            "walked at a different scale than it was built"),
                        "pinned_by_operator": [k for k, v in (
                            ("min-coverage", args.min_coverage),
                            ("min-perimeter", args.min_perimeter)) if v is not None]},

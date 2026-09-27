@@ -1,0 +1,48 @@
+{
+  "scene": "temple",
+  "faces": 8207,
+  "views": 120,
+  "atlas_px": 1170,
+  "timing_s": {
+    "mesh_s": 1.5,
+    "visibility_s": 47.8,
+    "before_colour_s": 33.5,
+    "after_bake_s": 39.2
+  },
+  "size_bytes": {
+    "before_vertex_colour.glb": 690208,
+    "after_textured.glb": 1098108
+  },
+  "held_out": [
+    {
+      "view": "temple/00030.jpg",
+      "covered_pct": 68.2,
+      "mae_before": 18.13,
+      "mae_after": 17.4,
+      "detail_before": 0.34,
+      "detail_after": 0.295
+    },
+    {
+      "view": "temple/00060.jpg",
+      "covered_pct": 92.5,
+      "mae_before": 14.78,
+      "mae_after": 13.61,
+      "detail_before": 0.366,
+      "detail_after": 0.286
+    },
+    {
+      "view": "temple/00090.jpg",
+      "covered_pct": 91.6,
+      "mae_before": 13.16,
+      "mae_after": 12.8,
+      "detail_before": 0.36,
+      "detail_after": 0.294
+    }
+  ],
+  "mean": {
+    "mae_before": 15.357,
+    "mae_after": 14.603,
+    "detail_before": 0.355,
+    "detail_after": 0.292
+  }
+}

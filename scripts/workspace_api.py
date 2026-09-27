@@ -1,6 +1,7 @@
 """Disk-backed workspace API. Reads never probe footage or start reconstruction."""
 import hashlib
 import json
+import sys
 import math
 import mimetypes
 import os
@@ -18,8 +19,13 @@ INPUT_EXTS = VIDEO_EXTS | {".gpx", ".srt", ".csv", ".jsonl", ".json"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 MODEL_EXTS = {".ply", ".splat", ".glb", ".gltf", ".bin", ".obj", ".mtl", ".las", ".laz"}
 GENERATED_EXTS = MODEL_EXTS | IMAGE_EXTS | {".json", ".f32", ".u8", ".rgb", ".npz"}
-ROOT_OUTPUTS = {"splat.ply", "frame.json", "diagnostics.json", "report.json", "keyframes.jsonl", "keyframes_poses.jsonl", "eval_pairs.json", "video_meta.json"}
-SURVEY_OUTPUTS = {"preparation.json", "georeference.json", "evaluation.json", "sparse_points.ply", "latest_run.json", "capture_plan.json"}
+ROOT_OUTPUTS = {"splat.ply", "frame.json", "diagnostics.json", "report.json", "keyframes.jsonl", "keyframes_poses.jsonl", "eval_pairs.json", "video_meta.json",
+# The E-block record pair: what scenario this scene was built as, and what the finished
+# world turned out to be. Listed as deliverables because an audit trail a customer can
+# download is the difference between a claim and a measurement.
+"scenario.json", "scenario_audit.json"}
+SURVEY_OUTPUTS = {"preparation.json", "georeference.json", "evaluation.json", "sparse_points.ply", "latest_run.json", "capture_plan.json",
+                  "checkpoints.json", "checkpoints_source.json"}
 WORKFLOWS = {"general", "inspection", "survey", "response", "heritage"}
 CAPTURES = {"unknown", "drone", "handheld", "phone"}
 MAX_JSON = 2 << 20
@@ -131,7 +137,7 @@ def videos_for(root, scene):
 def file_allowed(relative):
     parts = relative.split("/")
     ext = Path(relative).suffix.lower()
-    if relative in {"viewer/pc.html", "viewer/pc.js"} or re.fullmatch(r"viewer/workspace[A-Za-z0-9_.-]*\.js", relative):
+    if relative in {"viewer/pc.html", "viewer/pc.js", "viewer/measurement_math.js", "viewer/furniture_geometry.js", "viewer/plan_core.js"} or re.fullmatch(r"viewer/workspace[A-Za-z0-9_.-]*\.js", relative):
         return True
     if relative.startswith("viewer/pc/"):
         return ext in MODEL_EXTS | {".js", ".mjs", ".wasm"}
@@ -146,6 +152,18 @@ def file_allowed(relative):
         return rest[0] in ROOT_OUTPUTS
     if rest[0] in {"viewer_assets", "pc"}:
         return ext in GENERATED_EXTS
+    if rest[0] == "textured":
+        # The G1 bake: textured OBJ/MTL, glTF + buffer, its JPEG atlas and its report.
+        return len(rest) == 2 and ext in MODEL_EXTS | {".jpg", ".json"}
+    if rest[0] == "inspection":
+        # Defect-register photo crops (Phase 5).
+        return len(rest) == 3 and rest[1] == "photos" and ext == ".jpg"
+    if rest[0] == "twin":
+        # The digital-twin engine package, written on request (Phase 5).
+        return len(rest) == 3 and rest[1] == "exports" and ext == ".zip"
+    if rest[0] == "models":
+        # Imported glTF/GLB items, served to the viewer from work/<scene>/models.
+        return len(rest) == 2 and ext in {".glb", ".gltf"}
     if rest[0] in {"frames_train", "frames_full", "frames_undist"}:
         return ext in IMAGE_EXTS
     if rest[0] == "survey":
@@ -275,7 +293,7 @@ def model_revision(root, work):
     candidates = [work / "frame.json"]
     for folder in ("viewer_assets", "pc"):
         for path in files_under(root, safe_path(root, (work / folder).relative_to(root).as_posix())):
-            if path.suffix.lower() in MODEL_EXTS | {".f32", ".u8", ".npz"} or path.name in {"collision.json", "objects.json"}:
+            if path.suffix.lower() in MODEL_EXTS | {".f32", ".u8", ".npz"} or path.name in {"collision.json", "objects.json", "rooms.json"}:
                 candidates.append(path)
     for path in sorted(candidates):
         path = safe_path(root, path.relative_to(root).as_posix())
@@ -311,6 +329,78 @@ def job_snapshot(server, root):
         return public_data({**server.active_job_info, "logs": list(server.active_job_info.get("logs", []))}, root)
 
 
+def _quality_check(root, work):
+    """The world gate's verdict as data the interface can show, row by row.
+
+    Every number in here already existed. `check_world.py` computed it, printed it to a
+    console line, and wrote a sentence into `viewer_assets/world_check.json` that no
+    caller in the repository has ever opened - so a scene that shipped with four quality
+    warnings looked identical on screen to one that passed everything, and a scene the
+    gate blocked arrived as a red tile labelled "gate". This is the read side of E's
+    premise: a soft-fail exit code of 0 is not "no news", it is news.
+    """
+    gate = read_json(root, work / "viewer_assets" / "world_check.json")
+    if not isinstance(gate, dict) or not isinstance(gate.get("checks"), list):
+        return None
+    rows = []
+    for c in gate["checks"]:
+        if not isinstance(c, dict):
+            continue
+        m = c.get("metric") if isinstance(c.get("metric"), dict) else {}
+        rows.append({"name": c.get("name"), "status": c.get("status"),
+                     "severity": c.get("severity"),
+                     "value": m.get("value"), "unit": m.get("unit"),
+                     "threshold": m.get("threshold"), "better": m.get("better"),
+                     "basis": m.get("basis") or c.get("detail")})
+    return {"status": gate.get("status"), "checks": rows,
+            "hard_failures": gate.get("hard_failures") or [],
+            "warnings": gate.get("warnings") or [],
+            "thresholds": gate.get("thresholds") or {}}
+
+
+def _scenario(root, work):
+    """What this scene was built as, why, and what the audit says about it. E0/E2."""
+    rec = read_json(root, work / "scenario.json")
+    if not isinstance(rec, dict) or not rec.get("preset"):
+        return None
+    audit = read_json(root, work / "scenario_audit.json")
+    applied, origin = rec.get("applied") or {}, rec.get("origin") or {}
+    return {
+        "preset": rec.get("preset"), "label": rec.get("label"),
+        "advice": rec.get("advice"), "decided_by": rec.get("decided_by"),
+        "quality": rec.get("quality"), "cull": rec.get("cull"),
+        "evidence": rec.get("evidence") or [],
+        "capture": rec.get("capture") or {},
+        # Only the knobs a reviewer would act on, each with who set it. The full map is
+        # on disk; the point of showing it here is that a parameter nobody chose is
+        # visible as `default` rather than invisible.
+        "applied": [{"param": k, "value": applied.get(k), "set_by": origin.get(k)}
+                    for k in sorted(applied)
+                    if k in ("sift_peak_threshold", "sift_edge_threshold", "overlap",
+                             "prior_std", "character_height", "min_coverage",
+                             "min_perimeter", "cell_meters", "voxel", "max_step",
+                             "image_dir", "photometric", "dynamics", "target", "width",
+                             "steps", "cap")],
+        "recorded_at": rec.get("decided_at"),
+        "audit": ({"findings": audit.get("findings") or [],
+                    "camera_agl_m": audit.get("camera_agl_m"),
+                    "footprint_m": audit.get("footprint_m"),
+                    "cell_m": audit.get("cell_m"),
+                    "registration_pct": audit.get("registration_pct"),
+                    "gate_status": audit.get("gate_status")}
+                  if isinstance(audit, dict) and audit.get("findings") is not None
+                  else None),
+    }
+
+
+def _application(app_id):
+    import applications
+    if app_id not in applications.APPLICATIONS:
+        return None
+    app = applications.get(app_id)
+    return {"id": app_id, "label": app["label"], "workspace_tabs": app["workspace_tabs"], "analyses": app["analyses"]}
+
+
 def summary(root, scene, server, detail=False):
     source, work = scene_paths(root, scene)
     videos = videos_for(root, scene)
@@ -324,7 +414,31 @@ def summary(root, scene, server, detail=False):
     scale_value = frame.get("scale_m_per_unit")
     scale_status = "relative"
     if finite(scale_value) and scale_value > 0:
-        scale_status = "metric" if scale_source == "AR pose-prior metric path" else "estimated"
+        # Two measured rulers: the AR pose path, and a similarity fit to the flight's GPS
+        # track. Speed x duration and an assumed height stay "estimated".
+        measured = scale_source == "AR pose-prior metric path" or scale_source.startswith(
+            "GPS telemetry similarity fit")
+        scale_status = "metric" if measured else "estimated"
+    # The learned second ruler (challenge D2b), surfaced but never applied. It cannot
+    # change scale_value: on the only scene where anyone held a tape measure, this model
+    # read 18% low while the AR pose path read 4% low, so a disagreement is worth showing
+    # and worth doubting in the same breath. The model's own verdict is passed through
+    # rather than a fresh comparison computed here, so the UI and the step never disagree.
+    depth = read_json(root, work / "depth" / "summary.json", {})
+    verdict = depth.get("verdict") if isinstance(depth, dict) else None
+    scale_check = None
+    if isinstance(verdict, dict) and finite(verdict.get("moge_scale_m_per_unit")):
+        ratio = verdict.get("ratio_moge_over_existing")
+        existing = verdict.get("existing_scale_m_per_unit")
+        scale_check = {
+            "ruler_m_per_unit": round(float(verdict["moge_scale_m_per_unit"]), 4),
+            "existing_m_per_unit": round(float(existing), 4) if finite(existing) else None,
+            "gap_percent": round(abs(1.0 - float(ratio)) * 100.0, 1) if finite(ratio) else None,
+            "agreement": verdict.get("agreement"),
+            "confidence": verdict.get("confidence"),
+            "model": (depth.get("model") or {}).get("id") if isinstance(depth.get("model"), dict) else None,
+            "changes_measurements": False,
+        }
     frames, camera_count = frames_for(root, work)
     poses = {r.get("file") for r in rows_jsonl(root, work / "keyframes_poses.jsonl") if isinstance(r.get("file"), str)}
     latest = {}
@@ -348,30 +462,67 @@ def summary(root, scene, server, detail=False):
     times += [p.stat().st_mtime for p in videos + ([model] if viewable else [])]
     job = job_snapshot(server, root)
     processing = job.get("scene") == scene and job.get("status") == "running"
-    failed = any(s["status"] in {"failed", "interrupted"} for s in steps)
+    checks_failed = [s["name"] for s in steps if s["status"] in {"failed", "interrupted"}]
     if job.get("scene") == scene and str(job.get("status", "")).startswith(("failed", "error", "cancelled")):
-        failed = True
-    status = "processing" if processing or any(s["status"] == "running" for s in steps) else "failed" if failed else "ready" if viewable else "uploaded" if videos else "empty"
+        # The run itself stopped; whatever is on disk may be from an older take.
+        checks_failed = checks_failed or ["the run"]
+    # A produced world that tripped one post-production check is still usable:
+    # calling it "failed" hides it behind the Ready filter and throws away a good
+    # take. The failed check stays named, in the warnings and the step list.
+    status = ("processing" if processing or any(s["status"] == "running" for s in steps)
+              else "failed" if checks_failed and not viewable
+              else "ready" if viewable else "uploaded" if videos else "empty")
     # Conservative defaults: a scene is local/unverified until validated survey
     # evidence (detail path only) proves otherwise. The fast list never imports
     # the survey subsystem, so it always reports these defaults.
     georeference = {"status": "local", "crs": None}
     accuracy = {"status": "unverified", "rmse_m": None}
+    # Read once, used twice: the card needs the verdict, the screen needs the rows.
+    quality = _quality_check(root, work)
+    scenario = _scenario(root, work)
     project = {"id": scene, "name": metadata.get("name") or scene,
                "workflow": metadata.get("workflow") if metadata.get("workflow") in WORKFLOWS else "general",
                "capture": metadata.get("capture") if metadata.get("capture") in CAPTURES else "unknown",
+               "application": _application(metadata.get("application")), "site": metadata.get("site"),
                "status": status, "updated": datetime.fromtimestamp(max(times or [0]), timezone.utc).isoformat(),
                "thumbnail_url": frames[len(frames) // 2]["url"] if frames else None,
                "video_count": len(videos), "frame_count": len(frames), "registered_count": len(poses) or camera_count,
                "viewable": viewable, "trained": trained,
                "scale": {"status": scale_status, "source": scale_source, "unit": "units" if scale_status == "relative" else "m"},
+               "scale_check": scale_check,
                "georeference": georeference,
-               "accuracy": accuracy}
+               "accuracy": accuracy,
+               # The gate's verdict, compact enough for a card: which of the three states
+               # this world is in, and what is wrong with it if it is not "pass".
+               "quality": ({"status": quality.get("status"),
+                            "hard_failures": quality.get("hard_failures") or [],
+                            "warnings": quality.get("warnings") or [],
+                            "checks": len(quality.get("checks") or [])}
+                           if quality else None),
+               # Compact on the list, full in detail: "which scenario built this" is the
+               # first thing a person scanning twenty projects wants, and it costs one
+               # small JSON read that the detail path was already paying.
+               "scenario": ({"preset": scenario.get("preset"),
+                             "label": scenario.get("label"),
+                             "decided_by": scenario.get("decided_by"),
+                             "advice": None, "capture": {}, "applied": [],
+                             "evidence": [], "audit": None,
+                             "quality": scenario.get("quality"),
+                             "cull": scenario.get("cull")} if scenario else None)}
     if not detail:
         return project
     warnings = [PROXY_WARNING]
+    if (quality or {}).get("hard_failures"):
+        # A hard gate failure is the one warning that must not be inferred from a red
+        # step tile: the world exists, loads, and is not safe to quote a measurement off.
+        warnings.append("The world gate blocked this scene: "
+                        + ", ".join(quality["hard_failures"])
+                        + ". Open Quality to see the number each check judged on.")
     if scale_status != "metric":
         warnings.append("Scale is relative." if scale_status == "relative" else "Scale is estimated from an assumed height/speed; it is not independently measured accuracy.")
+    if checks_failed and viewable:
+        warnings.append("Model is complete and viewable, but these run steps did not pass: "
+                        + ", ".join(checks_failed) + ". Open Processing to see why before relying on them.")
     artifacts = []
     for path in sorted(work.glob("*")) if work.is_dir() else []:
         if path.name in ROOT_OUTPUTS and path.is_file():
@@ -380,8 +531,23 @@ def summary(root, scene, server, detail=False):
                               "kind": "model" if path.suffix in MODEL_EXTS else "report"})
     for folder in ("viewer_assets", "pc"):
         for path in files_under(root, safe_path(root, (work / folder).relative_to(root).as_posix())):
-            if path.suffix.lower() in MODEL_EXTS:
-                artifacts.append({"name": folder + "/" + path.name, "url": runtime_url(root, path, True), "bytes": path.stat().st_size, "kind": "model"})
+            if path.suffix.lower() in MODEL_EXTS or path.name == "rooms.json":
+                # rooms.json is a JSON deliverable, not geometry: the panel shows the
+                # kind verbatim, so calling a room layout a "model" would be a lie.
+                kind = "rooms" if path.name == "rooms.json" else "model"
+                artifacts.append({"name": folder + "/" + path.name, "url": runtime_url(root, path, True), "bytes": path.stat().st_size, "kind": kind})
+    # G1: the texture bake's deliverables, named for what they are.
+    for path in files_under(root, safe_path(root, (work / "textured").relative_to(root).as_posix())):
+        if path.suffix.lower() in {".obj", ".gltf"}:
+            kind = "textured mesh (sparse surface, UV texture from the frames)"
+        elif path.suffix.lower() in {".mtl", ".bin", ".jpg"}:
+            kind = "textured mesh part"
+        elif path.name == "texture_report.json":
+            kind = "report"
+        else:
+            continue
+        artifacts.append({"name": "textured/" + path.name, "url": runtime_url(root, path, True),
+                          "bytes": path.stat().st_size, "kind": kind})
     # Only consult survey evidence when it exists. An ordinary phone clip never
     # needs telemetry, preparation, NumPy imports or GPU diagnostics just to list.
     survey_summary = None
@@ -411,7 +577,11 @@ def summary(root, scene, server, detail=False):
             if survey.get("status") == "invalid":
                 warnings.append("Survey evidence is stale or invalid; prepare/align/evaluate it separately.")
             survey_summary = {"status": survey.get("status"), "blockers": survey.get("blockers", []),
-                              "fit_rmse_m": (survey.get("alignment") or {}).get("fit_rmse_m")}
+                              "fit_rmse_m": (survey.get("alignment") or {}).get("fit_rmse_m"),
+                              # Read off the same re-verified preparation manifest as
+                              # crs above, so the GPS bounds travel with the staleness
+                              # check that guards them and never outlive it.
+                              "gnss": survey.get("gnss")}
             for artifact in survey.get("artifacts", []):
                 relative = unquote(artifact["url"]).lstrip("/")
                 path = safe_path(root, relative)
@@ -438,9 +608,10 @@ def summary(root, scene, server, detail=False):
             semantics["summary"] = None
     project.update(videos=[{"name": p.name, "url": runtime_url(root, p), "bytes": p.stat().st_size} for p in videos],
                    artifacts=artifacts, frames=frames, steps=steps, measurements=measurements, placements=placements,
-                   furniture=furniture_library(), model_revision=revision,
+                   furniture=furniture_library(work), model_revision=revision,
                    diagnostics=public_data(diagnostics, root) if isinstance(diagnostics, dict) else None,
                    georeference=georeference, accuracy=accuracy, survey=survey_summary, semantics=semantics,
+                   quality=quality, scenario=scenario,
                    notes=metadata.get("notes", ""), viewer_url=("/runtime/viewer/pc.html?asset=/runtime/work/" + quote(scene, safe="") + "/viewer_assets&embed=1") if viewable else None,
                    warnings=public_data(warnings, root), job=job)
     return project
@@ -487,6 +658,13 @@ def save_project(root, data, server):
         updates["name"] = validate_text(data["name"], "Name", 200)
     if "notes" in data:
         updates["notes"] = validate_text(data["notes"], "Notes", 20000, empty=True)
+    if "application" in data:
+        import applications
+        if data["application"] not in (None, "", *applications.APPLICATIONS):
+            raise Error(400, "Invalid application.")
+        updates["application"] = data["application"] or None
+    if "site" in data:
+        updates["site"] = validate_text(data["site"], "Site", 80, empty=True) or None
     for key, allowed in (("workflow", WORKFLOWS), ("capture", CAPTURES)):
         if key in data:
             if not isinstance(data[key], str) or data[key] not in allowed:
@@ -517,7 +695,8 @@ def measurement_value(data, unit, cloud=None):
     if kind == "volume" and cloud is None:
         raise Error(409, "Volume needs a point cloud to integrate against; run reconstruction first.")
     record = {"id": uuid.uuid4().hex, "kind": kind, "label": label, "points": points,
-              "unit": unit, "created_at": datetime.now(timezone.utc).isoformat(),
+              "unit": unit + {"area": "²", "volume": "³"}.get(kind, ""),
+              "created_at": datetime.now(timezone.utc).isoformat(),
               "geometry": "viewer-pick", "model_revision": data.get("model_revision"), "stale": False}
     # With a point cloud behind the scene, measure with the real engine: clicks are
     # snapped to measured geometry and carry an uncertainty budget + validity flag.
@@ -535,12 +714,10 @@ def measurement_value(data, unit, cloud=None):
         if kind == "height":
             comp = engine.get("components") or {}
             record["value"] = comp.get("vertical_m")
-            record["valid"] = record["value"] is not None
+            record["valid"] = bool(engine.get("valid") and record["value"] is not None)
             record["support"] = engine.get("valid")
         else:
             record["value"] = engine.get("value")
-            if kind in {"area", "volume"} and record["value"] is not None:
-                record["unit"] = "m²" if kind == "area" else "m³"
         return record
     value = None
     if kind == "distance":
@@ -549,11 +726,11 @@ def measurement_value(data, unit, cloud=None):
         value = abs(points[0][1] - points[1][1])
     elif kind == "area":
         value = abs(sum(a[0] * b[2] - b[0] * a[2] for a, b in zip(points, points[1:] + points[:1]))) / 2
-        unit += "²"
     record["engine"] = False
-    record["valid"] = True
+    record["valid"] = kind == "point"
+    record["reason"] = None if kind == "point" else "raw geometry estimate only; no point cloud supports this measurement"
+    record["uncertainty"] = None
     record["value"] = value
-    record["unit"] = unit
     return record
 
 
@@ -595,40 +772,56 @@ def save_measurement(root, data, server, delete=False):
     return summary(root, scene, server, True)
 
 
-def furniture_library():
-    """The catalogue the Place tab offers, or [] if the backend lacks SciPy."""
+def furniture_library(work=None):
+    """The catalogue the Place tab offers (plus this scene's imported models), or
+    [] if the backend lacks SciPy. A scene dir adds its glTF/GLB imports."""
     try:
         import workspace_place
+        if work is not None:
+            return workspace_place.scene_library(work)
         return workspace_place.library()
     except Exception:
         return []
 
 
-def placement_record(work, data, revision):
-    """Validate a drop and let the placement engine snap + fit-check it."""
+def placement_record(work, data, revision, keep_lift=False):
+    """Validate a drop and let the placement engine snap + fit-check it.
+
+    A fresh drop always rests on the measured floor. Only an edit may carry an
+    explicit vertical position (``point[1]``) or an edited ``size``, because the
+    editor sends the item's own centre back, not a floor hit.
+    """
     import workspace_place
     item = data.get("item")
     if not isinstance(item, str):
         raise Error(400, "A furniture item is required.")
     try:
-        workspace_place.item_spec(item)
+        # Resolves catalogue items and this scene's imported glTF/GLB models; an
+        # imported item's real file size becomes the placement size downstream.
+        workspace_place.item_spec(item, work)
     except ValueError as error:
         raise Error(400, str(error))
     point = data.get("point")
     if (not isinstance(point, list) or len(point) != 3
-            or any(not isinstance(n, (int, float)) or not math.isfinite(n) or abs(n) > 1e7 for n in point)):
+            or any(not finite(n) or abs(n) > 1e7 for n in point)):
         raise Error(400, "Supply a finite XYZ drop point on the floor.")
     yaw = data.get("yaw_deg", 0.0)
     scale = data.get("scale", 1.0)
-    if not isinstance(yaw, (int, float)) or not math.isfinite(yaw):
+    if not finite(yaw):
         raise Error(400, "Rotation must be a finite angle.")
-    if not isinstance(scale, (int, float)) or not (0.05 <= scale <= 20):
+    if not finite(scale) or not (0.05 <= scale <= 20):
         raise Error(400, "Scale must be between 0.05 and 20.")
+    size = data.get("size")
+    if size is not None and (not isinstance(size, list) or len(size) != 3
+                             or any(not finite(n) or not (0.05 <= n <= 20) for n in size)):
+        raise Error(400, "Supply three finite edge lengths between 0.05 and 20 m.")
     label = data.get("label")
     try:
         rec = workspace_place.make_placement(work, item, point[0], point[2],
                                              yaw_deg=float(yaw), scale=float(scale),
-                                             label=label if isinstance(label, str) else None)
+                                             label=label if isinstance(label, str) else None,
+                                             size=size if keep_lift else None,
+                                             center_y=point[1] if keep_lift else None)
     except (ValueError, OSError) as error:
         raise Error(409, str(error))
     rec["model_revision"] = revision
@@ -640,7 +833,6 @@ def save_placement(root, data, server, mode="create"):
     scene = data.get("scene")
     _, work = scene_paths(root, scene)
     detail = summary(root, scene, server, True)
-    revision = detail["model_revision"]
     with server.process_lock:
         ensure_not_running(server, scene)
         path = work / "placements.json"
@@ -658,16 +850,22 @@ def save_placement(root, data, server, mode="create"):
         else:
             if not detail["viewable"]:
                 raise Error(409, "A viewable model is required to place furniture.")
+            revision = model_revision(root, work)
             if data.get("model_revision") != revision:
                 raise Error(409, "The model changed. Reload before placing.")
-            rec = placement_record(work, data, revision)
             if mode == "update":
                 identity = data.get("id")
                 if not isinstance(identity, str) or not identity:
                     raise Error(400, "Supply a placement id.")
-                rec["id"] = identity
                 for i, p in enumerate(rows):
                     if p.get("id") == identity:
+                        # Updates are partial: moving/rotating must not reset user
+                        # dimensions, labels or the original creation identity.
+                        defaults = {key: p[key] for key in ("item", "label", "scale", "yaw_deg", "size") if key in p}
+                        defaults["point"] = [p["center_xz"][0], p["center_y"], p["center_xz"][1]]
+                        rec = placement_record(work, {**defaults, **data}, revision, keep_lift=True)
+                        rec["id"] = p["id"]
+                        rec["created_at"] = p["created_at"]
                         rows[i] = rec
                         break
                 else:
@@ -675,22 +873,26 @@ def save_placement(root, data, server, mode="create"):
             else:
                 if len(rows) >= 2000:
                     raise Error(413, "This model already has 2000 placed items.")
-                rows.append(rec)
+                rows.append(placement_record(work, data, revision))
         write_json(root, path, rows)
     return summary(root, scene, server, True)
 
 
 def run_job(root, data, server):
-    if set(data) - {"scene", "preset", "quality", "anchor", "action", "engine", "dense_profile"}:
+    if set(data) - {"scene", "preset", "quality", "anchor", "action", "engine", "dense_profile",
+                    "vertical_datum"}:
         raise Error(400, "Unsupported launch fields; arbitrary arguments are not allowed.")
     scene = data.get("scene")
     scene_paths(root, scene)
     from pipeline import PRESETS, QUALITY
     preset, quality = data.get("preset"), data.get("quality")
     action, engine, profile = data.get("action", "run"), data.get("engine", "pipeline"), data.get("dense_profile", "survey")
-    for value, choices in ((preset, PRESETS), (quality, QUALITY), (action, {"run", "scan"}), (engine, {"pipeline", "survey"}), (profile, {"survey", "fast", "budget"})):
+    vertical = data.get("vertical_datum", "ellipsoidal")
+    for value, choices in ((preset, PRESETS), (quality, QUALITY), (action, {"run", "scan"}), (engine, {"pipeline", "survey"}), (profile, {"survey", "fast", "budget"}), (vertical, {"ellipsoidal", "egm96"})):
         if not isinstance(value, str) or value not in choices:
-            raise Error(400, "Invalid preset, quality, action, engine or dense profile.")
+            raise Error(400, "Invalid preset, quality, action, engine, dense profile or vertical datum.")
+    if engine != "survey" and "vertical_datum" in data:
+        raise Error(400, "A vertical datum applies to georeferenced survey products only.")
     extra = []
     if "anchor" in data:
         anchor = data["anchor"]
@@ -713,7 +915,8 @@ def run_job(root, data, server):
             if status.get("status") not in {"prepared", "aligned", "evaluated"} or any(r.get("status") != "ready" for r in status.get("readiness", [])[:3]):
                 raise Error(409, "Survey inputs must be prepared and current before reconstruction.")
         token = server.reserve_job_locked(scene, preset, quality, action, engine)
-    server.spawn_pipeline_job(scene, preset, quality, extra, root=root, action=action, engine=engine, dense_profile=profile, reservation=token)
+    options = {"vertical_datum": vertical} if engine == "survey" else {}
+    server.spawn_pipeline_job(scene, preset, quality, extra, root=root, action=action, engine=engine, dense_profile=profile, reservation=token, **options)
     return {"status": "started", "scene": scene}
 
 
@@ -875,6 +1078,110 @@ def upload(handler, root, server):
     return {"status": "success", "scene": scene, "saved_files": [name for name, _ in files]}
 
 
+MODEL_SUFFIXES = {".glb", ".gltf"}
+
+
+def import_model(handler, root, server):
+    """Store one self-contained glTF/GLB as a scene model and register it as a
+    placeable item whose real size was read from the file.
+
+    Reuses the upload transport (spool + ``MultipartReader``), the filename-safety
+    checks and ``safe_path`` (traversal, junctions, symlinks, ADS all refused); the
+    parser additionally rejects any external-buffer URI, so no path outside the
+    uploaded bytes is ever opened. A model with unreadable bounds is refused with
+    the parser's reason, never placed at an inferred size.
+    """
+    import workspace_place
+    size = body_length(handler, MAX_UPLOAD)
+    content_type = handler.headers.get_content_type()
+    boundary = handler.headers.get_param("boundary")
+    if content_type != "multipart/form-data" or not isinstance(boundary, str) or not re.fullmatch(r"[A-Za-z0-9'()+_,./:=?-]{1,70}", boundary):
+        if size <= MAX_JSON:
+            handler.rfile.read(size)
+        raise Error(400, "Expected multipart/form-data with a valid boundary.")
+    scene = None
+    model = None
+    data = b""
+    with tempfile.TemporaryDirectory(prefix="workspace-model-") as temporary:
+        temporary = Path(temporary)
+        with (temporary / "body").open("w+b") as spool:
+            remaining = size
+            while remaining:
+                chunk = handler.rfile.read(min(1 << 20, remaining))
+                if not chunk:
+                    raise Error(400, "Upload body was truncated.")
+                spool.write(chunk)
+                remaining -= len(chunk)
+            spool.seek(0)
+            parser = MultipartReader(spool, boundary.encode("ascii"))
+            if parser.line() != b"--" + boundary.encode("ascii"):
+                raise Error(400, "Malformed multipart opening boundary.")
+            for index in range(4):
+                header_lines = []
+                while True:
+                    line = parser.line()
+                    if not line:
+                        break
+                    header_lines.append(line)
+                    if sum(map(len, header_lines)) > 16384:
+                        raise Error(400, "Multipart headers are too large.")
+                headers = BytesHeaderParser().parsebytes(b"\r\n".join(header_lines) + b"\r\n\r\n")
+                if headers.get_content_disposition() != "form-data":
+                    raise Error(400, "Expected form-data parts.")
+                field = headers.get_param("name", header="content-disposition")
+                name = headers.get_filename()
+                part = temporary / str(index)
+                with part.open("wb") as stream:
+                    final = parser.copy_part(stream)
+                if name is None:
+                    if field == "scene" and scene is None and part.stat().st_size <= 64:
+                        scene = part.read_text(encoding="utf-8")
+                        scene_paths(root, scene)
+                elif field in {"model", "file", "files"}:
+                    if model is not None:
+                        raise Error(400, "Import one model file at a time.")
+                    if not name or len(name) > 200 or "/" in name or "\\" in name or Path(name).suffix.lower() not in MODEL_SUFFIXES:
+                        raise Error(400, "Only a single self-contained .glb or .gltf model file is supported.")
+                    if part.stat().st_size > workspace_place.MODEL_MAX_BYTES:
+                        raise Error(413, f"A model file must be at most {workspace_place.MODEL_MAX_BYTES >> 20} MiB.")
+                    model = (name, part)
+                    data = part.read_bytes()
+                if final:
+                    break
+    if scene is None:
+        raise Error(400, "Supply a scene.")
+    if model is None:
+        raise Error(400, "Supply exactly one .glb or .gltf model file.")
+    name = model[0]
+    ext = Path(name).suffix.lower()
+    try:
+        bounds = workspace_place.read_model_bounds(data, name)
+    except ValueError as error:
+        raise Error(400, str(error))
+    _, work = scene_paths(root, scene)
+    model_id = uuid.uuid4().hex
+    entry = {"id": model_id, "label": (Path(name).stem or "Imported model")[:200],
+             "file": model_id + ext, "size": bounds["size"], "source": "gltf",
+             "bytes": len(data), "created_at": datetime.now(timezone.utc).isoformat()}
+    with server.process_lock:
+        (safe_path(root, f"work/{scene}/models")).mkdir(parents=True, exist_ok=True)
+        target = safe_path(root, f"work/{scene}/models/{model_id}{ext}")
+        rows = read_json(root, work / "models" / "index.json", [])
+        if not isinstance(rows, list):
+            raise Error(409, "Stored models are not a list.")
+        if len(rows) >= 2000:
+            raise Error(413, "This model already has 2000 imported models.")
+        with target.open("xb") as out:
+            out.write(data)
+        rows.append(entry)
+        try:
+            write_json(root, work / "models" / "index.json", rows)
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+    return summary(root, scene, server, True)
+
+
 def handle(handler, server):
     root = Path(handler.directory).resolve()
     parsed = urlparse(handler.path)
@@ -885,14 +1192,41 @@ def handle(handler, server):
             if route == "file":
                 serve_file(handler, root, query)
                 return
+            if route == "bundle":
+                import workspace_bundle
+                workspace_bundle.serve(handler, root, query, server)
+                return
             if route == "projects":
                 result = projects(root, server)
             elif route == "project":
                 result = summary(root, query.get("scene", [""])[0], server, True)
+            elif route.startswith("plan/") or route == "coords":
+                import workspace_plan_api
+                result = workspace_plan_api.get(sys.modules[__name__], root, route, query)
+            elif route.startswith("mission/"):
+                import workspace_mission_api
+                result = workspace_mission_api.get(sys.modules[__name__], root, route, query)
+            elif route.startswith("ops/"):
+                import workspace_ops_api
+                result = workspace_ops_api.get(sys.modules[__name__], root, route, query)
+            elif route.startswith(("inspect/", "twin/")):
+                import workspace_inspect_api
+                result = workspace_inspect_api.get(sys.modules[__name__], root, route, query)
             else:
                 raise Error(404, "Unknown workspace endpoint.")
         else:
             refused = handler._survey_refused()
+            if refused and route in ("mission/session/join", "mission/session/state"):
+                # RH-9: the one write a LAN device may make - joining an instructor's
+                # rehearsal session and posting its pose - and only with that session's
+                # token. It touches the in-memory session, never the disk.
+                import mission_session
+                import workspace_mission_api
+                data = json_body(handler)
+                if not mission_session.token_ok(data):
+                    raise Error(403, "A valid session token is required to join from another device.")
+                handler._survey_json(workspace_mission_api.session_post(sys.modules[__name__], route, data))
+                return
             origin = urlparse(handler.headers.get("Origin", ""))
             if refused or origin.scheme not in {"http", "https"} or origin.path not in {"", "/"} or origin.query or origin.fragment or origin.username:
                 try:
@@ -903,6 +1237,8 @@ def handle(handler, server):
                 raise Error(403, "Workspace writes require loopback and a matching browser Origin/Host.")
             if route == "upload":
                 result = upload(handler, root, server)
+            elif route == "model/import":
+                result = import_model(handler, root, server)
             else:
                 data = json_body(handler)
                 if route == "project":
@@ -912,6 +1248,18 @@ def handle(handler, server):
                 elif route in {"placements", "placements/update", "placements/delete"}:
                     mode = "delete" if route.endswith("/delete") else "update" if route.endswith("/update") else "create"
                     result = save_placement(root, data, server, mode)
+                elif route.startswith("plan/"):
+                    import workspace_plan_api
+                    result = workspace_plan_api.post(sys.modules[__name__], root, route, data, server)
+                elif route.startswith("mission/"):
+                    import workspace_mission_api
+                    result = workspace_mission_api.post(sys.modules[__name__], root, route, data, server)
+                elif route.startswith("ops/"):
+                    import workspace_ops_api
+                    result = workspace_ops_api.post(sys.modules[__name__], root, route, data, server)
+                elif route.startswith(("inspect/", "twin/")):
+                    import workspace_inspect_api
+                    result = workspace_inspect_api.post(sys.modules[__name__], root, route, data, server)
                 elif route == "run":
                     result = run_job(root, data, server)
                 elif route == "cancel":

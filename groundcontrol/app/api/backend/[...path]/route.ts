@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 async function forward(request: Request) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api\/backend/, "");
-  if (!/^\/api\/(workspace\/(?:projects|project|measurements(?:\/delete)?|placements(?:\/(?:delete|update))?|file|run|cancel|upload)|survey(?:\/[^/]*)?|info|status|presets|scenes|tail|run|kill|upload)$/.test(path)) {
+  if (!/^\/api\/(workspace\/(?:projects|project|measurements(?:\/delete)?|placements(?:\/(?:delete|update))?|model\/import|file|bundle|run|cancel|upload|coords|plan\/(?:proposals(?:\/(?:rename|delete|inferred))?|proposal|feature(?:\/delete)?|features|array|export|shadow|import|facades|site|road-width)|mission\/(?:analysis|los|covered-route|hlz|candidates|pack|scenario|basemap|runs|aar-pdf|threat|obstacles|trafficability|session(?:s|\/(?:open|command|join|state))?|run(?:\/delete)?)|ops\/(?:summary|firstmap|detections|change|volume|damage|access|flood|design|cutfill|corridor|tiles|pack|deviation)|inspect\/(?:frames|annotations|annotation(?:\/(?:update|delete))?|crack|report|terrain|provenance(?:\/verify)?|tilt|wire|section|m3c2)|twin\/(?:inventory|attributes|epochs|package))|survey(?:\/[^/]*)?|info|status|presets|scenes|tail|run|kill|upload)$/.test(path)) {
     return Response.json({ error: "Unknown API route" }, { status: 404 });
   }
   const writing = !["GET", "HEAD"].includes(request.method);

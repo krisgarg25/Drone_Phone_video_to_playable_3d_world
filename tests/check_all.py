@@ -40,6 +40,11 @@ SUITES = [
     ("capture", "test_capture.py", 10),
     ("collider", "test_collider.py", 10),
     ("gate", "test_gate.py", 10),
+    # E: the scenario engine - preset -> plan -> mapper, the run record, the gate
+    # metrics the API serves, and the audit that compares them. Without this entry the
+    # suite only runs by hand, which is how four other suites got out of date.
+    ("scenario", "test_scenario.py", 3),
+    ("detect-rooms", "test_detect_rooms.py", 5),
     ("unit", "run_tests.py", 10),
     ("survey-georef", "test_survey_georef.py", 5),
     ("survey-evaluation", "test_survey_evaluation.py", 5),
@@ -56,14 +61,59 @@ SUITES = [
     ("survey-occlusion", "test_survey_occlusion.py", 5),
     ("survey-frame-quality", "test_survey_frame_quality.py", 5),
     ("survey-photometry", "test_survey_photometry.py", 5),
+    # Registered late: this suite covers scripts/survey_capture.py, the adapter that
+    # turns survey_dynamics and survey_photometry into masks and matching frames. It
+    # was running by hand only, so the code on the run path had no gate.
+    ("survey-capture-adapter", "test_survey_capture.py", 5),
     ("survey-measure", "test_survey_measure.py", 5),
     ("survey-inputs", "test_survey_inputs.py", 5),
     ("survey-formats", "test_survey_formats.py", 5),
+    # F/G: EGM96 heights, checkpoint upload + the one-click path, and the UV texture bake.
+    ("survey-crs", "test_survey_crs.py", 5),
+    ("survey-deliver", "test_survey_deliver.py", 5),
+    ("survey-geoid", "test_survey_geoid.py", 5),
+    ("survey-checkpoints", "test_survey_checkpoints.py", 5),
+    ("survey-texture", "test_survey_texture.py", 10),
     ("survey-export", "test_survey_export.py", 5),
     ("survey-dynamics", "test_survey_dynamics.py", 5),
     ("survey-workflow", "test_survey_workflow.py", 5),
+    # Phase 1: straight-track (gravity-roll) alignment and takeoff-anchored heights.
+    ("survey-gravity", "test_survey_gravity.py", 5),
+    ("survey-vertical", "test_survey_vertical.py", 5),
+    ("survey-coords", "test_survey_coords.py", 5),
+    ("survey-terrain", "test_survey_terrain.py", 5),
+    ("survey-ortho", "test_survey_ortho.py", 5),
     ("survey-api", "test_survey_api.py", 5),
     ("survey-cli", "test_survey_cli.py", 5),
+    # The workspace lanes were running by hand only, which meant a 46-check browser
+    # proof of the imported-model path gated nothing. Registration is the point.
+    ("workspace-place", "test_workspace_place.py", 5),
+    ("workspace-api", "test_workspace_api.py", 5),
+    ("workspace-measure", "test_workspace_measure.py", 5),
+    ("workspace-proposals", "test_workspace_proposals.py", 5),
+    # Phase 2 remainder: object models, shadow study, CityJSON/DXF/3D Tiles, cadastral import.
+    ("plan-extras", "test_plan_extras.py", 5),
+    # Phase 3: mission symbols/routes, sight + exposure analysis, HLZ, mission pack, rehearsal runs.
+    ("mission", "test_mission.py", 5),
+    # Phase 4: two-epoch change (M3), design cut/fill, damage triage, corridor, field packs.
+    ("survey-change", "test_survey_change.py", 5),
+    ("survey-design", "test_survey_design.py", 5),
+    ("survey-damage", "test_survey_damage.py", 5),
+    ("survey-corridor", "test_survey_corridor.py", 5),
+    ("ops-pack", "test_ops_pack.py", 5),
+    ("survey-response", "test_survey_response.py", 5),
+    ("survey-firstmap", "test_survey_firstmap.py", 5),
+    ("survey-progressive", "test_survey_progressive.py", 5),
+    ("workspace-ops", "test_workspace_ops.py", 10),
+    ("facades", "test_facades.py", 5),
+    ("survey-klv", "test_survey_klv.py", 5),
+    # Phase 5 and the remainder up to it.
+    ("inspection", "test_inspection.py", 5),
+    ("survey-m3c2", "test_survey_m3c2.py", 5),
+    ("workspace-inspect", "test_workspace_inspect.py", 10),
+    ("applications", "test_applications.py", 5),
+    ("mission-session", "test_mission_session.py", 5),
+    ("viewer-syntax", "test_viewer_syntax.py", 5),
 ]
 E2E = ("e2e", "test_e2e.py", 180)
 

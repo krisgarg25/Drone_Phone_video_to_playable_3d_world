@@ -713,17 +713,29 @@ def main() -> None:
                 if cam_p.size == 0:
                     raise ValueError("no camera frustums to bound the coverage grid")
                 cam_p = cam_p.reshape(-1, 3)
-                near_m = np.min(np.linalg.norm(pts_w[:, None, :] - cam_p[None, ::10, :], axis=2), axis=1) < 5.0
-                pts_rm = pts_w[near_m] if np.sum(near_m) > 100 else pts_w
                 c_lo = np.array([rb.safe_min(cam_p[:, k], 0.0, label=f"camera min {k}")
                                  for k in range(3)])
                 c_hi = np.array([rb.safe_max(cam_p[:, k], 0.0, label=f"camera max {k}")
                                  for k in range(3)])
-                b_lo = np.minimum(np.percentile(pts_rm, 2, axis=0), c_lo - 0.5)
-                b_hi = np.maximum(np.percentile(pts_rm, 98, axis=0), c_hi + 0.5)
-                cov_data = analyze_coverage_grid(all_cams, pts_w, b_lo, b_hi)
+                # The reach-aware clipping is in analyze_coverage_grid now: what is
+                # passed here is only this exporter's opinion of where the geometry
+                # is, and it is intersected with the observable envelope there
+                # rather than allowed to set the size of the question. The old
+                # hardcoded "< 5.0 of a camera" near-filter plus its "> 100 else
+                # keep everything" fallback is what handed the whole outlier cloud
+                # to a 4.5 m reach on the drone scenes.
+                b_lo = np.minimum(np.percentile(pts_w, 2, axis=0), c_lo)
+                b_hi = np.maximum(np.percentile(pts_w, 98, axis=0), c_hi)
+                cov_data = analyze_coverage_grid(all_cams, pts_w, b_lo, b_hi, frame=fr)
                 rb.write_json(out / "coverage_grid.json", cov_data, indent=1)
-                print(f"[export] coverage grid -> coverage_grid.json ({cov_data['covered_pct']}% covered)")
+                if cov_data["status"] != "measured":
+                    rb.warn(f"coverage grid is NOT measurable for this scene: "
+                            f"{cov_data.get('unmeasurable_reason')} — the viewer will "
+                            f"show 'not measurable', not 0%")
+                else:
+                    print(f"[export] coverage grid -> coverage_grid.json "
+                          f"({cov_data['covered_pct']}% covered, reach "
+                          f"{cov_data['geometry']['reach_m']} m)")
         except Exception as e:
             print(f"[export] WARNING: could not generate coverage assets: {e}")
 

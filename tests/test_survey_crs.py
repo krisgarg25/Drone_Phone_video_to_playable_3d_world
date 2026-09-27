@@ -1,9 +1,10 @@
 """Tests for scripts/survey_crs.py: the inverse of survey_georef, plus UTM forward.
 
-No pyproj/GDAL is available in this repository, so the projection is verified
-against properties that must hold for a transverse Mercator expansion rather than
-against a table of published coordinates.
+The projection is verified against properties that must hold for a transverse Mercator
+expansion, and - where pyproj is installed - against PROJ itself (PyprojAgreementTests).
 """
+import importlib
+import importlib.util
 import math
 import sys
 import tempfile
@@ -191,6 +192,52 @@ class CrsPayloadTests(unittest.TestCase):
         info = crs.crs_from_origin(28.6129, 77.2295, 231.4)
         self.assertIn("ellipsoidal", info["height_datum"])
         self.assertIn("orthometric", info["validity"])
+
+
+@unittest.skipUnless(importlib.util.find_spec("pyproj"), "pyproj not installed")
+class PyprojAgreementTests(unittest.TestCase):
+    """The hand-written series against PROJ, in zones on both sides of the equator."""
+
+    def setUp(self):
+        self.crs = importlib.import_module("scripts.survey_crs")
+
+    def test_utm_matches_proj_to_a_millimetre(self):
+        from pyproj import Transformer
+        rng = np.random.default_rng(0)
+        for lat0, lon0 in ((47.39, 8.51), (-33.9, 151.2), (28.6, 77.2), (64.1, -21.9),
+                           (-54.8, -68.3), (0.5, -78.4)):
+            zone, hemisphere, epsg = self.crs.utm_zone_for(lat0, lon0)
+            lat = lat0 + rng.uniform(-1.0, 1.0, 400)
+            lon = self.crs.central_meridian(zone) + rng.uniform(-3.0, 3.0, 400)
+            east, north = self.crs.utm_forward(lat, lon, zone, hemisphere)
+            ref_e, ref_n = Transformer.from_crs(4326, epsg, always_xy=True).transform(lon, lat)
+            self.assertLess(float(np.max(np.hypot(east - ref_e, north - ref_n))), 1e-3, epsg)
+            back_lat, back_lon = self.crs.utm_inverse(east, north, zone, hemisphere)
+            self.assertLess(float(np.max(np.abs(back_lat - lat))), 1e-8, epsg)
+
+    def test_a_scene_across_the_equator_stays_in_one_projection(self):
+        alignment = {"coordinate_frame": {"geodetic_crs": "EPSG:4979",
+                                          "altitude_datum": "ellipsoidal",
+                                          "origin": {"latitude_deg": 0.0005,
+                                                     "longitude_deg": -78.4,
+                                                     "altitude_m": 2800.0}}}
+        enu = np.array([[0.0, 200.0, 0.0], [0.0, -200.0, 0.0]])
+        utm, _geodetic, info = self.crs.enu_to_crs(enu, alignment)
+        self.assertEqual(info["epsg"], 32617)
+        # 400 m apart on the ground, 400 m apart in the product - not 10,000 km.
+        self.assertAlmostEqual(float(utm[0, 1] - utm[1, 1]), 400.0 * 0.9996, delta=0.5)
+        self.assertLess(float(utm[1, 1]), 0.0)
+
+    def test_enu_matches_proj_ecef(self):
+        from pyproj import Transformer
+        rng = np.random.default_rng(1)
+        to_ecef = Transformer.from_crs("EPSG:4979", "EPSG:4978", always_xy=True)
+        enu = rng.uniform(-800.0, 800.0, (300, 3))
+        geodetic = self.crs.enu_to_geodetic(enu, 28.6, 77.2, 216.0)
+        origin = np.array(to_ecef.transform(77.2, 28.6, 216.0))
+        ecef = np.array(to_ecef.transform(geodetic[:, 1], geodetic[:, 0], geodetic[:, 2])).T
+        back = (ecef - origin) @ self.crs.enu_basis(28.6, 77.2).T
+        self.assertLess(float(np.max(np.abs(back - enu))), 1e-5)
 
 
 if __name__ == "__main__":

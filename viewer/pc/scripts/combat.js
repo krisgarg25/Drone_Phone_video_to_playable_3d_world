@@ -6,6 +6,7 @@ import { AIM, personTarget } from "./character.js";
 import { CombatAudio } from "./audio.js";
 import { CombatHUD } from "./hud.js";
 import { Weapon } from "./weapon.js";
+import { Rehearsal } from "./rehearsal.js";
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -85,11 +86,17 @@ class Combat {
       camera: opts.camera,
       onNoise: (pos, kind) => this.hear(pos, kind),
       onHit: (bot, dmg, part, point) => this.onPlayerHit(bot, dmg, part, point),
-      hooks: { nudgePitch: (d) => opts.nudgePitch(d), muzzle: () => opts.muzzle?.() },
+      hooks: { nudgePitch: (d) => opts.nudgePitch(d), muzzle: () => opts.muzzle?.(), aimRay: () => opts.aimRay?.() ?? null },
     });
     this.hud.bindProbe(() => this.snapshot());
     this.bindInput();
-    this.spawnWave(this.cfg.bots);
+    if (opts.mission) {
+      // Mission rehearsal: enemies from the plan, no waves, the route and a recording.
+      this.rehearsal = new Rehearsal(this, opts.mission.scenario, opts.mission);
+      this.rehearsal.start();
+    } else {
+      this.spawnWave(this.cfg.bots);
+    }
     this.hud.render(this.hudState());
     if (this.errors.length) this.hud.error(this.errors[0]);
     window.__combatActive = true;
@@ -298,6 +305,27 @@ class Combat {
     return bot;
   }
 
+  /** One enemy at a planned post (``settings`` from mission.js botSettings). */
+  spawnPlannedBot(pos, settings, label) {
+    const id = this.bots.reduce((m, b) => Math.max(m, b.id + 1), 0);
+    const post = { x: pos.x, y: pos.y, z: pos.z, tri: -1 - id };
+    const ctx = {
+      ...this.botCtx(),
+      viewRange: settings.viewRange, viewCone: settings.viewCone, moveSpeed: settings.moveSpeed,
+      roundRange: Math.max(this.weapon.config.range, settings.roundRange ?? 0),
+      // A held post (sentry, overwatch - possibly on a roof) keeps its planned height and is
+      // never re-assigned; patrols and reaction forces return to their post when idle.
+      pickSpot: () => (settings.stayPut ? null : post),
+      groundAt: settings.stayPut ? () => post.y : (x, z, fallback) => this.groundAt(x, z, fallback),
+    };
+    const bot = new Bot(id, ctx, { spawn: pos, skill: 0.8, magSize: this.cfg.magSize, mission: settings });
+    bot.label = label;
+    bot.spot = post;
+    bot.spotRole = "hold";
+    this.bots.push(bot);
+    return bot;
+  }
+
   fallbackSpawn() {
     const HF = this.opts.HF;
     for (let i = 0; i < 24; i++) {
@@ -445,6 +473,8 @@ class Combat {
 
   onBotDeath(bot, part) {
     this.kills++;
+    this.rehearsal?.recorder.event({ t: this.t, type: "bot_down", bot: bot.id, text: `${bot.label || `Bot ${bot.id}`} neutralised`,
+      at: [bot.pos.x, bot.pos.y, bot.pos.z] });
     this.reservations.delete(bot.spot?.tri);
     this.hud.feed(`Bot ${bot.id} down — ${part === "head" ? "headshot" : "centre mass"}`, "kill");
     this.audio.kill();
@@ -453,6 +483,8 @@ class Combat {
   onBotHitPlayer(bot, dmg, from) {
     if (this.dead > 0) return;
     this.health -= dmg;
+    this.rehearsal?.recorder.event({ t: this.t, type: "hit_taken", bot: bot.id, text: `Hit by ${bot.label || `bot ${bot.id}`}`,
+      at: [this.playerState.x, this.playerState.y, this.playerState.z] });
     this.pain = Math.min(1, this.pain + 0.55);
     this.audio.hurt();
     this.hud.feed(`${bot.id} hit you`, "warn");
@@ -551,6 +583,7 @@ class Combat {
     this.hud.setSpread(this.spreadPx());
     this.hud.render(this.hudState());
     this.hud.setBots(this.bots.map((b) => b.snapshot()));
+    this.rehearsal?.update(dt);
     this.emitNoiseDecay();
   }
 
@@ -609,7 +642,8 @@ class Combat {
         approachSamples: this.spots.approachCount,
         spawnBuffer: +(this.spots.spawnBuffer ?? this.cfg.spawnBuffer).toFixed(2),
       },
-      bots: this.bots.map((b) => b.snapshot()),
+      bots: this.bots.map((b) => ({ ...b.snapshot(), label: b.label, pos: [b.pos.x, b.pos.y, b.pos.z].map((v) => +v.toFixed(2)), yaw: +b.yaw.toFixed(3) })),
+      rehearsal: this.rehearsal?.snapshot() ?? null,
       errors: this.errors,
       notices: this.notices,
     };

@@ -142,13 +142,20 @@ class CameraIntrinsicsTests(unittest.TestCase):
 
 
 def load_cpu_preparation():
-    """Execute real preparation/parsing functions, omitting CUDA imports and sizing."""
+    """Execute real preparation/parsing functions, omitting CUDA imports and sizing.
+
+    sparse_depth_targets comes along because it is pure numpy: it is the whole
+    geometry half of the D2 depth term, and it is the part a CPU lane can pin.
+    DepthTerm itself allocates CUDA buffers and is only exercised on the GPU,
+    so its per-pixel support weighting is measured in a real training run rather
+    than claimed here (see the depth columns of work/<scene>/train_log.txt).
+    """
     trainer_path = SCRIPTS / "train_splat.py"
     tree = ast.parse(trainer_path.read_text(encoding="utf-8"))
     nodes = []
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name in {
-            "load_colmap", "load_points3d", "prepare_dataset"
+            "load_colmap", "load_points3d", "prepare_dataset", "sparse_depth_targets"
         }:
             nodes.append(node)
         elif isinstance(node, ast.Import) and all(
@@ -164,7 +171,7 @@ def load_cpu_preparation():
                  if isinstance(node, ast.FunctionDef) and node.name == "qvec2rot")
     namespace = {"fit_to_vram": lambda data: None}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(trainer_path), "exec"), namespace)
-    return namespace["prepare_dataset"]
+    return namespace
 
 
 class PrepareDatasetCpuTests(unittest.TestCase):
@@ -174,8 +181,16 @@ class PrepareDatasetCpuTests(unittest.TestCase):
         self.work = Path(temporary.name)
         self.txt = self.work / "colmap" / "sparse" / "txt"
         self.txt.mkdir(parents=True)
-        (self.txt / "points3D.txt").write_text("1 1 2 3 10 20 30 0.1\n", encoding="utf-8")
-        self.prepare = load_cpu_preparation()
+        # TRACK[] as (IMAGE_ID, POINT2D_IDX) pairs: two points with different
+        # track lengths and different reported reprojection ERROR, because both
+        # are part of what prepare_dataset hands the trainer - see
+        # test_zero_distortion_preserves_source_pose_points_and_limit.
+        (self.txt / "points3D.txt").write_text(
+            "1 1 2 3 10 20 30 0.1 1 0 2 3\n"
+            "2 4 5 6 40 50 60 1.5 1 4 2 5 3 6 4 7 5 8\n", encoding="utf-8")
+        namespace = load_cpu_preparation()
+        self.prepare = namespace["prepare_dataset"]
+        self.project = namespace["sparse_depth_targets"]
         self.write_images()
 
     def write_camera(self, model="SIMPLE_RADIAL", params=(90, 38, 14, .2), size=(80, 30)):
@@ -330,23 +345,184 @@ class PrepareDatasetCpuTests(unittest.TestCase):
     def test_zero_distortion_preserves_source_pose_points_and_limit(self):
         self.write_camera("SIMPLE_PINHOLE", [90, 76, 56], (160, 120))
         self.write_images(names=("nested/frame.png", "second.png"))
-        data, (xyz, rgb) = self.run_preparation(max_images=1)
+        # prepare_dataset returns (training views, the observed geometry). The
+        # cloud is FOUR arrays, not two: the sparse-depth term (challenge D2)
+        # has to know how hard to believe each point, and COLMAP already
+        # reports that per point as a reprojection ERROR in pixels and a track
+        # length in VIEWS. They are part of the payload, not an internal detail,
+        # so they come back in band -- this is the assertion that makes the next
+        # array added to it a deliberate change rather than a caller's crash.
+        data, points = self.run_preparation(max_images=1)
         self.assertEqual(len(data), 1)
+        self.assertEqual(len(points), 4)
+        xyz, rgb, err_px, n_views = points
         frame = data[0]
         self.assertEqual(frame["path"], self.work / "frames_train" / "nested/frame.png")
         np.testing.assert_array_equal(frame["img"], self.images[0])
         np.testing.assert_array_equal(frame["K"], [[45, 0, 38], [0, 22.5, 14], [0, 0, 1]])
         np.testing.assert_array_equal(frame["viewmat"], [[1, 0, 0, 1], [0, 1, 0, 2],
                                                          [0, 0, 1, 3], [0, 0, 0, 1]])
-        np.testing.assert_array_equal(xyz, [[1, 2, 3]])
-        np.testing.assert_array_equal(rgb, [[10, 20, 30]])
+        np.testing.assert_array_equal(xyz, [[1, 2, 3], [4, 5, 6]])
+        np.testing.assert_array_equal(rgb, [[10, 20, 30], [40, 50, 60]])
+        # The limit is on images; the whole cloud is still loaded.
+        np.testing.assert_allclose(err_px, [0.1, 1.5])
+        np.testing.assert_array_equal(n_views, [2, 5])
+        self.assertEqual(err_px.dtype, np.float32)
+        self.assertEqual(n_views.dtype, np.float32)
         self.assertGreater(frame["sharpness"], 0)
         self.assertEqual(list((self.work / "frames_undist").rglob("*.png")), [])
+
+    def test_unparseable_error_is_not_silently_zero(self):
+        """A point with no readable ERROR keeps NaN, so the depth term can see
+        "unknown" instead of reading a missing measurement as a perfect point."""
+        (self.txt / "points3D.txt").write_text(
+            "1 1 2 3 10 20 30 notanumber 1 0\n"
+            "2 4 5 6 40 50 60 0.4 1 4\n", encoding="utf-8")
+        self.write_camera("SIMPLE_PINHOLE", [90, 76, 56], (160, 120))
+        _, (_, _, err_px, n_views) = self.run_preparation()
+        self.assertTrue(np.isnan(err_px[0]), "unknown error must stay unknown")
+        np.testing.assert_allclose(err_px[1:], [0.4])
+        np.testing.assert_array_equal(n_views, [1, 1])
 
     def test_unsupported_camera_is_rejected_in_preparation(self):
         self.write_camera("OPENCV_FISHEYE", [90, 100, 38, 14, .1, 0, 0, 0])
         with self.assertRaisesRegex(ValueError, "[Uu]nsupported.*model"):
             self.run_preparation()
+
+
+class SparseDepthTargetsTests(unittest.TestCase):
+    """The geometry half of challenge D2, on CPU: projection, frustum gating and the
+    per-point confidence that decides how hard a pixel is held.
+
+    UNITS: depths here are COLMAP scene units (arbitrary until frame.json anchors
+    them), errors are PIXELS, view counts are counts. Nothing in this function
+    takes a metric constant, which is the point of the test.
+    """
+
+    W, H = 80, 60
+
+    def setUp(self):
+        self.project = load_cpu_preparation()["sparse_depth_targets"]
+
+    def view(self, center=(0.0, 0.0, 0.0)):
+        vm = np.eye(4, dtype=np.float32)
+        # viewmat is world->cam (R | t) with t = -R C, so a camera at world
+        # center c sees a point p at depth (p - c).z under identity rotation.
+        vm[:3, 3] = -np.array(center, dtype=np.float32)
+        K = np.array([[40.0, 0.0, 40.0], [0.0, 40.0, 30.0], [0.0, 0.0, 1.0]],
+                     dtype=np.float32)
+        return [dict(K=K, viewmat=vm, width=self.W, height=self.H)]
+
+    def test_on_axis_point_lands_on_the_principal_pixel_at_its_own_depth(self):
+        (idxs, zs, confs), rep = self.project(
+            self.view(), np.array([[0.0, 0.0, 5.0]]), np.array([0.1]),
+            np.array([4.0]), 0.01, 50.0, 1.5, 4.0)
+        self.assertEqual(int(idxs[0][0]), 30 * self.W + 40)
+        self.assertAlmostEqual(float(zs[0][0]), 5.0, places=5)
+        self.assertEqual(rep["views_with_points"], 1)
+        self.assertEqual(rep["n_points"], 1)
+        # coverage is a FRACTION of the frame, never a length: one point over
+        # 80x60 pixels.
+        self.assertAlmostEqual(rep["coverage_median"], 1.0 / (self.W * self.H), places=9)
+
+    def test_off_axis_projection_follows_the_intrinsics_and_the_pose_sign(self):
+        # The camera is pulled back to z=-1, so the world point (0.5, 0.25, 5) sits
+        # at depth 5+1=6 and projects to u=40*0.5/6+40, v=40*0.25/6+30 -- the same
+        # intrinsics and the same (R|t) convention the rasterizer applies to the
+        # gaussian centres, which is the whole reason the two depths are comparable.
+        (idxs, zs, _), _ = self.project(
+            self.view(center=(0.0, 0.0, -1.0)), np.array([[0.5, 0.25, 5.0]]),
+            np.array([0.1]), np.array([4.0]), 0.01, 50.0, 1.5, 4.0)
+        self.assertAlmostEqual(float(zs[0][0]), 6.0, places=5)
+        u, v = 40.0 * 0.5 / 6.0 + 40.0, 40.0 * 0.25 / 6.0 + 30.0
+        self.assertEqual(int(idxs[0][0]), int(v) * self.W + int(u))
+
+    def test_points_behind_the_camera_or_past_far_are_dropped_not_supervised(self):
+        """A view with no usable point returns None, so the term can report "nothing
+        measured" instead of supervising a pixel with a negative or absurd depth.
+        The near/far pair here is the rasterizer's own near_plane and far_plane, in
+        the same scene units, so the two cannot disagree about what is visible."""
+        (idxs, _, _), rep = self.project(
+            self.view(), np.array([[0.0, 0.0, -5.0], [0.0, 0.0, 500.0]]),
+            np.array([0.1, 0.1]), np.array([4.0, 4.0]), 0.01, 50.0, 1.5, 4.0)
+        self.assertIsNone(idxs[0])
+        self.assertEqual(rep["views_with_points"], 0)
+        self.assertEqual(rep["points_per_view_median"], 0)
+        self.assertEqual(rep["points_per_view_min"], 0)
+        # The gated points are still in the cloud count: the report separates
+        # "how many points exist" from "how many constrain this view", and a
+        # coverage of 0 here is a real 0 rather than a missing measurement.
+        self.assertEqual(rep["n_points"], 2)
+        self.assertEqual(rep["coverage_median"], 0.0)
+
+    def test_only_the_visible_points_of_a_cloud_are_projected(self):
+        (idxs, zs, _), rep = self.project(
+            self.view(), np.array([[0.0, 0.0, -5.0], [0.0, 0.0, 500.0], [0.0, 0.0, 5.0]]),
+            np.array([0.1, 0.1, 0.1]), np.array([4.0, 4.0, 4.0]),
+            0.01, 50.0, 1.5, 4.0)
+        self.assertEqual(len(idxs[0]), 1)
+        self.assertEqual(rep["views_with_points"], 1)
+        self.assertAlmostEqual(float(zs[0][0]), 5.0, places=5)
+
+    def test_views_with_nothing_in_frustum_leave_a_none_target_not_a_zero(self):
+        (idxs, zs, confs), _ = self.project(
+            self.view(), np.array([[0.0, 0.0, 5.0]]), np.array([0.1]),
+            np.array([4.0]), 6.0, 50.0, 1.5, 4.0)   # near plane past the point
+        self.assertIsNone(idxs[0])
+
+    def test_three_views_is_weaker_evidence_than_three_thousand(self):
+        """The disagreement scale the challenge asks for: the same pixel held by a
+        thin cloud must not constrain as hard as one held by a dense cloud. Both
+        numbers here are counts; neither is a length."""
+        (_, _, confs), _ = self.project(
+            self.view(),
+            np.array([[0.0, 0.0, 5.0], [0.0, 0.0, 5.0], [0.0, 0.0, 5.0]]),
+            np.array([0.0, 0.0, 0.0]), np.array([3.0, 30.0, 3000.0]),
+            0.01, 50.0, 1.5, 4.0)
+        thin, mid, dense = (float(c) for c in confs[0])
+        self.assertAlmostEqual(thin, 3.0 / 7.0, places=6)
+        self.assertAlmostEqual(mid, 30.0 / 34.0, places=6)
+        self.assertLess(thin, mid)
+        self.assertLess(mid, dense)
+        self.assertLess(thin, 0.5 * dense)
+
+    def test_reprojection_error_and_a_missing_error_scale_the_confidence(self):
+        (_, _, confs), _ = self.project(
+            self.view(),
+            np.array([[0.0, 0.0, 5.0]] * 3), np.array([0.0, 1.5, np.nan]),
+            np.array([10.0, 10.0, 10.0]), 0.01, 50.0, 1.5, 4.0)
+        good, worse, unknown = (float(c) for c in confs[0])
+        self.assertAlmostEqual(good, 10.0 / 14.0, places=6)
+        # err == err_ref_px halves it; an unparseable ERROR is treated as the worst
+        # error the file could report, never as zero error.
+        self.assertAlmostEqual(worse, 0.5 * good, places=6)
+        self.assertLess(unknown, 1e-5)
+        self.assertTrue((confs[0] >= 0).all() and (confs[0] <= 1).all())
+
+    def test_report_medians_are_over_views_that_have_points_at_all(self):
+        data = self.view() + self.view(center=(0.3, 0.0, 0.0))
+        xyz = np.array([[0.0, 0.0, 5.0], [0.2, 0.1, 4.0]])
+        (_, _, _), rep = self.project(
+            data, xyz, np.array([0.1, 0.2]), np.array([4.0, 8.0]),
+            0.01, 50.0, 1.5, 4.0)
+        self.assertEqual(rep["n_views"], 2)
+        self.assertGreaterEqual(rep["views_with_points"], 1)
+        self.assertEqual(rep["points_per_view_median"], 2)
+        self.assertGreater(rep["conf_median"], 0.0)
+        self.assertLessEqual(rep["conf_median"], 1.0)
+        self.assertEqual(rep["distinct_sizes"], 1)
+
+    def test_a_mixed_size_view_set_is_reported_as_unsupervisable(self):
+        """One observed-depth grid cannot index two frame sizes: a flattened pixel
+        index from the wrong grid would supervise real geometry in the wrong place,
+        which is worse than measuring nothing. The report carries the count so the
+        trainer can disable the term and say why."""
+        other = self.view()[0]
+        other = dict(other, width=40, height=30)
+        (_, _, _), rep = self.project(
+            [self.view()[0], other], np.array([[0.0, 0.0, 5.0]]), np.array([0.1]),
+            np.array([4.0]), 0.01, 50.0, 1.5, 4.0)
+        self.assertEqual(rep["distinct_sizes"], 2)
 
 
 if __name__ == "__main__":

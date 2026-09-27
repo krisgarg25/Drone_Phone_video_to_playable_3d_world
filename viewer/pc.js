@@ -14,12 +14,12 @@
  *                                              baked by tools/navbake/bake.mjs)
  */
 import {
-  AppBase, AppOptions, Asset, AssetListLoader, BODYMASK_STATIC, BoundingBox,
+  AppBase, AppOptions, Asset, AssetListLoader, BLEND_NONE, BLEND_NORMAL, BODYMASK_STATIC, BoundingBox,
   AnimComponentSystem,
-  CameraComponentSystem, CollisionComponentSystem, Color, ContainerHandler,
-  Entity, FILLMODE_FILL_WINDOW,
+  CameraComponentSystem, CollisionComponentSystem, Color, ContainerHandler, CULLFACE_BACK,
+  Entity, FILLMODE_FILL_WINDOW, Layer, SORTMODE_BACK2FRONT,
   FOG_LINEAR, GSplatComponentSystem, GSplatHandler, KEY_A, KEY_C, KEY_D, KEY_R,
-  KEY_S, KEY_SHIFT, KEY_SPACE, KEY_T, KEY_W, Keyboard, Mesh, MeshInstance, ModelComponentSystem, Mouse,
+  KEY_S, KEY_SHIFT, KEY_SPACE, KEY_T, KEY_W, Keyboard, Mat4, Mesh, MeshInstance, ModelComponentSystem, Mouse,
   PRIMITIVE_LINES, PRIMITIVE_POINTS, PRIMITIVE_TRIANGLES, RenderComponentSystem, RESOLUTION_AUTO,
   RigidBodyComponentSystem, StandardMaterial, TONEMAP_LINEAR, TextureHandler,
   Vec3, WasmModule, createGraphicsDevice,
@@ -30,8 +30,15 @@ import {
   orbitEye, orbitFromPose, rotateOrbit, panOrbit, zoomOrbit, layerState,
   canvasPoint, collisionSurfacePoint, appendPick, workspaceAssetPath, walkDistance,
   measureRenderable, measureAnchor, formatMeasureLabel, measureColor,
-  placementBox, placementColor, placementLabel, MAX_PICKS,
+  liveMeasurement, PreviewStream, projectedCssPoint, layoutLabels,
+  placementBox, placementColor, placementLabel, placementRay, focusPlacement, MAX_PICKS,
+  importedModelFit,
 } from "./workspace_core.js";
+import { furnitureGeometry } from "./furniture_geometry.js";
+import {
+  planGeometry, planSignature, rayPick, clipShader, clipUniforms, planHandles, dragShape, removeVertex, planeHit,
+  planColliders, clipTriangles,
+} from "./plan_core.js";
 
 // Unlit material helper
 function unlitMat(r = 1, g = 1, b = 1, transparent = false, opacity = 1.0) {
@@ -53,6 +60,7 @@ let workspaceOrbit = null;
 let workspaceCommand = null;
 let workspacePick = false;
 let workspacePickLimit = 128;
+let editDrag = null;   // { id, pointerId, offset, moved, last } while the editor drags a piece
 let workspaceLookDirty = false;
 const collisionMeshEntities = new Set();
 const workspace = EMBED ? new WorkspaceProtocol({
@@ -85,6 +93,8 @@ const COMBAT_KEYS = ["KeyR", "KeyF", "KeyC"];
 const UNDERLAY = !EMBED && q.get("underlay") === "1";
 const SINK = Number(q.get("sink") ?? 0.7);
 let combat = null;
+/** WebXR state (viewer/pc/scripts/vr.js) once the arena offers VR; null elsewhere. */
+let vrState = null;
 
 // Character height: 1.75 m by default (a real person). A room preset ships
 // `character_height: 0.15` (hamster) because a 2 m-tall ceiling and a 3 m
@@ -288,7 +298,8 @@ async function loadSceneData() {
     }
     if (covResp.status === "fulfilled" && covResp.value.ok) {
       allCoverageGrid = await covResp.value.json();
-      console.log(`[viewer] Loaded coverage grid (${allCoverageGrid.total_voxels} voxels)`);
+      console.log(`[viewer] Loaded coverage grid (${allCoverageGrid.total_voxels} voxels,`
+                  + ` status=${allCoverageGrid.status || "measured"})`);
     }
   } catch (e) {
     console.warn("[viewer] Optional coverage data could not be fetched:", e);
@@ -967,6 +978,15 @@ async function boot() {
   cameraEnt.camera.clearColor = new Color(SKY.r, SKY.g, SKY.b, 1);
   cameraEnt.camera.toneMapping = TONEMAP_LINEAR;
   application.root.addChild(cameraEnt);
+  // Translucent planning geometry (shadows, plot outlines, demolition volumes) must draw
+  // AFTER the splats: splats blend without writing depth, so anything translucent drawn
+  // before them in the World layer is simply painted over by the ground.
+  const planOverlayLayer = new Layer({ name: "PlanOverlay", transparentSortMode: SORTMODE_BACK2FRONT });
+  {
+    const composition = application.scene.layers;
+    composition.insertTransparent(planOverlayLayer, composition.getTransparentIndex(composition.getLayerByName("World")) + 1);
+    cameraEnt.camera.layers = [...cameraEnt.camera.layers, planOverlayLayer.id];
+  }
 
   // ---------------- UI and Inspector Wiring ----------------
   function updateToolbarUI() {
@@ -1090,7 +1110,27 @@ async function boot() {
       if (showCoverage && allCoverageGrid) {
         const statsEl = document.getElementById("cov-stats");
         const adviceEl = document.getElementById("cov-advice");
-        if (statsEl) {
+        // "Not measurable" and "0% observed" are different verdicts and must not
+        // share a colour or a sentence. The old grid shipped `covered_pct: 0` for
+        // a rocks take that was 72/72 registered, because a 4.5 m reach could not
+        // span a 20 m voxel: the panel then told the operator to re-fly good
+        // footage. check_coverage.py now reports `measurable: false` with a
+        // reason instead of a number, so the number is only ever painted green
+        // when there was a number to paint.
+        const measurable = allCoverageGrid.measurable !== false;
+        if (statsEl && !measurable) {
+          // The reason is free text off the wire, so it goes in as a text node
+          // rather than being interpolated into markup.
+          statsEl.innerHTML = `
+            <div class="stat-row"><span>Coverage:</span> <b style="color:#a0aec0">NOT MEASURABLE</b></div>
+            <div class="stat-row"><span>Why:</span> <b id="cov-unmeasurable-reason"></b></div>
+          `;
+          const why = document.getElementById("cov-unmeasurable-reason");
+          if (why) {
+            why.textContent = allCoverageGrid.unmeasurable_reason
+              || "geometry did not support the measurement";
+          }
+        } else if (statsEl) {
           statsEl.innerHTML = `
             <div class="stat-row"><span>Total Volume Voxels:</span> <b>${allCoverageGrid.total_voxels}</b></div>
             <div class="stat-row"><span>Observed (>=3 views):</span> <b style="color:#68d391">${allCoverageGrid.covered_pct}%</b></div>
@@ -1099,7 +1139,14 @@ async function boot() {
           `;
         }
         if (adviceEl && allCoverageGrid.advice) {
-          adviceEl.innerHTML = allCoverageGrid.advice.map(a => `<div>• ${a}</div>`).join("");
+          // Same treatment as the reason above: one div per line, text filled in
+          // through textContent so nothing off the wire is parsed as markup.
+          adviceEl.innerHTML = "";
+          for (const a of allCoverageGrid.advice) {
+            const row = document.createElement("div");
+            row.textContent = `\u2022 ${a}`;
+            adviceEl.appendChild(row);
+          }
         }
       }
     }
@@ -1230,11 +1277,21 @@ async function boot() {
   let renderedMeasurements = [];
   let selectedMeasureId = null;
   let showMeasureLabels = true;
+  let measurementKind = null, measurementUnit = "m";
+  let pickingRequested = false;
   let previewPoint = null;   // live cursor world point while picking
+  const previewStream = new PreviewStream((type, data) => workspace?.emit(type, data));
+  function setPreviewPoint(point) {
+    previewPoint = finitePoint(point) ? [...point] : null;
+    previewStream.update(previewPoint);
+  }
+  function currentLiveMeasurement() {
+    return liveMeasurement(measurementKind, pickPoints, previewPoint, workspacePick, measurementUnit);
+  }
   const labelLayer = EMBED ? Object.assign(document.createElement("div"), { id: "measure-labels" }) : null;
   const labelEls = new Map();
   if (labelLayer) {
-    Object.assign(labelLayer.style, { position: "absolute", inset: "0", overflow: "hidden", pointerEvents: "none", zIndex: "5", font: "500 12px system-ui, sans-serif" });
+    Object.assign(labelLayer.style, { position: "fixed", overflow: "hidden", pointerEvents: "none", zIndex: "5", font: "500 12px system-ui, sans-serif" });
     document.body.appendChild(labelLayer);
   }
   function segmentsFor(m) {
@@ -1251,45 +1308,72 @@ async function boot() {
       application.drawLines(line, new Color(c[0], c[1], c[2], strong ? 1 : 0.9), false);
     }
     // Live rubber-band from the last pick to the cursor while placing.
-    if (workspacePick && pickPoints.length && previewPoint) {
-      const last = pickPoints[pickPoints.length - 1];
-      application.drawLines([new Vec3(...last), new Vec3(...previewPoint)], new Color(1, 1, 1, 0.6), false);
+    const live = currentLiveMeasurement();
+    if (live) {
+      const { line } = segmentsFor(live);
+      if (line.length) application.drawLines(line, new Color(...measureColor(live.kind)), false);
+    }
+    // The piece the editor has grabbed, outlined so it is obvious what moves.
+    if (workspaceEdit && selectedMeasureId) {
+      const box = placementBox(placementById(selectedMeasureId));
+      if (box) {
+        const c = box.corners, edges = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [2, 4], [4, 6], [6, 0], [1, 3], [3, 5], [5, 7], [7, 1]];
+        const outline = [];
+        for (const [a, b] of edges) outline.push(new Vec3(...c[a]), new Vec3(...c[b]));
+        application.drawLines(outline, new Color(1, 0.78, 0.24, 1), false);
+      }
     }
   }
   function updateMeasureLabels() {
     if (!labelLayer) return;
-    const cam = cameraEnt.camera, rect = canvas.getBoundingClientRect(), dpr = application.graphicsDevice.maxPixelRatio || 1;
-    const seen = new Set();
-    for (const m of renderedMeasurements) {
-      if (!showMeasureLabels) break;
-      const anchor = measureAnchor(m);
-      if (!anchor) continue;
-      const s = cam.worldToScreen(new Vec3(anchor[0], anchor[1], anchor[2]), new Vec3());
-      const x = s.x / dpr, y = s.y / dpr;   // worldToScreen is in device px from top-left
-      let el = labelEls.get(m.id);
-      if (!el) { el = document.createElement("div"); el.style.cssText = "position:absolute;transform:translate(-50%,-140%);padding:2px 7px;border-radius:5px;background:rgba(12,16,22,.86);color:#eaf1f8;border:1px solid rgba(120,150,180,.35);white-space:nowrap;backdrop-filter:blur(4px)"; labelLayer.appendChild(el); labelEls.set(m.id, el); }
-      el.textContent = formatMeasureLabel(m);
-      el.style.display = s.z > 0 ? "block" : "none";   // worldToScreen z is view distance; >0 means in front
-      el.style.left = x + "px"; el.style.top = y + "px";
-      el.style.borderColor = m.id === selectedMeasureId ? "rgb(250,170,60)" : "rgba(120,150,180,.35)";
-      seen.add(m.id);
+    const cam = cameraEnt.camera, rect = canvas.getBoundingClientRect(), device = application.graphicsDevice;
+    Object.assign(labelLayer.style, { left: rect.left + "px", top: rect.top + "px", width: rect.width + "px", height: rect.height + "px" });
+    const labels = [], seen = new Set(), candidates = [];
+    if (showMeasureLabels) {
+      for (const [index, m] of renderedMeasurements.entries()) {
+        const selected = m.id === selectedMeasureId;
+        labels.push({ id: `measure:${m.id ?? index}`, text: formatMeasureLabel(m), anchor: measureAnchor(m),
+          priority: selected ? 90 : 10, border: selected ? "rgb(250,170,60)" : "rgba(120,150,180,.35)" });
+      }
+      for (const p of renderedPlacements) {
+        if (p.id !== selectedMeasureId) continue;
+        const box = placementBox(p), c = placementColor(p);
+        labels.push({ id: `placement:${p.id}`, text: placementLabel(p),
+          anchor: [box.center[0], box.center[1] + box.halfExtents[1], box.center[2]], priority: 95,
+          border: `rgb(${c[0] * 255 | 0},${c[1] * 255 | 0},${c[2] * 255 | 0})` });
+      }
+      for (const label of currentLiveMeasurement()?.labels || []) {
+        labels.push({ ...label, border: "rgb(250,170,60)" });
+      }
     }
-    for (const p of renderedPlacements) {
-      if (!showMeasureLabels) break;
-      const box = placementBox(p);
-      if (!box) continue;
-      const anchor = [box.center[0], box.center[1] + box.halfExtents[1], box.center[2]];
-      const s = cam.worldToScreen(new Vec3(anchor[0], anchor[1], anchor[2]), new Vec3());
-      const x = s.x / dpr, y = s.y / dpr;
-      const key = "p" + (p.id || x);
-      let el = labelEls.get(key);
-      if (!el) { el = document.createElement("div"); el.style.cssText = "position:absolute;transform:translate(-50%,-150%);padding:2px 7px;border-radius:5px;background:rgba(12,16,22,.86);color:#eaf1f8;border:1px solid rgba(120,150,180,.35);white-space:nowrap;backdrop-filter:blur(4px)"; labelLayer.appendChild(el); labelEls.set(key, el); }
-      el.textContent = placementLabel(p);
-      el.style.display = s.z > 0 ? "block" : "none";
-      el.style.left = x + "px"; el.style.top = y + "px";
-      const c = placementColor(p);
-      el.style.borderColor = `rgb(${c[0] * 255 | 0},${c[1] * 255 | 0},${c[2] * 255 | 0})`;
-      seen.add(key);
+    const eye = cameraEnt.getPosition(), forward = cameraEnt.forward;
+    for (const label of labels) {
+      if (!finitePoint(label.anchor)) continue;
+      const world = new Vec3(...label.anchor);
+      // The component wrapper uses CSS clientRect sizes in this engine version.
+      // Project explicitly into the drawing buffer, then scale each axis to CSS.
+      const s = cam.camera.worldToScreen(world, device.width, device.height, new Vec3());
+      s.z = (world.x - eye.x) * forward.x + (world.y - eye.y) * forward.y + (world.z - eye.z) * forward.z;
+      const xy = projectedCssPoint(s, rect, device.width, device.height);
+      if (!xy) continue;
+      let el = labelEls.get(label.id);
+      if (!el) {
+        el = document.createElement("div");
+        el.style.cssText = "position:absolute;box-sizing:border-box;padding:2px 7px;border-radius:5px;background:rgba(12,16,22,.9);color:#eaf1f8;border:1px solid;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(4px)";
+        el.dataset.labelId = label.id;
+        labelLayer.appendChild(el); labelEls.set(label.id, el);
+      }
+      el.textContent = label.text;
+      el.style.borderColor = label.border;
+      el.style.maxWidth = Math.max(0, rect.width - 8) + "px";
+      el.style.display = "block"; el.style.visibility = "hidden";
+      candidates.push({ id: label.id, x: xy[0], y: xy[1], width: el.offsetWidth, height: el.offsetHeight, priority: label.priority });
+      seen.add(label.id);
+    }
+    for (const label of layoutLabels(candidates, rect.width, rect.height)) {
+      const el = labelEls.get(label.id);
+      el.style.left = label.left + "px"; el.style.top = label.top + "px";
+      el.style.visibility = "visible";
     }
     for (const [id, el] of labelEls) if (!seen.has(id)) { el.remove(); labelEls.delete(id); }
   }
@@ -1297,81 +1381,628 @@ async function boot() {
     renderedMeasurements = Array.isArray(list) ? list.filter(m => m && Array.isArray(m.points)) : [];
   }
 
-  // Placed furniture: solid two-sided boxes the walk character collides with,
-  // tinted by the backend's fit verdict. Colliders go on a compound static body
-  // exactly like detected furniture, so the same BODYMASK_STATIC rays the character
-  // and combat use will not fly through a placed sofa.
+  // Recognizable, opaque component meshes; the walk character still collides
+  // with conservative enclosing boxes on one compound static body. Each item is
+  // its own entity so the editor can move/resize one piece without rebuilding
+  // the whole layout, and so a click can identify which piece was grabbed.
   let renderedPlacements = [];
-  let placedRoot = null, placedMeshEnt = null, placedMat = null, placedSignature = "";
-  function buildPlacementMesh(device, placements) {
-    const positions = [], colors = [], indices = [];
-    let v = 0;
-    const quad = (a, b, c, d, col) => {
-      for (const pt of [a, b, c, d]) { positions.push(pt[0], pt[1], pt[2]); colors.push(col[0], col[1], col[2]); }
-      indices.push(v, v + 1, v + 2, v, v + 2, v + 3); v += 4;
-    };
-    for (const p of placements) {
-      const box = placementBox(p);
-      if (!box) continue;
-      const [b0, t0, b1, t1, b2, t2, b3, t3] = box.corners;
-      const c = placementColor(p);
-      quad(b0, b1, b2, b3, c); quad(t0, t1, t2, t3, c);
-      quad(b0, b1, t1, t0, c); quad(b1, b2, t2, t1, c);
-      quad(b2, b3, t3, t2, c); quad(b3, b0, t0, t3, c);
-    }
-    if (!positions.length) return null;
-    const mesh = new Mesh(device);
-    mesh.setPositions(positions);
-    mesh.setColors32(colors);
-    mesh.setIndices(indices);
-    mesh.update(PRIMITIVE_TRIANGLES);
-    return mesh;
+  let placedRoot = null, placedMat = null, workspaceEdit = false;
+  // Planning layer (proposal roads, buildings, zones, objects, demolitions): the backend
+  // computes every mesh; this only draws them, picks them and hides demolished splats.
+  let planState = { features: [], clips: [], view: "proposal", selected: null };
+  let planRoot = null, planSelect = false, planClipKey = "", planClipMaterial = null;
+  const planEntities = new Map();   // feature id -> { entity, meshes, sig }
+  const planMaterials = {};
+  function planMaterial(transparent) {
+    const key = transparent ? "glass" : "solid";
+    if (planMaterials[key]) return planMaterials[key];
+    const m = new StandardMaterial();
+    m.useLighting = false;
+    m.useSkybox = false;
+    m.diffuse.set(0, 0, 0);
+    m.emissive.set(1, 1, 1);
+    m.emissiveVertexColor = true;
+    m.emissiveMapVertexColor = true;
+    m.opacityVertexColor = transparent;
+    m.blendType = transparent ? BLEND_NORMAL : BLEND_NONE;
+    m.depthWrite = !transparent;
+    m.depthTest = true;
+    m.cull = 0;                     // proposals are seen from above and below: draw both sides
+    m.update();
+    planMaterials[key] = m;
+    return m;
   }
+  function destroyPlanEntity(id) {
+    const item = planEntities.get(id);
+    if (!item) return;
+    for (const mesh of item.meshes) mesh.destroy();
+    item.entity.destroy();
+    planEntities.delete(id);
+  }
+  function rebuildPlan() {
+    if (!planRoot) { planRoot = new Entity("plan"); application.root.addChild(planRoot); }
+    planRoot.enabled = planState.view === "proposal";
+    const live = new Set(planState.features.map(f => f.id));
+    for (const id of [...planEntities.keys()]) if (!live.has(id)) destroyPlanEntity(id);
+    for (const f of planState.features) {
+      const selected = f.id === planState.selected;
+      const sig = planSignature(f, selected);
+      const existing = planEntities.get(f.id);
+      if (existing && existing.sig === sig) continue;
+      if (existing) destroyPlanEntity(f.id);
+      const entity = new Entity(`plan:${f.id}`);
+      entity.addComponent("render", { meshInstances: [], castShadows: false, receiveShadows: false });
+      const meshes = [], instances = [], glass = [];
+      for (const part of f.meshes) {
+        const geometry = planGeometry(part, { selected });
+        const mesh = new Mesh(application.graphicsDevice);
+        mesh.setPositions(geometry.positions);
+        mesh.setNormals(geometry.normals);
+        mesh.setColors32(geometry.colors);
+        mesh.setIndices(geometry.indices);
+        mesh.update(PRIMITIVE_TRIANGLES);
+        meshes.push(mesh);
+        (geometry.transparent ? glass : instances).push(new MeshInstance(mesh, planMaterial(geometry.transparent)));
+      }
+      entity.render.meshInstances = instances;
+      if (glass.length) {
+        const overlay = new Entity(`plan-glass:${f.id}`);
+        overlay.addComponent("render", { meshInstances: glass, layers: [planOverlayLayer.id], castShadows: false, receiveShadows: false });
+        entity.addChild(overlay);
+      }
+      planRoot.addChild(entity);
+      planEntities.set(f.id, { entity, meshes, sig });
+    }
+    applyPlanClips(planState.view === "proposal" ? planState.clips : []);
+    applyColliderClips(planState.view === "proposal" ? planState.clips : []);
+    rebuildPlanColliders();
+  }
+  /**
+   * Hide splats inside demolished volumes. The engine's unified splat renderer (the
+   * default) applies a per-splat "work-buffer modifier" when it copies splats into its
+   * work buffer; its modifySplatColor gets the world-space centre and alpha 0 drops the
+   * splat. A non-unified component takes the same code as the material's gsplatModifyVS.
+   */
+  function applyPlanClips(clips) {
+    const g = splatEnt?.gsplat;
+    if (!g) return;
+    const key = JSON.stringify(clips);
+    const uniforms = clipUniforms(clips);
+    if (g.unified !== false && typeof g.setWorkBufferModifier === "function") {
+      if (key === planClipKey && planClipMaterial === g) return;
+      g.setWorkBufferModifier(clips.length ? { glsl: clipShader("glsl"), wgsl: clipShader("wgsl") } : null);
+      uniforms.forEach(([a, b], i) => {
+        g.setParameter(`uPlanClipA${i}`, new Float32Array(a));
+        g.setParameter(`uPlanClipB${i}`, new Float32Array(b));
+      });
+      planClipKey = key;
+      planClipMaterial = g;
+      return;
+    }
+    const material = g.material;
+    if (!material) return;
+    if (key !== planClipKey || material !== planClipMaterial) {
+      const wgsl = application.graphicsDevice.isWebGPU;
+      const chunks = material.getShaderChunks(wgsl ? "wgsl" : "glsl");
+      if (clips.length) chunks.set("gsplatModifyVS", clipShader(wgsl ? "wgsl" : "glsl"));
+      else chunks.delete("gsplatModifyVS");
+      material.update();
+      planClipKey = key;
+      planClipMaterial = material;
+    }
+    uniforms.forEach(([a, b], i) => {
+      material.setParameter(`uPlanClipA${i}`, a);
+      material.setParameter(`uPlanClipB${i}`, b);
+    });
+  }
+  function planPickAt(clientX, clientY) {
+    const xy = canvasPoint(clientX, clientY, canvas.getBoundingClientRect());
+    if (!xy || planState.view !== "proposal") { workspace.emit("plan-pick", { id: null }); return; }
+    const camera = cameraEnt.camera;
+    const start = camera.screenToWorld(xy[0], xy[1], camera.nearClip);
+    const end = camera.screenToWorld(xy[0], xy[1], camera.farClip);
+    const hit = rayPick(planState.features, [start.x, start.y, start.z], [end.x - start.x, end.y - start.y, end.z - start.z]);
+    workspace.emit("plan-pick", { id: hit ? hit.id : null });
+  }
+
+  // ---- Editing the selected feature in 3D. Handles are DOM dots over the canvas (always
+  // on top, easy to grab); a drag runs on the feature's base plane, previews locally
+  // (outline, plus a live move/turn of the drawn mesh) and hands the new outline to the
+  // host on release. The backend then re-derives the geometry, as for every other edit.
+  const handleLayer = EMBED ? Object.assign(document.createElement("div"), { id: "plan-handles" }) : null;
+  if (handleLayer) {
+    Object.assign(handleLayer.style, { position: "fixed", overflow: "hidden", pointerEvents: "none", zIndex: "6" });
+    document.body.appendChild(handleLayer);
+  }
+  const handleEls = new Map();
+  let planDrag = null, planPreview = null, planPreviewTimer = null;
+  const HANDLE_CSS = {
+    vertex: "width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid #f5a524;cursor:move",
+    mid: "width:10px;height:10px;border-radius:50%;background:rgba(245,165,36,.4);border:1.5px solid #f5a524;cursor:copy",
+    move: "width:22px;height:22px;border-radius:6px;background:#f5a524;border:2px solid #fff;cursor:grab;box-shadow:0 1px 5px rgba(0,0,0,.55)",
+    rotate: "width:17px;height:17px;border-radius:50%;background:#fff;border:3px solid #4aa3ff;cursor:alias;box-shadow:0 1px 5px rgba(0,0,0,.55)",
+  };
+  const HANDLE_TITLE = { vertex: "Drag to move this corner · double-click to remove it", mid: "Drag to add a corner here",
+    move: "Drag to move · Shift snaps to 1 m", rotate: "Drag to turn · Shift snaps to 15°" };
+  function editPoint(clientX, clientY) {
+    const xy = canvasPoint(clientX, clientY, canvas.getBoundingClientRect());
+    const edit = planState.edit;
+    if (!xy || !edit) return null;
+    const camera = cameraEnt.camera;
+    const a = camera.screenToWorld(xy[0], xy[1], camera.nearClip), b = camera.screenToWorld(xy[0], xy[1], camera.farClip);
+    return planeHit([a.x, a.y, a.z], [b.x - a.x, b.y - a.y, b.z - a.z], edit.y);
+  }
+  function resetPlanTransforms() {
+    for (const { entity } of planEntities.values()) { entity.setLocalPosition(0, 0, 0); entity.setLocalEulerAngles(0, 0, 0); }
+  }
+  function clearPlanPreview() {
+    planPreview = null;
+    if (planPreviewTimer) { clearTimeout(planPreviewTimer); planPreviewTimer = null; }
+    resetPlanTransforms();
+  }
+  function beginPlanDrag(e, handle) {
+    const edit = planState.edit;
+    if (!edit || e.button !== 0 || planDrag) return false;
+    const from = editPoint(e.clientX, e.clientY) || [...handle.xz];
+    clearPlanPreview();
+    planDrag = { handle, from, pointerId: e.pointerId, moved: false, startX: e.clientX, startY: e.clientY, result: null, target: e.currentTarget || canvas };
+    planDrag.target.setPointerCapture?.(e.pointerId);
+    return true;
+  }
+  function movePlanDrag(e) {
+    if (!planDrag || planDrag.pointerId !== e.pointerId) return false;
+    if (Math.hypot(e.clientX - planDrag.startX, e.clientY - planDrag.startY) > 3) planDrag.moved = true;
+    if (!planDrag.moved) return true;
+    const to = editPoint(e.clientX, e.clientY);
+    if (!to) return true;
+    const edit = planState.edit;
+    planDrag.result = dragShape(edit, planDrag.handle, planDrag.from, to, e.shiftKey ? { grid: 1, snapDeg: 15 } : {});
+    planPreview = planDrag.result.points;
+    // Move and turn are rigid, so the drawn mesh can follow exactly without a round-trip.
+    const item = planEntities.get(edit.id);
+    if (item && planDrag.handle.kind === "move") {
+      const [x0, z0] = edit.points[0], [x1, z1] = planPreview[0];
+      item.entity.setLocalPosition(x1 - x0, 0, z1 - z0);
+    } else if (item && planDrag.handle.kind === "rotate") {
+      const a = planDrag.result.rotation_deg * Math.PI / 180;
+      const cx = edit.points.reduce((s, p) => s + p[0], 0) / edit.points.length;
+      const cz = edit.points.reduce((s, p) => s + p[1], 0) / edit.points.length;
+      item.entity.setLocalEulerAngles(0, -planDrag.result.rotation_deg, 0);
+      item.entity.setLocalPosition(cx - (cx * Math.cos(a) - cz * Math.sin(a)), 0, cz - (cx * Math.sin(a) + cz * Math.cos(a)));
+    }
+    return true;
+  }
+  function endPlanDrag(e, cancel = false) {
+    if (!planDrag || (e && planDrag.pointerId !== e.pointerId)) return false;
+    const { result, moved, target, pointerId, handle } = planDrag;
+    if (target.hasPointerCapture?.(pointerId)) target.releasePointerCapture(pointerId);
+    planDrag = null;
+    if (cancel || !moved || !result) { clearPlanPreview(); return true; }
+    workspace.emit("plan-edit", { id: planState.edit.id, points: result.points, rotation_deg: result.rotation_deg, handle: handle.kind });
+    // The host answers with a new plan (or an error); either way stop previewing soon.
+    planPreviewTimer = setTimeout(clearPlanPreview, 8000);
+    return true;
+  }
+  function handleElement(key) {
+    let el = handleEls.get(key);
+    if (el) return el;
+    el = document.createElement("div");
+    el.dataset.handle = key;
+    el.addEventListener("pointerdown", e => { if (beginPlanDrag(e, el._handle)) { e.preventDefault(); e.stopPropagation(); } });
+    el.addEventListener("pointermove", e => { if (movePlanDrag(e)) e.preventDefault(); });
+    el.addEventListener("pointerup", e => endPlanDrag(e));
+    el.addEventListener("pointercancel", e => endPlanDrag(e, true));
+    el.addEventListener("dblclick", e => {
+      const edit = planState.edit, h = el._handle;
+      if (!edit || h.kind !== "vertex") return;
+      e.preventDefault();
+      const points = removeVertex(edit, h.index);
+      if (points) workspace.emit("plan-edit", { id: edit.id, points, rotation_deg: 0, handle: "remove" });
+      else workspace.emit("error", { message: `An outline needs at least ${edit.min} corners.` });
+    });
+    el.addEventListener("wheel", e => { e.preventDefault(); canvas.dispatchEvent(new WheelEvent("wheel", e)); }, { passive: false });
+    handleLayer.appendChild(el);
+    handleEls.set(key, el);
+    return el;
+  }
+  function updatePlanHandles() {
+    if (!handleLayer) return;
+    const edit = planState.edit;
+    const live = new Set();
+    if (edit && planSelect && planState.view === "proposal") {
+      const rect = canvas.getBoundingClientRect(), device = application.graphicsDevice, cam = cameraEnt.camera;
+      const eye = cameraEnt.getPosition(), forward = cameraEnt.forward;
+      Object.assign(handleLayer.style, { left: rect.left + "px", top: rect.top + "px", width: rect.width + "px", height: rect.height + "px" });
+      const shown = planPreview ? { ...edit, points: planPreview } : edit;
+      for (const h of planHandles(shown)) {
+        if (planDrag && h.kind === "mid" && planDrag.handle.kind !== "mid") continue;
+        const key = `${h.kind}:${h.index}`;
+        const world = new Vec3(h.xz[0], edit.y + 0.15, h.xz[1]);
+        const s = cam.camera.worldToScreen(world, device.width, device.height, new Vec3());
+        s.z = (world.x - eye.x) * forward.x + (world.y - eye.y) * forward.y + (world.z - eye.z) * forward.z;
+        const xy = projectedCssPoint(s, rect, device.width, device.height);
+        if (!xy) continue;
+        const el = handleElement(key);
+        if (el._kind !== h.kind) { el.style.cssText = `position:absolute;box-sizing:border-box;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none;${HANDLE_CSS[h.kind]}`; el.title = HANDLE_TITLE[h.kind]; el._kind = h.kind; }
+        if (!planDrag || planDrag.target !== el) el._handle = h;
+        el.style.left = xy[0] + "px"; el.style.top = xy[1] + "px";
+        el.style.display = "block";
+        live.add(key);
+      }
+    }
+    for (const [key, el] of handleEls) if (!live.has(key)) {
+      if (planDrag && planDrag.target === el) continue;
+      el.remove(); handleEls.delete(key);
+    }
+  }
+  function drawPlanEdit() {
+    const edit = planState.edit;
+    if (!edit || !planSelect || planState.view !== "proposal") return;
+    const pts = planPreview || edit.points;
+    if (pts.length < 2) return;
+    const y = edit.y + 0.12, line = [];
+    for (let i = 0; i < (edit.closed ? pts.length : pts.length - 1); i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      line.push(new Vec3(a[0], y, a[1]), new Vec3(b[0], y, b[1]));
+    }
+    application.drawLines(line, planPreview ? new Color(1, 0.72, 0.15, 1) : new Color(1, 0.8, 0.35, 0.8), false);
+  }
+
+  // ---- Walk physics for the scheme: proposed walls and objects block the walker, and
+  // demolished structures are cut out of the scanned collider (the ground they stood on
+  // stays). Only in the Proposed view; Existing restores the scan's own collider.
+  let planColliderRoot = null, planColliderKey = "", colliderClipKey = "[]";
+  const colliderOriginal = new Map();
+  function rebuildPlanColliders() {
+    const boxes = planState.view === "proposal" ? planColliders(planState.features) : [];
+    const key = JSON.stringify(boxes);
+    if (key === planColliderKey) return;
+    planColliderKey = key;
+    planColliderRoot?.destroy();
+    planColliderRoot = null;
+    if (!boxes.length) return;
+    // Assemble the whole compound off-scene, then insert it once: a static compound that
+    // enters the world with one child and grows afterwards keeps that first child's bounds
+    // in the broadphase, and rays (and the walker) pass straight through every later box.
+    const root = new Entity("planColliders");
+    for (const b of boxes) {
+      const e = new Entity();
+      e.setLocalPosition(b.center[0], b.center[1], b.center[2]);
+      e.setLocalEulerAngles(0, b.yaw, 0);
+      e.addComponent("collision", { type: "box", halfExtents: new Vec3(b.halfExtents[0], b.halfExtents[1], b.halfExtents[2]) });
+      root.addChild(e);
+    }
+    root.addComponent("collision", { type: "compound" });
+    root.addComponent("rigidbody", { type: "static", friction: 0.6, restitution: 0 });
+    application.root.addChild(root);
+    planColliderRoot = root;
+    window.__planColliders = boxes.length;
+  }
+  function groundPatch(clip, step = 1) {
+    // A walkable floor over the demolished box, at the measured ground height.
+    const cs = Math.cos(clip.angle), sn = Math.sin(clip.angle);
+    const nu = Math.max(1, Math.ceil(2 * clip.hx / step)), nv = Math.max(1, Math.ceil(2 * clip.hz / step));
+    const pos = [], idx = [];
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const u = -clip.hx + 2 * clip.hx * i / nu, v = -clip.hz + 2 * clip.hz * j / nv;
+      const x = clip.cx + u * cs - v * sn, z = clip.cz + u * sn + v * cs;
+      pos.push(x, groundHF(x, z), z);
+    }
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      const a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+    return { pos, idx };
+  }
+  function applyColliderClips(clips) {
+    const key = JSON.stringify(clips);
+    if (key === colliderClipKey) return;
+    colliderClipKey = key;
+    let removed = 0;
+    for (const entity of collisionMeshEntities) {
+      if (!entity.collision) continue;
+      let orig = colliderOriginal.get(entity);
+      if (!orig) {
+        const meshes = entity.render.meshInstances.map(mi => mi.mesh);
+        const world = entity.getWorldTransform();
+        orig = { meshes, data: meshes.map(mesh => {
+          const pos = [], idx = [];
+          mesh.getPositions(pos); mesh.getIndices(idx);
+          const wpos = new Float32Array(pos.length), v = new Vec3();
+          for (let i = 0; i < pos.length; i += 3) { world.transformPoint(v.set(pos[i], pos[i + 1], pos[i + 2]), v); wpos[i] = v.x; wpos[i + 1] = v.y; wpos[i + 2] = v.z; }
+          return { wpos, idx };
+        }) };
+        colliderOriginal.set(entity, orig);
+      }
+      let meshes = orig.meshes;
+      if (clips.length) {
+        // Rebuilt in world coordinates, so the collider entity must carry no transform of its own.
+        const inverse = entity.getWorldTransform().clone().invert();
+        const toLocal = (arr) => { const v = new Vec3(), out = new Float32Array(arr.length); for (let i = 0; i < arr.length; i += 3) { inverse.transformPoint(v.set(arr[i], arr[i + 1], arr[i + 2]), v); out[i] = v.x; out[i + 1] = v.y; out[i + 2] = v.z; } return out; };
+        meshes = orig.data.map(({ wpos, idx }) => {
+          const keep = clipTriangles(wpos, idx, clips, groundHF);
+          removed += (idx.length - keep.length) / 3;
+          const mesh = new Mesh(application.graphicsDevice);
+          mesh.setPositions(toLocal(wpos)); mesh.setIndices(keep.length ? keep : [0, 0, 0]); mesh.update(PRIMITIVE_TRIANGLES);
+          return mesh;
+        });
+        for (const clip of clips) {
+          const { pos, idx } = groundPatch(clip);
+          const mesh = new Mesh(application.graphicsDevice);
+          mesh.setPositions(toLocal(pos)); mesh.setIndices(idx); mesh.update(PRIMITIVE_TRIANGLES);
+          meshes = [...meshes, mesh];
+        }
+      }
+      entity.collision.renderAsset = null;
+      entity.collision.render = { meshes };
+    }
+    window.__colliderClipped = removed;
+  }
+
+  // ---- Camera sync for side-by-side / swipe compare: the host relays one viewer's
+  // orbit to the other. A remote orbit is applied without echoing it back.
+  let cameraFollow = false, cameraEmitAt = 0, cameraTimer = null, remoteOrbit = false;
+  let remotePose = false, remotePoseUntil = 0, poseEmitAt = 0;
+  /** Fly/walk compare: broadcast the eye (position + forward) instead of an orbit. */
+  function broadcastPose() {
+    if (!cameraFollow || workspaceMode === "orbit" || !workspace.ready) return;
+    const now = performance.now();
+    if (remotePose && now < remotePoseUntil) return;      // being driven: do not echo back
+    remotePose = false;
+    if (now - poseEmitAt < 50) return;
+    poseEmitAt = now;
+    const e = cameraEnt.getPosition(), f = cameraEnt.forward;
+    workspace.emit("camera", { pose: { eye: [e.x, e.y, e.z], forward: [f.x, f.y, f.z], mode: workspaceMode } });
+  }
+  function broadcastCamera() {
+    if (!cameraFollow || remoteOrbit || !workspaceOrbit || !workspace.ready) return;
+    const now = performance.now();
+    if (now - cameraEmitAt < 30) {
+      if (!cameraTimer) cameraTimer = setTimeout(() => { cameraTimer = null; broadcastCamera(); }, 35);
+      return;
+    }
+    cameraEmitAt = now;
+    const o = workspaceOrbit;
+    workspace.emit("camera", { orbit: { target: [...o.target], distance: o.distance, yaw: o.yaw, pitch: o.pitch } });
+  }
+  const placedItems = new Map();          // id -> { holder, collider, mesh, sig }
+  const placedByCollider = new Map();     // collider entity -> id
+  function placementById(id) { return renderedPlacements.find(p => p.id === id) || null; }
   function placementMaterial() {
     if (placedMat) return placedMat;
     const m = new StandardMaterial();
     m.useLighting = false;
-    m.diffuseVertexColor = true;
-    m.blendType = 2;            // BLEND_NORMAL
-    m.opacity = 0.6;
-    m.depthWrite = false;
-    m.cull = 0;                 // CULL_NONE — two-sided, winding-independent
+    m.useSkybox = false;
+    m.diffuse.set(0, 0, 0);
+    m.emissive.set(1, 1, 1);
+    m.emissiveMapVertexColor = true; // use the helper's baked, directional face shading
+    m.blendType = BLEND_NONE;
+    m.opacity = 1;
+    m.depthTest = true;
+    m.depthWrite = true;
+    m.cull = CULLFACE_BACK;
     m.update();
     placedMat = m;
     return m;
   }
-  function rebuildPlacements() {
-    if (placedRoot) { placedRoot.destroy(); placedRoot = null; }
-    if (placedMeshEnt) { placedMeshEnt.destroy(); placedMeshEnt = null; }
-    if (!renderedPlacements.length) return;
+  function placementGeometryMesh(p) {
+    const geometry = furnitureGeometry(p);
+    if (!geometry || !geometry.positions.every(v => Number.isFinite(Math.fround(v)))) return null;
+    const mesh = new Mesh(application.graphicsDevice);
+    mesh.setPositions(geometry.positions);
+    mesh.setNormals(geometry.normals);
+    mesh.setColors32(new Uint8Array(geometry.colors)); // four byte RGBA components per vertex
+    mesh.setIndices(geometry.indices);
+    mesh.update(PRIMITIVE_TRIANGLES);
+    return mesh;
+  }
+  // Imported glTF/GLB items render their real geometry, aligned to the same
+  // conservative box the collider uses, so what you see is what the character
+  // bumps into. The plain box mesh stays as a fallback while a model loads and
+  // if the load fails, so a placed item is never blank.
+  const modelAssets = new Map();          // file -> Promise<Asset|null>, cached per scene
+  function modelAsset(file) {
+    let pending = modelAssets.get(file);
+    if (!pending) {
+      pending = new Promise(resolve => {
+        const asset = new Asset(file, "container", { url: `${WORK_DIR}/models/${file}` });
+        application.assets.add(asset);
+        asset.on("load", () => resolve(asset));
+        asset.on("error", () => resolve(null));
+        application.assets.load(asset);
+      });
+      modelAssets.set(file, pending);
+    }
+    return pending;
+  }
+  function modelTint(p) {
+    const c = placementColor(p);
+    const m = new StandardMaterial();
+    m.useLighting = false;
+    m.diffuse.set(0, 0, 0);
+    m.emissive.set(c[0], c[1], c[2]);      // fit colour: green fits, red does not, blue unknown
+    m.opacity = 1;
+    m.blendType = BLEND_NONE;
+    m.depthTest = true;
+    m.depthWrite = true;
+    m.cull = CULLFACE_BACK;
+    m.update();
+    return m;
+  }
+  /** The model's natural PlayCanvas-space world AABB, from each mesh's local box. */
+  function naturalModelAabb(ent) {
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    const v = new Vec3(), out = new Vec3();
+    ent.findComponents("render").forEach(rc => (rc.meshInstances || []).forEach(mi => {
+      const box = mi.mesh && mi.mesh.aabb;        // model-local BoundingBox
+      if (!box || !box.halfExtents || !mi.node) return;
+      const cx = box.center.x, cy = box.center.y, cz = box.center.z;
+      const hx = box.halfExtents.x, hy = box.halfExtents.y, hz = box.halfExtents.z;
+      const world = mi.node.getWorldTransform();
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+        v.set(cx + sx * hx, cy + sy * hy, cz + sz * hz);
+        world.transformPoint(v, out);
+        mn[0] = Math.min(mn[0], out.x); mx[0] = Math.max(mx[0], out.x);
+        mn[1] = Math.min(mn[1], out.y); mx[1] = Math.max(mx[1], out.y);
+        mn[2] = Math.min(mn[2], out.z); mx[2] = Math.max(mx[2], out.z);
+      }
+    }));
+    return [mn, mx].every(a => a.every(Number.isFinite)) ? { min: mn, max: mx } : null;
+  }
+  function clearModel(item) {
+    const m = item.model;
+    if (!m) return;
+    m.token++;                             // invalidate any in-flight load for this slot
+    if (m.ent) m.ent.destroy();
+    if (m.wrapper) m.wrapper.destroy();
+    if (m.mat) m.mat.destroy();
+    item.model = null;
+    if (item.holder.render) item.holder.render.enabled = true;   // the box mesh renders again
+  }
+  function paintModel(m, p) {
+    if (m.mat) m.mat.destroy();
+    m.mat = modelTint(p);
+    m.ent.findComponents("render").forEach(rc => rc.meshInstances.forEach(mi => { mi.material = m.mat; }));
+  }
+  function fitModel(item, p, box) {
+    const m = item.model;
+    if (!m || !m.ent || !m.aabb || !box) return;
+    m.wrapper.setLocalPosition(box.center[0], box.center[1], box.center[2]);
+    m.wrapper.setLocalEulerAngles(0, -box.yaw, 0);
+    const fit = importedModelFit(m.aabb, box);
+    // The fit goes on its own node, never on the instantiated model: a glTF root
+    // node may carry a real transform (the up-axis flip and unit scale every
+    // exporter emits), and writing over it would draw the model at its raw size
+    // while the collider stayed at the size the file declared.
+    if (fit && m.fitter) {
+      m.fitter.setLocalScale(fit.scale[0], fit.scale[1], fit.scale[2]);
+      m.fitter.setLocalPosition(fit.offset[0], fit.offset[1], fit.offset[2]);
+    }
+  }
+  /** Attach (or re-fit) the real geometry for an imported item; a no-op for primitives. */
+  function bindModel(item, p, box) {
+    const file = p.model && p.model.file;
+    if (!file) { clearModel(item); return; }
+    let m = item.model;
+    if (!m || m.file !== file) {
+      clearModel(item);
+      const wrapper = new Entity(`model:${p.id}`);
+      item.holder.addChild(wrapper);
+      m = item.model = { wrapper, fitter: null, file, aabb: null, ent: null, mat: null, loading: false, token: 0 };
+    }
+    if (m.ent && m.aabb) { fitModel(item, p, box); paintModel(m, p); return; }
+    m.wrapper.setLocalPosition(box.center[0], box.center[1], box.center[2]);
+    m.wrapper.setLocalEulerAngles(0, -box.yaw, 0);
+    if (m.loading) return;
+    m.loading = true;
+    const token = m.token;
+    modelAsset(file).then(asset => {
+      m.loading = false;
+      if (!item.model || item.model !== m || m.token !== token) return;   // superseded or removed
+      if (!asset) return;                                                  // keep the box fallback
+      let ent = null;
+      try {
+        ent = asset.resource.instantiateRenderEntity({ castShadows: false, receiveShadows: false });
+        const aabb = naturalModelAabb(ent);                               // measure before parenting
+        if (!aabb) { ent.destroy(); return; }
+        m.ent = ent; m.aabb = aabb;
+        m.fitter = new Entity(`fit:${p.id}`);    // the box fit lives here, not on the model's own root
+        m.wrapper.addChild(m.fitter);
+        m.fitter.addChild(ent);
+        const current = placementById(p.id) || p;
+        fitModel(item, current, placementBox(current) || box);
+        paintModel(m, current);
+        if (item.holder.render) item.holder.render.enabled = false;        // the model replaced the box
+      } catch (e) {
+        console.log(`[place] could not render imported model ${file}: ${e && e.message ? e.message : e}`);
+        if (ent) ent.destroy();
+      }
+    });
+  }
+  function ensurePlacedRoot() {
+    if (placedRoot) return placedRoot;
     placedRoot = new Entity("placed");
     placedRoot.addComponent("rigidbody", { type: "static", friction: 0.6, restitution: 0 });
     placedRoot.addComponent("collision", { type: "compound" });
     application.root.addChild(placedRoot);
-    for (const p of renderedPlacements) {
-      const box = placementBox(p);
-      if (!box) continue;
-      const e = new Entity();
-      e.setLocalPosition(box.center[0], box.center[1], box.center[2]);
-      e.setLocalEulerAngles(0, -box.yaw, 0);   // physics yaw sign, as detected furniture uses
-      e.addComponent("collision", { type: "box", halfExtents: new Vec3(box.halfExtents[0], box.halfExtents[1], box.halfExtents[2]) });
-      placedRoot.addChild(e);
+    return placedRoot;
+  }
+  function destroyPlacedItem(id) {
+    const item = placedItems.get(id);
+    if (!item) return;
+    clearModel(item);
+    placedByCollider.delete(item.collider);
+    item.collider.destroy();
+    if (item.mesh) item.mesh.destroy();
+    item.holder.destroy();
+    placedItems.delete(id);
+  }
+  function upsertPlacement(p) {
+    const box = placementBox(p);
+    if (!box) return;
+    const sig = `${p.center_xz.join(",")}|${p.center_y}|${p.size.join(",")}|${p.yaw_deg}|${p.item}|${p.stale ? 1 : 0}|${p.fit ? JSON.stringify(p.fit) : ""}|${p.model ? p.model.file : ""}`;
+    const existing = placedItems.get(p.id);
+    if (existing && existing.sig === sig) return;
+    if (existing) {
+      // Only the shape/verdict changed: swap the mesh in place, keep the collider node.
+      existing.collider.setLocalPosition(box.center[0], box.center[1], box.center[2]);
+      existing.collider.setLocalEulerAngles(0, -box.yaw, 0);
+      existing.collider.collision.halfExtents = new Vec3(box.halfExtents[0], box.halfExtents[1], box.halfExtents[2]);
+      const mesh = placementGeometryMesh(p);
+      if (mesh) {
+        if (existing.mesh) existing.mesh.destroy();
+        existing.holder.render.meshInstances = [new MeshInstance(mesh, placementMaterial())];
+        existing.mesh = mesh;
+      }
+      existing.sig = sig;
+      bindModel(existing, p, box);
+      return;
     }
-    const mesh = buildPlacementMesh(application.graphicsDevice, renderedPlacements);
-    if (mesh) {
-      placedMeshEnt = new Entity("placedMesh");
-      placedMeshEnt.addComponent("render", { meshInstances: [new MeshInstance(mesh, placementMaterial())] });
-      application.root.addChild(placedMeshEnt);
-    }
-    console.log(`[place] ${renderedPlacements.length} placed items, colliders on a static body`);
+    const holder = new Entity(`place:${p.id}`);
+    holder.addComponent("render", { meshInstances: [] });
+    ensurePlacedRoot().addChild(holder);
+    const collider = new Entity();
+    collider.setLocalPosition(box.center[0], box.center[1], box.center[2]);
+    collider.setLocalEulerAngles(0, -box.yaw, 0);   // physics yaw sign, as detected furniture uses
+    collider.addComponent("collision", { type: "box", halfExtents: new Vec3(box.halfExtents[0], box.halfExtents[1], box.halfExtents[2]) });
+    ensurePlacedRoot().addChild(collider);
+    const mesh = placementGeometryMesh(p);
+    if (mesh) holder.render.meshInstances = [new MeshInstance(mesh, placementMaterial())];
+    const item = { holder, collider, mesh, sig };
+    placedItems.set(p.id, item);
+    placedByCollider.set(collider, p.id);
+    bindModel(item, p, box);
+  }
+  function rebuildPlacements() {
+    const live = new Set(renderedPlacements.filter(p => placementBox(p)).map(p => p.id));
+    for (const id of [...placedItems.keys()]) if (!live.has(id)) destroyPlacedItem(id);
+    for (const p of renderedPlacements) upsertPlacement(p);
+  }
+  /** Which placed item, if any, is under this canvas point. */
+  function placementAt(clientX, clientY) {
+    const xy = canvasPoint(clientX, clientY, canvas.getBoundingClientRect());
+    if (!xy) return null;
+    const camera = cameraEnt.camera;
+    const start = camera.screenToWorld(xy[0], xy[1], camera.nearClip);
+    const end = camera.screenToWorld(xy[0], xy[1], camera.farClip);
+    return placementRay(renderedPlacements, [start.x, start.y, start.z], [end.x, end.y, end.z]);
+  }
+  /** Move one placed item where the editor is dragging it, without a host round-trip. */
+  function dragPlacement(id, center) {
+    const p = placementById(id);
+    const box = p && placementBox(p);
+    if (!box) return null;
+    p.center_xz = [center[0], center[2]];
+    p.center_y = center[1];
+    upsertPlacement(p);
+    return [p.center_xz[0], p.center_y, p.center_xz[1]];
   }
   function setRenderedPlacements(list) {
-    renderedPlacements = Array.isArray(list) ? list.filter(p => p && placementBox(p)) : [];
-    // The host re-pushes the layout on every poll; only rebuild the colliders and
-    // mesh when something actually moved, or a steady view would churn entities.
-    const signature = renderedPlacements.map(p => `${p.id}:${p.center_xz[0]},${p.center_xz[1]},${p.center_y},${p.size.join("x")},${p.yaw_deg}`).join("|");
-    if (signature === placedSignature) return;
-    placedSignature = signature;
+    renderedPlacements = Array.isArray(list) ? list.filter(p => {
+      const box = placementBox(p);
+      return box && box.corners.every(point => point.every(v => Number.isFinite(Math.fround(v)))) &&
+        box.halfExtents.every(v => Number.isFinite(Math.fround(v)) && Math.fround(v) > 0);
+    }) : [];
     rebuildPlacements();
   }
 
@@ -1421,6 +2052,7 @@ async function boot() {
     cameraEnt.setPosition(...eye);
     cameraEnt.lookAt(new Vec3(...workspaceOrbit.target));
     syncWorkspaceFly();
+    broadcastCamera();
   }
   function setWorkspaceMode(mode) {
     if (mode === workspaceMode) return;
@@ -1469,6 +2101,24 @@ async function boot() {
     applyWorkspaceOrbit();
     selectedCamIdx = -1;
     if (selectedCamEntity) selectedCamEntity.enabled = false;
+    setPreviewPoint(null);
+  }
+  function focusWorkspacePlacement(id) {
+    // Validate before changing modes, so a missing item does not move the view.
+    const orbit = focusPlacement(renderedPlacements, id, 70, canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    clearActiveKeys();
+    setWorkspaceMode("orbit");
+    workspaceOrbit = orbit;
+    cameraEnt.camera.fov = 70;
+    cameraEnt.camera.nearClip = Math.min(0.08 * CHAR_SCALE, orbit.minDistance * 0.5);
+    cameraEnt.camera.farClip = Math.max(3000, orbit.maxDistance * 2);
+    markerSize = Math.max(0.001, orbit.distance * 0.003);
+    rebuildPickLines();
+    selectedMeasureId = id;
+    selectedCamIdx = -1;
+    if (selectedCamEntity) selectedCamEntity.enabled = false;
+    setPreviewPoint(null);
+    applyWorkspaceOrbit();
   }
   function setWorkspaceLayers(layer, value) {
     const layers = layerState(workspaceLayers(), layer, value, workspaceCapabilities());
@@ -1513,7 +2163,7 @@ async function boot() {
         a[axis] -= markerSize; b[axis] += markerSize;
         pickLines.push(new Vec3(...a), new Vec3(...b));
       }
-      if (i) pickLines.push(new Vec3(...pickPoints[i - 1]), new Vec3(...p));
+      if (i && measurementKind === null) pickLines.push(new Vec3(...pickPoints[i - 1]), new Vec3(...p));
     }
   }
   function surfacePointAt(clientX, clientY) {
@@ -1534,6 +2184,7 @@ async function boot() {
     if (!workspace.ready || !workspacePick) return;
     try {
       const point = surfacePointAt(clientX, clientY);
+      setPreviewPoint(null);
       if (!point) {
         workspace.emit("pick-miss", { message: "No collision surface at this pixel. Splats are not a measured surface." });
         return;
@@ -1542,26 +2193,77 @@ async function boot() {
       if (pickPoints.length >= workspacePickLimit) workspacePick = false;
       rebuildPickLines();
       workspace.emit("pick", { point, geometry: "collision_surface" });
-    } catch (e) { workspace.emit("error", { message: e.message || String(e) }); }
+    } catch (e) { setPreviewPoint(null); workspace.emit("error", { message: e.message || String(e) }); }
   }
   if (EMBED) workspaceCommand = cmd => {
     switch (cmd.command) {
-      case "mode": setWorkspaceMode(cmd.value); break;
+      case "mode": setWorkspaceMode(cmd.value); setPreviewPoint(null); break;
       case "fit": fitWorkspace(); break;
       case "layer": setWorkspaceLayers(cmd.layer, cmd.value); break;
-      case "frame": frameWorkspace(cmd.index); break;
+      case "frame": frameWorkspace(cmd.index); setPreviewPoint(null); break;
+      case "measurement-tool":
+        measurementKind = cmd.kind; measurementUnit = cmd.unit;
+        setPreviewPoint(null); rebuildPickLines(); break;
+      case "focus-placement": focusWorkspacePlacement(cmd.id); break;
+      case "edit":
+        workspaceEdit = cmd.value;
+        // One tool at a time: arming the editor stops measurement picking, and
+        // releasing it drops any selection highlight.
+        if (cmd.value) { pickingRequested = false; workspacePick = false; setPreviewPoint(null); }
+        else if (!cmd.value) { selectedMeasureId = null; editDrag = null; }
+        break;
       case "pick":
         if (cmd.value && !workspaceCapabilities().collider) throw new Error("Measurement requires a collision surface");
-        workspacePickLimit = cmd.limit ?? 128;
-        workspacePick = cmd.value; break;
-      case "clear-picks": pickPoints = []; pickLines = []; previewPoint = null; break;
-      case "set-picks": pickPoints = (cmd.value || []).filter(finitePoint).slice(0, MAX_PICKS); rebuildPickLines(); break;
+        if (cmd.value) { workspaceEdit = false; selectedMeasureId = null; }
+        workspacePickLimit = cmd.limit ?? MAX_PICKS;
+        pickingRequested = cmd.value;
+        workspacePick = pickingRequested && pickPoints.length < workspacePickLimit;
+        setPreviewPoint(null); break;
+      case "clear-picks":
+        pickPoints = []; pickLines = []; workspacePick = pickingRequested;
+        setPreviewPoint(null); break;
+      case "set-picks":
+        pickPoints = cmd.value.map(p => [...p]);
+        workspacePick = pickingRequested && pickPoints.length < workspacePickLimit;
+        setPreviewPoint(null); rebuildPickLines(); break;
       case "measurements": setRenderedMeasurements(cmd.value); break;
       case "placements": setRenderedPlacements(cmd.value); break;
-      case "select": selectedMeasureId = typeof cmd.id === "string" ? cmd.id : null; break;
-      case "labels": showMeasureLabels = !!cmd.value; break;
+      case "select": selectedMeasureId = cmd.id; break;
+      case "labels": showMeasureLabels = cmd.value; break;
       case "view": fitWorkspace(cmd.value === "top"); break;
       case "snapshot": snapshotCapture.request(); break;
+      case "plan":
+        planState = cmd.value;
+        if (!planDrag) clearPlanPreview();
+        rebuildPlan(); break;
+      case "plan-select":
+        planSelect = cmd.value;
+        if (cmd.value) { workspaceEdit = false; editDrag = null; }
+        else if (planDrag) endPlanDrag(null, true);
+        break;
+      case "camera-follow":
+        cameraFollow = cmd.value;
+        if (cameraFollow) { cameraEmitAt = 0; broadcastCamera(); }
+        break;
+      case "camera-set":
+        if (cmd.value?.pose) {
+          // Fly / walk compare: the other viewer's eye, taken as a fly camera (no physics here).
+          const { eye, forward } = cmd.value.pose;
+          if (!Array.isArray(eye) || !Array.isArray(forward) || eye.length !== 3 || forward.length !== 3 || ![...eye, ...forward].every(Number.isFinite)) break;
+          if (workspaceMode !== "fly") setWorkspaceMode("fly");
+          remotePose = true;
+          dronePos.set(eye[0], eye[1], eye[2]);
+          P.yaw = Math.atan2(-forward[0], -forward[2]);
+          P.pitch = Math.asin(Math.max(-1, Math.min(1, forward[1])));
+          workspaceLookDirty = true;
+          remotePoseUntil = performance.now() + 250;
+          break;
+        }
+        if (workspaceMode !== "orbit") setWorkspaceMode("orbit");
+        remoteOrbit = true;
+        try { workspaceOrbit = { ...workspaceOrbit, ...cmd.value, target: [...cmd.value.target] }; applyWorkspaceOrbit(); }
+        finally { remoteOrbit = false; }
+        break;
     }
   };
 
@@ -1658,6 +2360,7 @@ async function boot() {
   application.on("update", (dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     step(dt);
+    if (EMBED) broadcastPose();
     combat?.update(dt);
 
     const w = window.__walk;
@@ -1679,11 +2382,16 @@ async function boot() {
     if (EMBED) {
       if (pickLines.length) application.drawLines(pickLines, pickColor, false);
       drawMeasurementGeometry();
+      drawPlanEdit();
       return;
     }
     const splatLabel = splatCountLabel();
     const camStatus = showCameras ? `ON (${allCameras.length} cams)` : "OFF";
-    const covStatus = allCoverageGrid ? `${allCoverageGrid.covered_pct}% cov` : "N/A";
+    // Null-safe and verdict-safe: a refused grid reports covered_pct === null,
+    // which must read "not measurable" on the HUD, not "null% cov".
+    const covStatus = !allCoverageGrid ? "N/A"
+      : (allCoverageGrid.measurable === false ? "cov NOT MEASURABLE"
+                                              : `${allCoverageGrid.covered_pct}% cov`);
 
     if (isDrone) {
       const isFast = !!(activeKeys["ShiftLeft"] || activeKeys["ShiftRight"] || activeKeys["shift"]);
@@ -1713,7 +2421,13 @@ async function boot() {
       }
       workspace?.markReady();
     }
-    if (workspace?.ready) { updateMeasureLabels(); snapshotCapture.postrender(() => canvas.toDataURL("image/png")); }
+    if (workspace?.ready) {
+      // Flush even when the pointer stops: the last sample may be a pending clear.
+      previewStream.flush(performance.now());
+      updateMeasureLabels();
+      updatePlanHandles();
+      snapshotCapture.postrender(() => canvas.toDataURL("image/png"));
+    }
   });
 
   application.systems.rigidbody.gravity.set(0, -18, 0);
@@ -1751,8 +2465,34 @@ async function boot() {
   }
   if (COMBAT) {
     P.firstPerson = true;
-    import("./pc/scripts/combat.js")
-      .then(({ installCombat }) => installCombat(app, {
+    // Mission rehearsal: ?mission=<id>&scene=<scene>[&light=day|dusk|night][&nvg=1][&fog=<m>]
+    const missionId = q.get("mission"), missionScene = q.get("scene");
+    const rehearsal = missionId && /^p-[0-9a-f]{10}$/.test(missionId) && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(missionScene || "")
+      ? (async () => {
+        const path = `mission/scenario?scene=${encodeURIComponent(missionScene)}&id=${missionId}`;
+        // Through the studio's proxy when embedded there, else straight to the local service.
+        for (const base of ["/api/backend/api/workspace/", "/api/workspace/"]) {
+          const r = await fetch(base + path, { cache: "no-store" }).catch(() => null);
+          if (r && r.ok) {
+            const light = ["day", "dusk", "night"].includes(q.get("light")) ? q.get("light") : "day";
+            const fog = Number(q.get("fog"));
+            return { scenario: await r.json(), saveUrl: { url: `${base}mission/run`, scene: missionScene },
+              conditions: { light, nvg: q.get("nvg") === "1", fog_m: Number.isFinite(fog) && fog >= 10 ? Math.min(fog, 2000) : undefined },
+              // RH-9: a join link from the instructor carries the session and its token.
+              session: /^s-[0-9a-f]{8}$/.test(q.get("session") || "") && q.get("token")
+                ? { id: q.get("session"), token: q.get("token"), name: (q.get("name") || "Player").slice(0, 24) } : null,
+              parent: window.parent !== window ? window.parent : null, origin: location.origin };
+          }
+        }
+        throw new Error("The mission scenario could not be loaded");
+      })()
+      : Promise.resolve(null);
+    rehearsal.then((mission) => import("./pc/scripts/combat.js").then((module) => ({ module, mission })))
+      .then(({ module: { installCombat }, mission }) => installCombat(app, {
+        mission,
+        // The real engine: ``app`` above is a shallow copy without its methods (drawLines).
+        engine: application,
+        spawnPlayer: () => spawnFrom(col),
         app,
         canvas,
         camera: cameraEnt,
@@ -1763,7 +2503,7 @@ async function boot() {
         spawn: col.spawn,
         walkPath: col.walk_path,
         cameras: allCameras,
-        endless: q.get("endless") !== "0",
+        endless: !missionId && q.get("endless") !== "0",
         config: { bots: Math.max(1, Number(q.get("bots")) || 5) },
         getYaw: () => P.yaw,
         grounded: () => P.grounded,
@@ -1772,11 +2512,21 @@ async function boot() {
         /** Metres from the player entity's origin DOWN to its collider's floor. */
         playerFeet: () => FEET,
         nudgePitch: (d) => { P.pitch = Math.min(1.45, Math.max(-1.45, P.pitch + d)); },
+        /** VR: the right controller's pointer ray while a session runs, else null (camera aim). */
+        aimRay: () => vrState?.aimRay?.() ?? null,
         respawn: () => spawnFrom(col),
       }))
       .then((c) => {
         combat = c;
         window.__combat = c;
+        // VR rehearsal (RH-7): offered only where the browser reports immersive-vr.
+        return import("./pc/scripts/vr.js").then(({ installVr }) => {
+          vrState = installVr({
+            app: application, camera: cameraEnt, canvas,
+            onTrigger: (on) => { if (combat) combat.firing = on; },
+            onStatus: (status) => { window.__vr = status; },
+          });
+        });
       })
       .catch((e) => {
         window.__combatError = String(e && e.message ? e.message : e);
@@ -1791,12 +2541,55 @@ async function boot() {
     let gesture = null;
     canvas.addEventListener("contextmenu", e => e.preventDefault());
     canvas.addEventListener("pointerdown", e => {
-      if (!workspace.ready || (e.button !== 0 && e.button !== 2) || gesture) return;
+      if (!workspace.ready || (e.button !== 0 && e.button !== 2) || gesture || editDrag || planDrag) return;
       e.preventDefault();
       canvas.focus({ preventScroll: true });
+      setPreviewPoint(null);
+      // In the planner, the selected feature's own body is a move grip.
+      if (planSelect && !workspacePick && planState.edit && planState.view === "proposal" && e.button === 0 && !e.shiftKey) {
+        const xy = canvasPoint(e.clientX, e.clientY, canvas.getBoundingClientRect());
+        if (xy) {
+          const camera = cameraEnt.camera;
+          const a = camera.screenToWorld(xy[0], xy[1], camera.nearClip), b = camera.screenToWorld(xy[0], xy[1], camera.farClip);
+          const hit = rayPick(planState.features, [a.x, a.y, a.z], [b.x - a.x, b.y - a.y, b.z - a.z]);
+          if (hit && hit.id === planState.edit.id) {
+            const grip = planHandles(planState.edit).find(h => h.kind === "move");
+            if (beginPlanDrag(e, grip)) { canvas.style.cursor = "grabbing"; return; }
+          }
+        }
+      }
+      // In the editor a piece under the cursor is grabbed, not orbited around.
+      if (workspaceEdit && e.button === 0) {
+        const id = placementAt(e.clientX, e.clientY);
+        const box = id && placementBox(placementById(id));
+        const floor = id && surfacePointAt(e.clientX, e.clientY);
+        if (box) {
+          editDrag = { id, pointerId: e.pointerId, moved: false, startX: e.clientX, startY: e.clientY,
+            offset: floor ? [box.center[0] - floor[0], 0, box.center[2] - floor[2]] : [0, 0, 0],
+            from: [box.center[0], box.center[1], box.center[2]], last: 0 };
+          canvas.setPointerCapture(e.pointerId);
+          return;
+        }
+      }
       gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY,
         pan: e.button === 2 || e.shiftKey, button: e.button, moved: false };
       canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", e => { if (planDrag && planDrag.target === canvas) movePlanDrag(e); });
+    canvas.addEventListener("pointermove", e => {
+      if (!editDrag || editDrag.pointerId !== e.pointerId) return;
+      if (Math.hypot(e.clientX - editDrag.startX, e.clientY - editDrag.startY) > 4) editDrag.moved = true;
+      if (!editDrag.moved) return;
+      const floor = surfacePointAt(e.clientX, e.clientY);
+      // Over unscanned space there is no surface to sit on: hold the last real
+      // position instead of snapping the piece to a guessed point.
+      if (!floor) return;
+      const moved = dragPlacement(editDrag.id, [floor[0] + editDrag.offset[0], editDrag.from[1], floor[2] + editDrag.offset[2]]);
+      if (!moved) return;
+      const now = performance.now();
+      if (now - editDrag.last < 1000 / 15) return;
+      editDrag.last = now;
+      workspace.emit("placement-move", { id: editDrag.id, point: moved, final: false });
     });
     canvas.addEventListener("pointermove", e => {
       if (!gesture || gesture.id !== e.pointerId) return;
@@ -1815,34 +2608,64 @@ async function boot() {
         workspaceLookDirty = true;
       }
     });
-    // Live rubber-band: track the cursor's surface point while placing a measurement.
+    // Local geometry follows the pointer immediately; host events are coalesced.
     canvas.addEventListener("pointermove", e => {
-      if (!workspacePick || gesture) return;
-      try { const p = surfacePointAt(e.clientX, e.clientY); if (p) previewPoint = p; } catch { /* ignore transient raycast errors */ }
+      if (!workspace.ready || !workspacePick || gesture) return;
+      try { setPreviewPoint(surfacePointAt(e.clientX, e.clientY)); }
+      catch { setPreviewPoint(null); }
     });
+    canvas.addEventListener("pointerleave", () => setPreviewPoint(null));
     canvas.addEventListener("pointerup", e => {
+      if (planDrag && planDrag.target === canvas && endPlanDrag(e)) {
+        canvas.style.cursor = "";
+        // A press on the selected feature that never moved is still a click: keep it selected.
+        return;
+      }
+      if (editDrag && editDrag.pointerId === e.pointerId) {
+        const box = placementBox(placementById(editDrag.id));
+        const point = box ? [box.center[0], box.center[1], box.center[2]] : null;
+        if (editDrag.moved && point) workspace.emit("placement-move", { id: editDrag.id, point, final: true });
+        else if (!editDrag.moved) workspace.emit("placement-pick", { id: editDrag.id });
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        editDrag = null;
+        return;
+      }
       if (!gesture || gesture.id !== e.pointerId) return;
       const click = !gesture.moved && !gesture.pan && gesture.button === 0 &&
         Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY) <= 4;
       gesture = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-      if (click) pickWorkspace(e.clientX, e.clientY);
+      if (click) {
+        if (planSelect && !workspacePick) planPickAt(e.clientX, e.clientY);
+        else pickWorkspace(e.clientX, e.clientY);
+      }
     });
     const cancelGesture = () => {
+      if (planDrag) { endPlanDrag(null, true); canvas.style.cursor = ""; }
+      if (editDrag) {
+        // A cancelled drag puts the piece back where the grab started.
+        const back = dragPlacement(editDrag.id, editDrag.from);
+        if (back) workspace.emit("placement-move", { id: editDrag.id, point: back, final: true });
+        editDrag = null;
+      }
       if (gesture && canvas.hasPointerCapture(gesture.id)) canvas.releasePointerCapture(gesture.id);
       gesture = null;
+      setPreviewPoint(null);
     };
     canvas.addEventListener("pointercancel", cancelGesture);
-    canvas.addEventListener("lostpointercapture", () => { gesture = null; });
+    canvas.addEventListener("lostpointercapture", () => { gesture = null; setPreviewPoint(null); });
     window.addEventListener("blur", cancelGesture);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) cancelGesture(); });
     canvas.addEventListener("wheel", e => {
       e.preventDefault();
       if (!workspace.ready || workspaceMode !== "orbit") return;
+      setPreviewPoint(null);
       const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1);
       workspaceOrbit = zoomOrbit(workspaceOrbit, delta);
       applyWorkspaceOrbit();
     }, { passive: false });
     window.addEventListener("keydown", e => {
+      if (e.code === "Escape" && planDrag) { endPlanDrag(null, true); canvas.style.cursor = ""; e.stopPropagation(); return; }
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
       if (e.code === "KeyR" && workspace.ready && !e.repeat) {
         try { fitWorkspace(); workspace.state(); }
@@ -2074,6 +2897,12 @@ function step(dt) {
       dx = (mz * -s + mx * c) * sp;
       dz = (mz * -c + mx * -s) * sp;
     }
+    // In VR the left stick walks where the head looks; the capsule and navmesh are the same.
+    if (vrState?.active && vrState.move.mag > 0) {
+      sp = WALK_SPEED * vrState.move.mag;
+      dx = (vrState.move.dx / vrState.move.mag) * sp;
+      dz = (vrState.move.dz / vrState.move.mag) * sp;
+    }
     const hs = Math.hypot(v.x, v.z);
     const keep = sp > 0 && hs > sp + 0.5 * CHAR_SCALE;
     let vy = v.y;
@@ -2129,6 +2958,14 @@ function step(dt) {
   const chase_min_clear = 0.4 * CHAR_SCALE;
   const look_up_fp = 0.55 * CHAR_SCALE;
   const look_up_tp = 1.15 * CHAR_SCALE;
+  if (vrState?.active) {
+    // The headset owns the eyes: the rig stands at the feet and turns with the body.
+    vrState.update(new Vec3(px.x, px.y - FEET, px.z), P.yaw);
+    if (vrState.turn) P.yaw += vrState.turn;
+    const w = window.__walk;
+    w.pos = [+px.x.toFixed(3), +(px.y - FEET).toFixed(3), +px.z.toFixed(3)];
+    return;
+  }
   if (P.firstPerson) {
     cameraEnt.setPosition(px.x + fx * eye_fwd, px.y + eye_up, px.z + fz * eye_fwd);
   } else {

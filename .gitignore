@@ -56,3 +56,11 @@ Thumbs.db
 
 # --- Node (viewer deps, if any) ---
 node_modules/
+
+# --- EGM96 geoid grid (F3): public-domain NGA data, fetched on demand ---
+# curl -L -o data/geoid/us_nga_egm96_15.tif https://cdn.proj.org/us_nga_egm96_15.tif
+data/geoid/*.tif
+
+# --- Local scratch tests and git worktrees ---
+gputest/
+.wt/

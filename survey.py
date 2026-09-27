@@ -16,8 +16,13 @@ def main(argv=None):
         command.add_argument("scene")
         if name == "reconstruct":
             command.add_argument("--allow-gpu", action="store_true", help="Explicitly authorize GPU reconstruction; never enabled by preparation or the dashboard.")
-            command.add_argument("--dense-profile", choices=sorted(survey.DENSE_PROFILES), default="survey",
-                                 help="survey keeps geometric consistency (cleanest, slowest); fast/budget trade density for the <15 min target.")
+            command.add_argument("--dense-profile", choices=sorted(survey.DENSE_PROFILES), default=None,
+                                 help="survey keeps geometric consistency (cleanest, slowest); fast/budget trade density for the <15 min target. Default: the application's profile, else survey.")
+            import applications
+            command.add_argument("--application", choices=sorted(applications.APPLICATIONS), default=None,
+                                 help="what the scan is for (playbook §4): picks the dense profile when none is given and marks unrequested formats in the ledger.")
+            command.add_argument("--vertical-datum", choices=survey.VERTICAL_DATUMS, default="ellipsoidal",
+                                 help="Heights in the georeferenced products: WGS84 ellipsoidal (what GPS measures) or egm96 mean sea level through the EGM96 geoid grid in data/geoid.")
             command.add_argument("--progressive", action="store_true",
                                  help="Also execute the streaming window plan after the sparse solve: per-window submaps merged into an accumulated model, publishing progressive/checkpoints.json with measured per-window seconds. Diagnostic; a failed window never endangers the reconstruction.")
         if name == "inputs":
@@ -26,9 +31,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == "reconstruct":
+            import applications
+            profile = args.dense_profile or (applications.get(args.application)["dense_profile"] if args.application else "survey")
             result = survey.reconstruct_scene(ROOT, args.scene, allow_gpu=args.allow_gpu,
-                                          dense_profile=args.dense_profile,
-                                          progressive=args.progressive)
+                                          dense_profile=profile, application=args.application,
+                                          dense_profile_set_by="operator" if args.dense_profile else
+                                          (f"application:{args.application}" if args.application else "default"),
+                                          progressive=args.progressive,
+                                          vertical_datum=args.vertical_datum)
         elif args.command == "inputs":
             result = survey.save_inputs(ROOT, args.scene, args.telemetry.read_text(encoding="utf-8-sig"), survey.read_json(args.metadata))
         else:

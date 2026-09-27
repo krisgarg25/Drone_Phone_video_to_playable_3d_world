@@ -87,21 +87,44 @@ def measure(kind, cloud_viewer, picked_viewer, *, radius_m=None, quality=None):
     tree = cKDTree(cloud_engine)
 
     if kind == "distance":
-        if len(picked) != 2:
-            return _invalid("distance", "distance needs exactly two points")
-        i, _ = _snap(tree, cloud_engine, picked[0], radius)
-        j, _ = _snap(tree, cloud_engine, picked[1], radius)
-        if i is None or j is None or i == j:
-            return _invalid("distance", "a click is not on measured geometry within "
-                            f"{radius:.2f} m", uncertainty={"m": spacing})
-        rec = m.distance(cloud_engine, i, j, quality=quality)
-        return {"kind": "distance", "value": rec.get("length_m"), "unit": "m",
-                "valid": rec["valid"], "reason": rec.get("reason"),
-                "components": {"horizontal_m": rec.get("horizontal_m"),
-                               "vertical_m": rec.get("vertical_m"),
-                               "rise_m": rec.get("rise_m")},
-                "snapped": _viewer(cloud_engine[[i, j]]).tolist(),
-                "uncertainty": _uncertainty(rec), "engine": rec}
+        if len(picked) < 2:
+            return _invalid("distance", "distance needs at least two points")
+        indices = [_snap(tree, cloud_engine, point, radius)[0] for point in picked]
+        segments = []
+        for i, j in zip(indices, indices[1:]):
+            if i is None or j is None or i == j:
+                segments.append(_invalid("distance", "a click is not on distinct measured geometry within "
+                                         f"{radius:.2f} m", uncertainty={"m": spacing, "valid": False}))
+                continue
+            rec = m.distance(cloud_engine, i, j, quality=quality)
+            segments.append({"kind": "distance", "value": rec.get("length_m"), "unit": "m",
+                             "valid": rec["valid"], "reason": rec.get("reason"),
+                             "components": {"horizontal_m": rec.get("horizontal_m"),
+                                            "vertical_m": rec.get("vertical_m"),
+                                            "rise_m": rec.get("rise_m")},
+                             "snapped": _viewer(cloud_engine[[i, j]]).tolist(),
+                             "uncertainty": _uncertainty(rec), "engine": rec})
+        if len(segments) == 1:
+            return segments[0]
+        complaints = [f"segment {i}: {s.get('reason') or 'insufficient measured support'}"
+                      for i, s in enumerate(segments, 1) if not s["valid"]]
+        complete = all(s["value"] is not None for s in segments)
+        budgets = [s.get("uncertainty") or {} for s in segments]
+        quantified = all(u.get("valid") and u.get("m") is not None and u.get("value") is not None
+                         for u in budgets)
+        # Shared vertices and survey errors are correlated. Summing the budgets is
+        # conservative; treating each segment as independent would imply false precision.
+        budget = {"m": math.fsum(u["m"] for u in budgets) if quantified else None,
+                  "value": math.fsum(u["value"] for u in budgets) if quantified else None,
+                  "unit": "m", "valid": quantified and not complaints,
+                  "confidence": "conservative 1-sigma upper bound",
+                  "basis": "sum of segment uncertainties; shared errors are not assumed independent"}
+        return {"kind": "distance", "value": math.fsum(s["value"] for s in segments) if complete else None,
+                "unit": "m", "valid": not complaints, "reason": "; ".join(complaints) or None,
+                "components": {key: math.fsum(s["components"][key] for s in segments) if complete else None
+                               for key in ("horizontal_m", "vertical_m", "rise_m")},
+                "snapped": _viewer(cloud_engine[indices]).tolist() if complete else [],
+                "uncertainty": budget, "engine": {"segments": segments}}
 
     if kind == "height":
         if len(picked) != 1:

@@ -1,0 +1,48 @@
+{
+  "scene": "rocks",
+  "faces": 15776,
+  "views": 72,
+  "atlas_px": 1157,
+  "timing_s": {
+    "mesh_s": 3.4,
+    "visibility_s": 39.9,
+    "before_colour_s": 31.8,
+    "after_bake_s": 33.9
+  },
+  "size_bytes": {
+    "before_vertex_colour.glb": 1326008,
+    "after_textured.glb": 1694980
+  },
+  "held_out": [
+    {
+      "view": "rocks/00018.jpg",
+      "covered_pct": 95.6,
+      "mae_before": 13.16,
+      "mae_after": 13.29,
+      "detail_before": 0.204,
+      "detail_after": 0.306
+    },
+    {
+      "view": "rocks/00036.jpg",
+      "covered_pct": 98.6,
+      "mae_before": 11.76,
+      "mae_after": 11.37,
+      "detail_before": 0.279,
+      "detail_after": 0.408
+    },
+    {
+      "view": "rocks/00054.jpg",
+      "covered_pct": 96.0,
+      "mae_before": 11.21,
+      "mae_after": 10.89,
+      "detail_before": 0.364,
+      "detail_after": 0.431
+    }
+  ],
+  "mean": {
+    "mae_before": 12.043,
+    "mae_after": 11.85,
+    "detail_before": 0.282,
+    "detail_after": 0.382
+  }
+}

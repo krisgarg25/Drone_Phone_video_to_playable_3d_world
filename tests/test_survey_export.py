@@ -63,6 +63,60 @@ class ExportProductsTests(unittest.TestCase):
         self.assertLessEqual(entry["cells_filled"], entry["cells_total"])
         self.assertEqual(manifest["crs_wkt"], UTM_43N)
 
+    def test_dsm_rows_are_north_up_where_an_independent_reader_samples_them(self):
+        """A pillar at the north edge must read tall at its own coordinate, not mirrored."""
+        rng = np.random.default_rng(0)
+        pts = np.column_stack([rng.uniform(0, 100, 20000), rng.uniform(0, 100, 20000),
+                               np.zeros(20000)])
+        pts[(pts[:, 0] > 40) & (pts[:, 0] < 60) & (pts[:, 1] > 85), 2] = 30.0
+        raster, transform, _, _ = products.dsm_grid(pts, 5.0)
+        a, b, _, d, _, f = transform
+        def at(x, y):
+            return raster[int((y - d) / f), int((x - a) / b)]
+        self.assertEqual(at(50, 95), 30.0)
+        self.assertEqual(at(50, 5), 0.0)
+        try:
+            import rasterio
+        except ImportError:
+            return
+        from scripts import survey_crs, survey_formats
+        with tempfile.TemporaryDirectory() as tmp:
+            survey_formats.write_geotiff(raster, Path(tmp) / "dsm.tif", transform=transform,
+                                         crs_wkt=survey_crs.utm_wkt(43, "N"), nodata=-9999.0)
+            with rasterio.open(Path(tmp) / "dsm.tif") as src:
+                north, south = [v[0] for v in src.sample([(50, 95), (50, 5)])]
+        self.assertEqual((north, south), (30.0, 0.0))
+
+    def test_terrain_products_classify_ground_and_georeference_the_dtm(self):
+        rng = np.random.default_rng(5)
+        ground = np.column_stack([rng.uniform(0, 100, 15000), rng.uniform(0, 100, 15000),
+                                  rng.normal(0, 0.05, 15000)])
+        roof = np.column_stack([rng.uniform(60, 80, 3000), rng.uniform(60, 80, 3000),
+                                np.full(3000, 12.0)])
+        ground = ground[~((ground[:, 0] > 60) & (ground[:, 0] < 80)
+                          & (ground[:, 1] > 60) & (ground[:, 1] < 80))]
+        points = np.vstack([ground, roof])
+        manifest = products.export_products(points, None, ALIGNMENT, self.root / "terrain",
+                                            crs_wkt=UTM_43N, cell_size_m=1.0)
+        names = {entry["path"] for entry in manifest["files"]}
+        self.assertTrue({"dsm.tif", "dtm.tif", "ndsm.tif", "dtm_observed.tif"} <= names)
+        self.assertGreater(manifest["terrain"]["ground_points"], 0)
+        try:
+            import laspy
+            import rasterio
+        except ImportError:
+            return
+        classes = np.asarray(laspy.read(self.root / "terrain/cloud.las").classification)
+        self.assertTrue(np.all(classes[:len(ground)] == 2))
+        self.assertTrue(np.all(classes[len(ground):] == 1))
+        with rasterio.open(self.root / "terrain/ndsm.tif") as src:
+            roof_height, open_ground = [v[0] for v in src.sample([(70, 70), (20, 20)])]
+        with rasterio.open(self.root / "terrain/dtm_observed.tif") as src:
+            under_roof, seen = [v[0] for v in src.sample([(70, 70), (20, 20)])]
+        self.assertAlmostEqual(float(roof_height), 12.0, delta=0.3)
+        self.assertLess(abs(float(open_ground)), 0.3)
+        self.assertEqual((float(under_roof), float(seen)), (0.0, 1.0))
+
     def test_obj_is_produced_when_a_surface_mesh_exists(self):
         points, _ = cloud()
         triangles = np.array([[0, 1, 2], [1, 2, 3]], dtype=np.int64)

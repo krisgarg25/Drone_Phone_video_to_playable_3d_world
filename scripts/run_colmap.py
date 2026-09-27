@@ -148,6 +148,13 @@ DEFAULT_PLAN = {
     "mapper": "auto",
     "prior_std": 0.15,
     "init_min_tri_angle": 16.0,
+    # SIFT detector thresholds, per capture style. These were the runner's private
+    # constants for as long as the preset table has declared them: `pipeline.py` never
+    # put them in the plan, so `plan.get(...)` below always fell through. They live in
+    # DEFAULT_PLAN now so the plan hash covers them and a scene with no preset value
+    # keeps the historical 0.002 / 16 behaviour explicitly rather than by accident.
+    "sift_peak_threshold": 0.002,
+    "sift_edge_threshold": 16,
     "rescue_below": 0.6,
     "calibration_json": None,   # path to WebXR capture calibration.json
     "image_dir": "frames_train",  # what COLMAP reads: raw extraction, or survey_frames output
@@ -508,9 +515,16 @@ def main() -> None:
     if mask_dir is not None:
         reader_flags += ["--ImageReader.mask_path", str(mask_dir)]
     
-    # Sensitive peak threshold (0.002) and edge threshold (16) to capture plain painted walls & faint room features
-    peak_thresh = str(plan.get("sift_peak_threshold", 0.002))
-    edge_thresh = str(plan.get("sift_edge_threshold", 16))
+    # Detector sensitivity, from the capture preset. Lower peak = more features on a
+    # blank painted wall; higher edge threshold = keep responses along strong edges.
+    # Printed into the step log because "which preset ran" is otherwise unrecoverable
+    # from a finished directory - the values only exist in plan.json, and a reviewer
+    # comparing two takes needs to see what the extractor was actually told.
+    peak_thresh = str(plan["sift_peak_threshold"])
+    edge_thresh = str(plan["sift_edge_threshold"])
+    print(f"[colmap] SIFT detector: peak_threshold={peak_thresh} "
+          f"edge_threshold={edge_thresh} max_features={plan['max_features']} "
+          f"max_image_size={plan['max_image_size']}")
     
     # Compute optimal CPU threads (12 threads for i5-13450HX P-cores)
     cpu_threads = str(min(12, max(1, (os.cpu_count() or 16) - 2)))

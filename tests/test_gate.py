@@ -211,8 +211,10 @@ asset = make_scene(tmp, nx=3, nz=3, cell=0.1)
 p = run_gate(asset, tmp)
 ok("IndexError" not in p.stderr and p.returncode == 0,
    "a 3x3 grid is judged, not crashed", p.stderr[-300:] or p.stdout[-300:])
-ok("3x3 spawn neighbourhood" in p.stdout,
-   "the gate says which neighbourhood size it actually used")
+ok("3x3 (0.30 m) spawn neighbourhood" in p.stdout,
+   "the gate says which neighbourhood it used, in cells AND in metres: the window is "
+   "sized off the grid's own cell since a cell count meant 35 cm in a room and 20 m on "
+   "an aerial pass")
 
 # -------------------------------------------------------- no collider at all
 tmp = fresh("nocollider")

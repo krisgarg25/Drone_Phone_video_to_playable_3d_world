@@ -172,6 +172,51 @@ def refine_with_ground(Rg: np.ndarray, P: np.ndarray, C: np.ndarray,
                                "n_ground_points": int(len(G))}
 
 
+GPS_SCALE_MAX_RMSE_FRACTION = 0.05
+"""A GPS fit whose inlier RMSE exceeds 5% of the flight path explains the track no better
+than noise does, and a scale drawn from it would be a guess with a decimal point."""
+
+
+def gps_scale(work: Path, telemetry: Path, metadata: Path) -> dict:
+    """Ruler D: fit the camera track to the GPS track and read the scale off the fit.
+
+    The survey lane's own similarity fit (``survey_georef.align_camera_trajectory``):
+    camera centres in COLMAP units against GNSS positions in local ENU metres, matched by
+    time, RANSAC for outliers, observability refused for a straight line (along which
+    scale is fine but rotation is not - the fit still refuses, and so does this ruler).
+    Returns ``{"scale": m/unit, ...}`` or ``{"refused": reason}``; never raises, because
+    a missing ruler is a fallback, not a failed run.
+    """
+    try:
+        import survey_georef as georef
+        meta = json.loads(Path(metadata).read_text(encoding="utf-8-sig"))
+        track = georef.normalize_telemetry(Path(telemetry), meta)
+        rows = [json.loads(line) for line in
+                (work / "keyframes_poses.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()]
+        fit = georef.align_camera_trajectory(rows, track)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return {"refused": str(error)}
+    positions = np.asarray([s["position"] for s in track["samples"]], dtype=float)
+    path_m = float(np.linalg.norm(np.diff(positions, axis=0), axis=1).sum())
+    rmse = float(fit["fit_rmse_m"])
+    result = {"scale": float(fit["scale"]), "fit_rmse_m": rmse,
+              "inliers": int(fit["inlier_count"]), "matched": int(fit["matched_count"]),
+              "gps_path_m": path_m, "warnings": list(fit.get("warnings") or []),
+              # The whole similarity, not only its scale: scene_frames chains the viewer
+              # frame through it to ENU, WGS84 and MGRS for exports and click coordinates.
+              "alignment": {key: fit[key] for key in ("schema_version", "status", "method",
+                                                      "scale", "rotation", "translation",
+                                                      "coordinate_frame", "fit_rmse_m")}}
+    if not np.isfinite(result["scale"]) or result["scale"] <= 0:
+        return {"refused": "the GPS fit produced no positive scale", **result}
+    if path_m <= 0 or rmse > GPS_SCALE_MAX_RMSE_FRACTION * path_m:
+        return {"refused": f"GPS fit RMSE {rmse:.2f} m is more than "
+                           f"{GPS_SCALE_MAX_RMSE_FRACTION:.0%} of the {path_m:.1f} m flight "
+                           "path; the track does not constrain scale", **result}
+    return result
+
+
 def prior_scale(work: Path, C: np.ndarray, T: np.ndarray) -> float | None:
     """Metric path / COLMAP path from AR pose priors (ruler C).
 
@@ -231,6 +276,11 @@ def main() -> None:
                          "filmed, in m. Use this one for anything handheld or on a "
                          f"dolly — you know it to 20 cm, you do not know its speed. "
                          f"Implied: {DRONE_HEIGHT}")
+    ap.add_argument("--telemetry", type=Path, default=None,
+                    help="scale ruler D: the flight's GPS log (survey telemetry.csv); the "
+                         "camera track is fitted to it and the scale read off the fit")
+    ap.add_argument("--flight-metadata", dest="flight_metadata", type=Path, default=None,
+                    help="flight_metadata.json that declares the GPS log's clock and datum")
     ap.add_argument("--no-prior-scale", action="store_true",
                     help="skip ruler C (prior path scale) even when pose_priors.jsonl exists")
     ap.add_argument("--out", type=Path, default=None)
@@ -349,6 +399,18 @@ def main() -> None:
     prior_s: float | None = None
     if not args.no_prior_scale:
         prior_s = prior_scale(args.work, C, T)
+    gps = None
+    if (args.telemetry is None) != (args.flight_metadata is None):
+        raise SystemExit("[frame] FATAL: --telemetry and --flight-metadata go together: "
+                         "the metadata declares the log's clock and height datum.")
+    if args.telemetry is not None:
+        gps = gps_scale(args.work, args.telemetry, args.flight_metadata)
+        if "refused" in gps:
+            rb.warn(f"[frame] ruler D (GPS) refused: {gps['refused']} - falling back")
+        else:
+            print(f"[frame] ruler D, GPS fit  ({gps['inliers']}/{gps['matched']} cameras, "
+                  f"RMSE {gps['fit_rmse_m']:.2f} m over {gps['gps_path_m']:.0f} m): "
+                  f"{gps['scale']:.3f} m/unit")
     speed = args.speed_anchor if args.speed_anchor is not None else DRONE_SPEED
     height = args.height_anchor if args.height_anchor is not None else DRONE_HEIGHT
     if args.speed_anchor is not None and args.height_anchor is not None:
@@ -361,6 +423,15 @@ def main() -> None:
         print(f"[frame] ruler A, speed     ({speed} m/s x {dur:.1f} s): {scale_a:.3f} m/unit")
         print(f"[frame] ruler B, height    ({height} m above ground):    {scale_b:.3f} m/unit")
         scale, source = prior_s, "AR pose-prior metric path"
+    elif gps is not None and "refused" not in gps:
+        # Measured beats assumed: the speed and height rulers are a pilot's setting and a
+        # guess, the GPS fit is the flight itself. They stay in the record so a reader
+        # can see how far the old rulers were off.
+        print(f"[frame] ruler A, speed     ({speed} m/s x {dur:.1f} s): {scale_a:.3f} m/unit")
+        print(f"[frame] ruler B, height    ({height} m above ground):    {scale_b:.3f} m/unit")
+        scale = gps["scale"]
+        source = (f"GPS telemetry similarity fit (RMSE {gps['fit_rmse_m']:.2f} m, "
+                  f"{gps['inliers']} cameras)")
     elif args.height_anchor is not None:
         print(f"[frame] ruler A, speed     ({speed} m/s x {dur:.1f} s): {scale_a:.3f} m/unit")
         print(f"[frame] ruler B, height    ({height} m above ground):    {scale_b:.3f} m/unit")
@@ -412,6 +483,7 @@ def main() -> None:
            "ground_refine": rinfo,
            "scale_m_per_unit": scale,
            "scale_anchor_speed": scale_a, "scale_anchor_agl": scale_b,
+           "scale_anchor_gps": gps,
            "scale_source": source,
            "orbit_path_units": path_u, "duration_s": dur,
            "camera_agl_units": agl_u, "camera_agl_m": agl_u * scale,

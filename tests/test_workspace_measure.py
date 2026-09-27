@@ -34,6 +34,39 @@ class WorkspaceMeasureTests(unittest.TestCase):
         self.assertAlmostEqual(rec["value"], 4.0, delta=0.5)
         self.assertEqual(rec["unit"], "m")
 
+    def test_polyline_sums_all_measured_segments_and_conservative_uncertainty(self):
+        for points, expected in (([[-2, 0, 0], [0, 0, 0], [0, 0, 2]], 4.0),
+                                 ([[-2, 0, 0], [0, 0, 0], [0, 0, 2], [2, 0, 2]], 6.0)):
+            with self.subTest(points=points):
+                rec = wm.measure("distance", self.cloud, points)
+                self.assertTrue(rec["valid"], rec["reason"])
+                self.assertAlmostEqual(rec["value"], expected, places=6)
+                self.assertEqual(len(rec["snapped"]), len(points))
+                # Shared vertices/errors are correlated; do not divide down uncertainty.
+                parts = [wm.measure("distance", self.cloud, [a, b])
+                         for a, b in zip(points, points[1:])]
+                self.assertAlmostEqual(rec["uncertainty"]["m"],
+                                       sum(p["uncertainty"]["m"] for p in parts))
+                self.assertTrue(rec["uncertainty"]["valid"])
+                self.assertIn("sum", rec["uncertainty"]["basis"])
+
+    def test_polyline_preserves_a_segment_support_failure(self):
+        cloud = np.vstack([self.cloud, [[40, 3, 40]]])
+        rec = wm.measure("distance", cloud, [[-2, 0, 0], [2, 0, 0], [40, 3, 40]])
+        self.assertFalse(rec["valid"])
+        self.assertIsNotNone(rec["value"])  # snapped arithmetic, not a supported measurement
+        self.assertIn("segment 2", rec["reason"])
+        self.assertIn("endpoint", rec["reason"])
+        self.assertFalse(rec["uncertainty"]["valid"])
+
+    def test_polyline_does_not_report_a_partial_sum_when_a_click_cannot_snap(self):
+        rec = wm.measure("distance", self.cloud,
+                         [[-2, 0, 0], [2, 0, 0], [1000, 0, 0]], radius_m=0.5)
+        self.assertFalse(rec["valid"])
+        self.assertIsNone(rec["value"])
+        self.assertIn("segment 2", rec["reason"])
+        self.assertFalse((rec["uncertainty"] or {}).get("valid", False))
+
     def test_height_above_ground_of_post_top(self):
         rec = wm.measure("height", self.cloud, [[1, 3, 1]])
         self.assertTrue(rec["valid"], rec["reason"])

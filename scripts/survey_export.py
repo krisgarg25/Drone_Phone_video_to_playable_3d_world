@@ -15,9 +15,11 @@ import numpy as np
 try:  # imported as scripts.survey_export by the tests
     from scripts import survey_formats as formats
     from scripts import survey_georef as georef
+    from scripts import survey_terrain
 except ImportError:  # imported flat by the workflow, which puts scripts/ on sys.path
     import survey_formats as formats
     import survey_georef as georef
+    import survey_terrain
 
 
 def _write_ply(columns, path):
@@ -45,8 +47,18 @@ def dsm_grid(enu, cell):
     keep = np.ones(len(flat), dtype=bool)
     keep[:-1] = flat[1:] != flat[:-1]          # the last value of each run is the maximum
     raster[flat[keep] // cols, flat[keep] % cols] = heights[keep]
+    # Rows were filled south-first (row 0 at ymin); the transform below is north-up
+    # (row 0 at the top edge). Flip so they agree - before this, every DSM was mirrored
+    # north-south, and a GDAL read-back of identical values could not notice.
+    raster = raster[::-1].copy()
     return (raster, (xmin, cell, 0.0, ymin + rows * cell, 0.0, -cell),
             int(np.isfinite(raster).sum()), int(raster.size))
+
+
+TERRAIN_MIN_POINTS = 1000
+TERRAIN_MIN_CELL_M = 1.0
+"""SMRF runs on a grid no finer than this: a sub-metre opening schedule multiplies cost
+for no gain in a bare-earth model whose inputs are photogrammetric points."""
 
 
 def _write_json(value, path):
@@ -85,13 +97,18 @@ def validate(points, colors, triangles):
 
 def export_products(points, colors, alignment, output_dir, *, triangles=None, crs_wkt=None,
                     source_sha256=None, cell_size_m=0.5, scale_mm=1.0,
-                    positions=None, coordinate_frame=None, crs=None):
+                    positions=None, coordinate_frame=None, crs=None, texture=None):
     """Write the measured cloud into every container that needs no invention.
 
     ``positions`` pre-empts the ENU transform: pass an already-projected Nx3 array
     (see ``survey_deliver``) together with the ``coordinate_frame`` and ``crs`` that
     describe it, and the same writers fill a georeferenced product set. Leaving all
     three unset keeps the original local-ENU behaviour.
+
+    ``texture`` is ``(uvs Fx3x2, rgb image)`` from ``survey_texture.bake`` for these same
+    triangles: it adds a UV-textured OBJ and glTF, which then lead the OBJ and glTF rows
+    of the format ledger, and it is the only thing that lets the manifest claim a
+    textured mesh.
     """
     points, rgb, faces = validate(points, colors, triangles)
     if not 0 < float(scale_mm) <= 100.0:
@@ -127,13 +144,28 @@ def export_products(points, colors, alignment, output_dir, *, triangles=None, cr
     record("xyz", "cloud.xyz", geometry="points", rgb=False,
            verified=formats.write_xyz({k: columns[k] for k in "xyz"},
                                     output_dir / "cloud.xyz")["verified"])
+    terrain, terrain_error = None, None
+    if len(enu) >= TERRAIN_MIN_POINTS:
+        try:
+            terrain = survey_terrain.classify_ground(enu, cell_m=max(float(cell_size_m),
+                                                                     TERRAIN_MIN_CELL_M))
+        except ValueError as error:
+            terrain_error = str(error)
+    else:
+        terrain_error = f"fewer than {TERRAIN_MIN_POINTS} points"
     offsets = [float(np.median(columns[axis])) for axis in ("x", "y", "z")]
     scale = float(scale_mm) / 1000.0
-    las = formats.write_las(columns, output_dir / "cloud.las", scale=[scale] * 3,
+    las_columns = dict(columns)
+    if terrain is not None:
+        las_columns["classification"] = terrain["classification"]
+    las = formats.write_las(las_columns, output_dir / "cloud.las", scale=[scale] * 3,
                             offsets=offsets, srs_wkt=crs_wkt)
     record("las", "cloud.las", geometry="points", verified=las["verified"],
+           externally_validated=las["externally_validated"],
            scale_mm=float(scale_mm), offset_x=offsets[0], offset_y=offsets[1],
-           offset_z=offsets[2], crs_written=bool(crs_wkt))
+           offset_z=offsets[2], crs_written=bool(crs_wkt),
+           classification=("ASPRS 2 ground / 1 unclassified (survey_terrain SMRF)"
+                           if terrain is not None else None))
     record("gltf", "cloud.gltf", geometry="mesh" if faces is not None else "points",
            vertex_colors=rgb is not None,
            verified=formats.write_gltf(enu, faces if faces is not None else rgb,
@@ -152,14 +184,45 @@ def export_products(points, colors, alignment, output_dir, *, triangles=None, cr
                vertex_colors=rgb is not None,
                verified=formats.write_obj(faces, enu, output_dir / "surface.obj")["verified"])
 
+    textured = texture is not None and faces is not None
+    if textured:
+        try:
+            from scripts import survey_texture as baker
+        except ImportError:
+            import survey_texture as baker
+        uvs, image = texture
+        if np.asarray(uvs).shape != (len(faces), 3, 2):
+            raise ValueError("texture UVs must hold one (u, v) per corner of every triangle")
+        names = baker.write_obj(output_dir, enu, faces, uvs, image)
+        names += baker.write_gltf(output_dir, enu, faces, uvs)
+        lead = [{"format": "obj", "path": "textured.obj", "geometry": "textured mesh",
+                 "textured": True, "companions": ["textured.mtl", "textured.jpg"],
+                 "verified": "written by survey_texture; no independent OBJ reader here"},
+                {"format": "gltf", "path": "textured.gltf", "geometry": "textured mesh",
+                 "textured": True, "companions": ["textured.bin", "textured.jpg"],
+                 "verified": "written by survey_texture; no glTF-Validator run"}]
+        for entry in lead:
+            entry["bytes"] = (output_dir / entry["path"]).stat().st_size
+        files[:0] = lead
+        files.extend({"format": "texture", "path": name, "geometry": "texture part",
+                      "bytes": (output_dir / name).stat().st_size,
+                      "verified": "written by survey_texture"}
+                     for name in names if name not in ("textured.obj", "textured.gltf"))
+
     caveats = []
     if faces is None:
         caveats.append("no surface mesh was produced: this is a measured point cloud, and no "
                        "faces were invented to fill the gap")
     else:
-        caveats.append("the mesh carries no UV texture: "
-                       + ("per-vertex colour from the fused cloud, not an image"
-                          if rgb is not None else "geometry only"))
+        if textured:
+            caveats.append("textured.obj/.gltf carry a UV texture baked from the source frames "
+                           "(best view per face); surface.obj and cloud.gltf keep per-vertex "
+                           "colour. The texture has no exposure balancing between views and "
+                           "no moving-object test - see texture_report.json")
+        else:
+            caveats.append("the mesh carries no UV texture: "
+                           + ("per-vertex colour from the fused cloud, not an image"
+                              if rgb is not None else "geometry only"))
     if crs_wkt is None:
         missing.append({"format": "geotiff",
                         "reason": "no projected or geodetic CRS supplied: the cloud is in local "
@@ -171,18 +234,39 @@ def export_products(points, colors, alignment, output_dir, *, triangles=None, cr
         geotiff = formats.write_geotiff(raster, output_dir / "dsm.tif", transform=transform,
                                         crs_wkt=crs_wkt, nodata=-9999.0)
         record("geotiff", "dsm.tif", geometry="dsm", verified=geotiff["verified"],
+               externally_validated=geotiff["externally_validated"],
                cell_size_m=float(cell_size_m), cells_filled=filled, cells_total=total)
-        caveats.append("the GeoTIFF is a digital surface model: it keeps rooftops and tree "
+        caveats.append("dsm.tif is a digital surface model: it keeps rooftops and tree "
                        "canopy, so it is not bare-earth terrain")
+        if terrain is not None:
+            for name, key, geometry in (("dtm.tif", "dtm", "dtm"), ("ndsm.tif", "ndsm", "ndsm"),
+                                        ("dtm_observed.tif", "ground_observed", "dtm mask")):
+                grid = terrain[key].astype(np.float32)
+                written = formats.write_geotiff(grid, output_dir / name,
+                                                transform=terrain["transform"],
+                                                crs_wkt=crs_wkt, nodata=-9999.0)
+                record("geotiff", name, geometry=geometry, verified=written["verified"],
+                       externally_validated=written["externally_validated"],
+                       cell_size_m=terrain["report"]["parameters"]["cell_m"])
+            caveats.append("dtm.tif is bare earth from the SMRF ground filter; cells without "
+                           "an observed ground point (under roofs, dense canopy, unseen) are "
+                           "interpolated and marked 0 in dtm_observed.tif. ndsm.tif = highest "
+                           "point minus DTM: building and tree heights above ground")
 
     manifest = {"schema_version": 1, "point_count": int(len(enu)),
                 "coordinate_frame": coordinate_frame, "files": files,
                 "not_delivered": missing, "caveats": caveats,
-                "claims_textured_mesh": False, "claims_surface_mesh": faces is not None,
+                "claims_textured_mesh": textured, "claims_surface_mesh": faces is not None,
                 "externally_validated": False,
-                "verification_note": "readers in scripts/survey_formats re-parse these files; "
-                                     "no third-party library (laspy/GDAL/PDAL) was available to "
-                                     "confirm spec compliance"}
+                "externally_validated_formats": sorted(entry["format"] for entry in files
+                                                       if entry.get("externally_validated")),
+                "verification_note": "every file is re-read by scripts/survey_formats; LAS and "
+                                     "GeoTIFF are also re-opened by laspy and GDAL when those are "
+                                     "installed (see externally_validated_formats). glTF, FBX "
+                                     "and OBJ have no independent reader, so the set as a whole "
+                                     "is never called externally validated"}
+    manifest["terrain"] = (terrain["report"] if terrain is not None
+                           else {"status": "not_computed", "reason": terrain_error})
     if crs is not None:
         manifest["crs"] = crs
     if crs_wkt is not None:

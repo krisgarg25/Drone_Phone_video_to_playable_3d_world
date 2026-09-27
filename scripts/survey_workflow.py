@@ -17,6 +17,8 @@ MAX_INPUT_BYTES = 2 * 1024 * 1024
 # verified through this constant alone, so provenance cannot silently stop
 # matching because two call sites disagreed about the case of points3D.
 POINTS3D = "colmap/sparse/txt/points3D.txt"
+AUX_FILE = "telemetry_aux.json"
+"""Optional sidecar beside telemetry.csv: gimbal attitude and relative altitude."""
 EVIDENCE_POINTS = "survey/evidence/evidence_points.ply"
 EVIDENCE_SUMMARY = "survey/evidence/evidence_summary.json"
 # These KB-scale survey verdicts are rehashed whenever the dashboard polls: a
@@ -131,15 +133,18 @@ def normalise_telemetry_source(text, metadata, *, video_path=None):
         if detected.kind == "telemetry_csv":
             return text, {"source": detected.kind, "rows": None, "uncertainty_source": "in_file",
                           "fix_quality_basis": None, "rejected": None}
-        rows = ingest.from_flight_log(
-            source, horizontal_std_m=(metadata or {}).get("horizontal_std_m"),
-            vertical_std_m=(metadata or {}).get("vertical_std_m"))
+        options = dict(horizontal_std_m=(metadata or {}).get("horizontal_std_m"),
+                       vertical_std_m=(metadata or {}).get("vertical_std_m"))
+        if (metadata or {}).get("altitude_source") in ("relative", "absolute"):
+            options["altitude_source"] = metadata["altitude_source"]
+        rows = ingest.from_flight_log(source, **options)
         info = ingest.source_info(source)
+        aux = _auxiliary_channels(ingest, source, rows, info, options)
         sidecar = {"source": detected.kind, "detected_via": detected.via,
                    "altitude_datum": info.get("altitude_datum"),
                    "time_reference": info.get("time_reference"),
                    "uncertainty_source": info.get("uncertainty_source"),
-                   "rows": len(rows), "rejected": info.get("rejected")}
+                   "rows": len(rows), "rejected": info.get("rejected"), "aux": aux}
         if not all(ingest.TELEMETRY_FIELDS[4] in row and ingest.TELEMETRY_FIELDS[5] in row
                    for row in rows):
             raise ValueError(
@@ -156,6 +161,32 @@ def normalise_telemetry_source(text, metadata, *, video_path=None):
     return buffer.getvalue(), sidecar
 
 
+def _auxiliary_channels(ingest, source, rows, info, options):
+    """Side channels the six-field contract drops: gimbal attitude and relative altitude.
+
+    Straight-track alignment (survey_gravity) needs gravity from the gimbal, and
+    takeoff-anchored heights (survey_vertical) need the barometric above-takeoff series.
+    Both are kept on the log's own clock; consumers apply the declared time offset.
+    """
+    aux = {"schema_version": 1, "source": info.get("source"), "time_reference": "log",
+           "attitude": [], "relative_altitude": []}
+    for row, angles in zip(rows, info.get("gimbal") or []):
+        if angles and angles.get("pitch_deg") is not None and angles.get("roll_deg") is not None:
+            aux["attitude"].append({"t_sec": row["t_sec"], **{key: angles.get(key) for key in
+                                    ("pitch_deg", "roll_deg", "yaw_deg")}})
+    if info.get("altitude_source") != "relative":
+        try:
+            relative_rows = ingest.from_flight_log(source, **dict(options, altitude_source="relative"))
+            aux["relative_altitude"] = [{"t_sec": row["t_sec"],
+                                         "relative_altitude_m": row["altitude_m"]}
+                                        for row in relative_rows]
+        except (ValueError, TypeError) as error:
+            aux["relative_altitude_unavailable"] = str(error)
+        finally:
+            # The reparse re-recorded this path's provenance; the first parse is the truth.
+            ingest._record(source, info)
+    return aux if aux["attitude"] or aux["relative_altitude"] else None
+
 def declare_metadata(metadata, telemetry_text, *, video_path=None):
     """Fill in only what the sources prove; return the blockers the rest would need."""
     import survey_inputs as ingest
@@ -164,7 +195,8 @@ def declare_metadata(metadata, telemetry_text, *, video_path=None):
                             "altitude_datum", "altitude_datum_basis", "position_reference",
                             "antenna_offset_applied", "lever_arm_uncertainty_m",
                             "lever_arm_negligible", "single_pass", "horizontal_std_m",
-                            "vertical_std_m", "camera_id")}
+                            "vertical_std_m", "camera_id", "altitude_source",
+                            "takeoff_height_m", "takeoff_std_m")}
     with tempfile.TemporaryDirectory(prefix="survey-meta-") as directory:
         source = Path(directory) / "telemetry"
         source.write_text(telemetry_text, encoding="utf-8")
@@ -193,6 +225,7 @@ def save_inputs(root, scene, telemetry_csv, metadata):
                   if path.suffix.lower() in VIDEO_EXTS), None) if source.is_dir() else None
     telemetry_text, sidecar = normalise_telemetry_source(telemetry_csv, metadata,
                                                          video_path=video)
+    aux = sidecar.pop("aux", None)
     try:
         georef.validate_metadata(metadata)
         declared = metadata
@@ -218,10 +251,14 @@ def save_inputs(root, scene, telemetry_csv, metadata):
         if sidecar.get("source") != "telemetry_csv":
             with (source / "telemetry_source.json").open("x", encoding="utf-8") as stream:
                 stream.write(json.dumps(sidecar, indent=2, allow_nan=False))
+        if aux:
+            with (source / AUX_FILE).open("x", encoding="utf-8") as stream:
+                stream.write(json.dumps(aux, indent=2, allow_nan=False))
     except Exception:
         target_csv.unlink(missing_ok=True)
         target_meta.unlink(missing_ok=True)
         (source / "telemetry_source.json").unlink(missing_ok=True)
+        (source / AUX_FILE).unlink(missing_ok=True)
         raise
     return scene_status(root, scene)
 
@@ -231,8 +268,10 @@ def prepare_scene(root, scene):
     root = Path(root)
     files = _source_files(root, scene)
     metadata = read_json(files[2])
-    telemetry = georef.normalize_telemetry(files[1], metadata)
     _, work = scene_paths(root, scene)
+    aux_path = _aux_path(root, scene)
+    telemetry_path, vertical = _fuse_vertical(files[1], metadata, aux_path, work)
+    telemetry = georef.normalize_telemetry(telemetry_path, metadata)
     # Two CPU diagnostics, both of which only ever report. A scene with a straight
     # flight path or a barometric altitude mislabelled as ellipsoidal is still worth
     # reconstructing, and refusing it outright would bury the finding that matters.
@@ -256,6 +295,8 @@ def prepare_scene(root, scene):
         "schema_version": 1, "id": uuid.uuid4().hex,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "inputs": [_fingerprint(p, root) for p in files],
+        "auxiliary_inputs": [_fingerprint(aux_path, root)] if aux_path else [],
+        "vertical_fusion": vertical,
         "metadata": metadata, "video_duration_verified": False,
         "telemetry": telemetry, "gpu_execution_enabled": False,
         "gates": {key: gates[key] for key in
@@ -271,6 +312,47 @@ def prepare_scene(root, scene):
     return scene_status(root, scene)
 
 
+def _aux_path(root, scene):
+    source, _ = scene_paths(root, scene)
+    path = source / AUX_FILE
+    if not path.is_file():
+        return None
+    if not path.resolve().is_relative_to(Path(root).resolve()):
+        raise ValueError("Unsafe auxiliary telemetry path")
+    return path
+
+
+def _read_aux(root, scene):
+    path = _aux_path(root, scene)
+    return read_json(path) if path else None
+
+
+def _fuse_vertical(telemetry_path, metadata, aux_path, work):
+    """Takeoff-anchored heights (survey_vertical) when a relative altitude log exists.
+
+    Returns the telemetry file to normalise and a report. The source CSV is never
+    rewritten; the fused copy lives in the work directory beside the preparation.
+    """
+    if aux_path is None:
+        return telemetry_path, {"status": "skipped", "reason": "no " + AUX_FILE}
+    relative = (read_json(aux_path) or {}).get("relative_altitude") or []
+    if not relative:
+        return telemetry_path, {"status": "skipped",
+                                "reason": "flight log carries no relative altitude"}
+    import survey_vertical as vertical
+    try:
+        rows = vertical.read_telemetry_csv(Path(telemetry_path).read_text(encoding="utf-8-sig"))
+        fused, report = vertical.fuse_heights(
+            rows, relative, takeoff_height_m=metadata.get("takeoff_height_m"),
+            takeoff_std_m=metadata.get("takeoff_std_m"))
+    except (ValueError, KeyError, TypeError) as error:
+        return telemetry_path, {"status": "refused", "reason": str(error)}
+    destination = _safe_path(work, "survey/telemetry_fused.csv")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(vertical.write_telemetry_csv(fused), encoding="utf-8")
+    return destination, report
+
+
 def _prepared(root, scene):
     _, work = scene_paths(root, scene)
     path = work / "survey" / "preparation.json"
@@ -279,6 +361,11 @@ def _prepared(root, scene):
     manifest = read_json(path)
     if not _unchanged(root, manifest, full=True):
         raise ValueError("Survey inputs changed; prepare again before using results.")
+    recorded = manifest.get("auxiliary_inputs") or []
+    current = _aux_path(root, scene)
+    if bool(recorded) != bool(current) or (recorded and not _matches(
+            _safe_path(root, recorded[0]["relative_path"]), recorded[0], True)):
+        raise ValueError("Auxiliary telemetry (" + AUX_FILE + ") changed; prepare again.")
     return work, manifest
 
 
@@ -344,6 +431,59 @@ def _export_points(points, colors, alignment, destination):
         temporary.unlink(missing_ok=True)
 
 
+def _gravity(camera_rows, metadata, aux, sparse_path):
+    """Gravity in the reconstruction frame: gimbal attitude first, else the ground plane."""
+    import numpy as np
+    import survey_gravity as gravity
+    reasons = []
+    attitude = (aux or {}).get("attitude") or []
+    if attitude:
+        offset = float(metadata.get("time_offset_s", 0.0))
+        try:
+            return gravity.gravity_from_attitude(
+                camera_rows, [dict(a, t_sec=float(a["t_sec"]) + offset) for a in attitude]), None
+        except (ValueError, KeyError, TypeError) as error:
+            reasons.append("attitude: " + str(error))
+    else:
+        reasons.append("attitude: flight log carries no gimbal pitch/roll")
+    if sparse_path is not None and Path(sparse_path).is_file():
+        try:
+            points, _ = _read_sparse_points(sparse_path)
+            centres = [-np.asarray(r["camera"]["R_rowmajor"], float).reshape(3, 3).T
+                       @ np.asarray(r["camera"]["t"], float) for r in camera_rows]
+            return gravity.gravity_from_ground(points, centres), None
+        except (ValueError, KeyError, TypeError) as error:
+            reasons.append("ground plane: " + str(error))
+    else:
+        reasons.append("ground plane: no sparse points")
+    return None, "; ".join(reasons)
+
+
+def _georeference(camera_rows, telemetry, metadata, aux, sparse_path):
+    """Similarity fit to GPS; on a straight track, the gravity-constrained line fit.
+
+    The ordinary fit is always tried first and always wins when it succeeds; gravity
+    then only contributes a tilt diagnostic. The line fit runs only when
+    survey_georef refused the track as (near) collinear, and records why.
+    """
+    _, georef = _modules()
+    import survey_gravity as gravity
+    found, missing = _gravity(camera_rows, metadata, aux, sparse_path)
+    try:
+        alignment = georef.align_camera_trajectory(camera_rows, telemetry)
+    except ValueError as error:
+        if not gravity.is_degenerate_track(error):
+            raise
+        if found is None:
+            raise ValueError(str(error) + ". A straight track needs gravity to fix its roll, "
+                             "and none was available: " + missing) from error
+        alignment = gravity.align_line_with_gravity(camera_rows, telemetry, found)
+        alignment["fallback_from"] = str(error)
+        return alignment
+    alignment["tilt_check"] = (gravity.tilt_check(alignment, found) if found is not None
+                               else {"status": "unavailable", "reason": missing})
+    return alignment
+
 def align_scene(root, scene):
     _, georef = _modules()
     work, preparation = _prepared(root, scene)
@@ -353,7 +493,9 @@ def align_scene(root, scene):
         # using unrelated legacy cameras.
         return scene_status(root, scene)
     pose_path = _safe_path(work, "keyframes_poses.jsonl")
-    alignment = georef.align_camera_trajectory(_camera_rows(pose_path), preparation["telemetry"])
+    alignment = _georeference(_camera_rows(pose_path), preparation["telemetry"],
+                              preparation["metadata"], _read_aux(root, scene),
+                              _safe_path(work, POINTS3D))
     alignment["preparation_id"] = preparation["id"]
     sources = {"poses": _fingerprint(pose_path, work)}
     alignment["pose_sha256"] = sources["poses"]["sha256"]
@@ -566,8 +708,10 @@ def _evaluation_metrics(preparation, context, paths):
             raise ValueError("Supply 1–10000 independent checkpoint pairs: reconstructed, reference.")
         checkpoint_result = evaluation.checkpoint_metrics([r["reconstructed"] for r in rows],
                                                           [r["reference"] for r in rows])
-        paired = [{"id": str(index), "surveyed": row["reference"], "model": row["reconstructed"]}
-                  for index, row in enumerate(rows)]
+        source = _checkpoint_source(paths["checkpoint"], len(rows))
+        names = source["ids"] if source else [str(index) for index in range(len(rows))]
+        paired = [{"id": name, "surveyed": row["reference"], "model": row["reconstructed"]}
+                  for name, row in zip(names, rows)]
         frame = alignment["coordinate_frame"]
         origin = frame.get("origin", {})
         crs = ("{} {}, origin {} {}, height datum {}"
@@ -576,7 +720,8 @@ def _evaluation_metrics(preparation, context, paths):
         try:
             import survey_assess as assess
             accuracy_report = assess.accuracy_from_checkpoints(
-                paired, crs=crs, vertical_datum=frame.get("altitude_datum", "unknown"))
+                paired, crs=crs, vertical_datum=frame.get("altitude_datum", "unknown"),
+                withheld_from_reconstruction=bool(source and source["withheld_from_reconstruction"]))
         except ValueError as error:
             accuracy_report, accuracy_note = None, str(error)
         else:
@@ -623,11 +768,76 @@ def _evaluation_metrics(preparation, context, paths):
             "reason": "fewer than 8 checkpoints: a fit/hold-out split is impossible, so the "
                       "paired error is reported unsplit and is only as independent as the "
                       "file that supplied it"}
+    if paths["checkpoint"]:
+        source = _checkpoint_source(paths["checkpoint"], None)
+        result["checkpoint_upload"] = (
+            {key: source[key] for key in ("count", "reference_form", "model_form",
+                                          "reference_height_datum", "model_height_datum",
+                                          "utm_zone", "withheld_from_reconstruction",
+                                          "uploaded_at") if key in source}
+            if source else {"status": "hand_written",
+                            "reason": "survey/checkpoints.json has no matching upload record, so "
+                                      "no operator declared the points withheld from reconstruction"})
     for key, name in (("model_completeness", "completeness"),
                       ("processing_prediction", "throughput")):
         if latest and isinstance(latest.get(name), dict):
             result[key] = latest[name]
     return result
+
+
+def _checkpoint_source(path, count):
+    """The upload record for this exact checkpoints.json, or None.
+
+    The operator's "withheld from reconstruction" declaration is only worth something
+    about the file it was made for, so it is bound to that file's digest: an edited or
+    replaced checkpoints.json silently loses the declaration instead of inheriting it.
+    """
+    record = _safe_path(Path(path).parent, "checkpoints_source.json")
+    if not record.is_file():
+        return None
+    try:
+        data = read_json(record)
+    except (OSError, ValueError):
+        return None
+    digest = _modules()[0].file_fingerprint(path)["sha256"]
+    if (not isinstance(data, dict) or data.get("checkpoints_sha256") != digest
+            or not isinstance(data.get("ids"), list)
+            or (count is not None and len(data["ids"]) != count)
+            or type(data.get("withheld_from_reconstruction")) is not bool):
+        return None
+    return data
+
+
+def save_checkpoints(root, scene, csv_text, reference_height_datum="ellipsoidal",
+                     model_height_datum="ellipsoidal", withheld=False):
+    """Convert an operator's checkpoint CSV into survey/checkpoints.json, then evaluate.
+
+    ``withheld`` is the operator's declaration that none of these points was used to
+    build or align the model. The GPS-only alignment never reads them, but only the
+    person who surveyed them knows whether they went in anywhere else, so it is asked,
+    not assumed - and without it the accuracy report says independence is unverified.
+    """
+    import survey_checkpoints as checkpoints
+    if not isinstance(csv_text, str) or len(csv_text.encode("utf-8")) > MAX_INPUT_BYTES:
+        raise ValueError("Checkpoints must be CSV text below 2 MiB.")
+    if type(withheld) is not bool:
+        raise ValueError("withheld must be true or false.")
+    work, preparation = _prepared(root, scene)
+    context = _evidence_context(work, preparation, full=True)
+    if context["alignment"] is None:
+        raise ValueError("Align the scene before adding checkpoints: they are compared in its "
+                         "georeferenced frame.")
+    ids, reconstructed, reference, report = checkpoints.parse(
+        csv_text, context["alignment"], reference_height_datum=reference_height_datum,
+        model_height_datum=model_height_datum)
+    path = _safe_path(work, "survey/checkpoints.json")
+    write_json(path, checkpoints.document(context["alignment"], reconstructed, reference))
+    write_json(_safe_path(work, "survey/checkpoints_source.json"), {
+        "schema_version": 1, "ids": ids, **report,
+        "checkpoints_sha256": _modules()[0].file_fingerprint(path)["sha256"],
+        "withheld_from_reconstruction": withheld, "declared_by": "operator upload",
+        "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    return evaluate_scene(root, scene)
 
 
 def evaluate_scene(root, scene):
@@ -698,6 +908,57 @@ def _survey_measurements(work, preparation):
     return rows
 
 
+def _gnss_gates(gates):
+    """Project the prepared scene's GPS diagnostics into the shape the console reads.
+
+    ``prepare_scene`` already ran ``survey_gnss`` over the telemetry that built this
+    manifest and filed the reports under ``gates``; until now nothing on the read path
+    ever opened them, so the numbers existed only inside the JSON on disk.
+
+    Which fields survive is a deliberate list, not a copy. The per-interval arrays
+    (``step_m``, ``implied_speed_m_s``, ``suspicious_detail``) and the whole
+    ``FIX_QUALITY_TABLE`` deepcopy stay behind, because a dashboard poll has no use for
+    them. What is kept is the scalars a reader needs to judge the trace, plus every
+    guard the reporting module attaches to it: ``accuracy_validated``,
+    ``estimates_offset``, ``offset_estimate_s``, ``measured_on_this_hardware``,
+    ``never_claim`` and the warnings. Those flags are the payload's honesty, so
+    dropping them would turn a bound into a claim.
+
+    The uncertainties are per-axis standard deviations in metres. ``survey_gnss``
+    computes no covariance matrices, and the clock figure bounds the video/GNSS offset
+    without ever estimating it, so ``std_basis`` and ``offset_estimate_s: None`` say so
+    where a reader could otherwise take a bound for a measurement.
+    """
+    if not isinstance(gates, dict) or not gates:
+        return None
+
+    def pick(name, keys):
+        report = gates.get(name)
+        return None if not isinstance(report, dict) else {key: report.get(key) for key in keys}
+
+    quality = pick("telemetry_quality", (
+        "count", "duration_s", "path_length_m", "median_step_m", "median_horizontal_std_m",
+        "median_vertical_std_m", "displacement_below_noise", "suspicious_count",
+        "gaps_over_threshold_count", "gap_threshold_s", "max_speed_m_s", "warnings",
+        "speeds_are_implied_not_measured", "accuracy_validated"))
+    return {
+        "accuracy_validated": bool((quality or {}).get("accuracy_validated")),
+        "std_basis": ("per-axis standard deviation in metres (east, north, up); "
+                      "survey_gnss computes no covariance matrix and no 2-D radius"),
+        "quality": quality,
+        "clock": pick("clock_bounds", (
+            "status", "convention", "offset_bounds_s", "offset_width_s",
+            "worst_case_along_track_error_m", "infeasibility_s", "max_speed_m_s",
+            "offset_estimate_s", "estimates_offset", "warnings")),
+        "fix_quality": pick("fix_quality", (
+            "status", "quality_known", "hdop_supplied", "fallback", "all_rows_usable",
+            "dop_scaling", "measured_on_this_hardware", "precision_invented", "warnings")),
+        "observability": pick("observability", (
+            "status", "geometry", "identifiability", "georef_rejects_this_geometry",
+            "never_claim", "warnings", "estimates_anything", "accuracy_validated")),
+    }
+
+
 def scene_status(root, scene):
     evaluation, _ = _modules()
     source, work = scene_paths(root, scene)
@@ -709,8 +970,8 @@ def scene_status(root, scene):
         {"label": "Registered cameras", "status": "ready" if (work / "keyframes_poses.jsonl").is_file() else "missing", "detail": "Required for CPU alignment; produced by reconstruction"},
     ]
     state = {"schema_version": 1, "scene": scene, "status": "not_prepared", "readiness": readiness,
-             "evaluation": evaluation.build_evaluation(), "alignment": None, "artifacts": [],
-             "gpu_execution_enabled": False, "blockers": [], "commands": [
+             "evaluation": evaluation.build_evaluation(), "alignment": None, "gnss": None,
+             "artifacts": [], "gpu_execution_enabled": False, "blockers": [], "commands": [
                  {"label": "Prepare inputs (CPU)", "argv": [".venv/Scripts/python.exe", "survey.py", "prepare", scene], "requires_gpu": False},
                  {"label": "Reconstruct dense points — approval required", "argv": [".venv/Scripts/python.exe", "survey.py", "reconstruct", scene, "--allow-gpu"], "requires_gpu": True},
              ]}
@@ -721,6 +982,11 @@ def scene_status(root, scene):
             if len(videos) != 1 or not _unchanged(root, preparation):
                 raise ValueError("Inputs changed; prepare again. Previous results are stale.")
             state["status"] = "prepared"
+            # The GPS diagnostics describe the telemetry, not the reconstruction, so
+            # they are readable from the moment the manifest is current - long before
+            # there are registered cameras to align. Surfacing them says what the
+            # receiver reported, never that the model is accurate.
+            state["gnss"] = _gnss_gates(preparation.get("gates"))
             run, latest = _latest_run(work, preparation)
             names = [(prep_path, "Input provenance")]
             if latest:
@@ -794,10 +1060,120 @@ def scene_status(root, scene):
                 state["artifacts"].append({"name": path.name, "kind": kind,
                                            "url": "/work/" + quote(scene) + "/" + quote(path.relative_to(work).as_posix())})
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
-            state.update(status="invalid", alignment=None, artifacts=[], evaluation=evaluation.build_evaluation())
+            state.update(status="invalid", alignment=None, gnss=None, artifacts=[],
+                         evaluation=evaluation.build_evaluation())
             state["blockers"].append(str(error))
     state["blockers"] += [r["label"] + ": " + r["detail"] for r in readiness[:3] if r["status"] != "ready"]
+    try:
+        import survey_geoid as geoid
+        state["geoid"] = {"model": geoid.MODEL, "available": geoid.available()}
+    except ImportError:
+        state["geoid"] = {"model": "EGM96", "available": False}
+    state["steps"] = survey_steps(state)
     return state
+
+
+SURVEY_STEPS = ("inputs", "prepare", "reconstruct", "align", "checkpoints", "evaluate")
+
+
+def survey_steps(state):
+    """The survey path as six rows an operator can read top to bottom.
+
+    Derived only from ``scene_status``'s own validated fields, so the list can never
+    say a step is done that the status would call stale. ``status`` is one of
+    ``done``, ``ready`` (a CPU action can run now), ``needs_you`` (only the operator can
+    unblock it), ``running``, ``failed``, ``optional`` or ``waiting`` (an earlier step).
+    """
+    readiness = state.get("readiness") or []
+    inputs_ready = len(readiness) >= 3 and all(r.get("status") == "ready" for r in readiness[:3])
+    status = state.get("status")
+    latest = state.get("latest_run") or {}
+    prepared = status in {"prepared", "aligned", "evaluated"}
+    aligned = status in {"aligned", "evaluated"}
+    cameras = (len(readiness) > 3 and readiness[3].get("status") == "ready") or latest.get("status") == "complete"
+    evaluation = state.get("evaluation") or {}
+    accuracy = next((c for c in evaluation.get("criteria", []) if c.get("id") == "accuracy"), {})
+    stale = status == "invalid"
+    rows = [
+        {"id": "inputs", "label": "Flight telemetry and metadata",
+         "status": "done" if inputs_ready else "needs_you",
+         "detail": ("One video, telemetry.csv and flight_metadata.json are in place."
+                    if inputs_ready else "Upload the telemetry CSV and flight metadata JSON.")},
+        {"id": "prepare", "label": "Check GPS and plan frames (CPU)",
+         "status": "done" if prepared else "ready" if inputs_ready else "waiting",
+         "detail": ("Inputs fingerprinted; GPS noise, clock bounds and frame plan recorded."
+                    if prepared else "Inputs changed since the last preparation." if stale
+                    else "Fingerprints the inputs and bounds the GPS error.")},
+        {"id": "reconstruct", "label": "Reconstruct dense surface (GPU)",
+         "status": ("done" if cameras else "running" if latest.get("status") == "running"
+                    else "failed" if latest.get("status") == "failed"
+                    else "needs_you" if prepared else "waiting"),
+         "detail": ("Registered cameras exist for this preparation." if cameras
+                    else latest.get("error") or ("Start it from Run → Survey surface & exports; "
+                                                 "GPU work always needs your approval.")
+                    if prepared else "Needs a current preparation.")},
+        {"id": "align", "label": "Place the model on the map (CPU)",
+         "status": "done" if aligned else "ready" if prepared and cameras else "waiting",
+         "detail": (f"Fitted to GPS: {((state.get('alignment') or {}).get('fit_rmse_m') or 0):.2f} m "
+                    "RMSE against the telemetry it was fitted to (not accuracy)."
+                    if aligned else "Fits the camera track to the GPS track.")},
+        {"id": "checkpoints", "label": "Surveyed checkpoints (optional)",
+         "status": "done" if accuracy.get("status") == "measured" else "optional" if aligned else "waiting",
+         "detail": ("Compared against independent surveyed points." if accuracy.get("status") == "measured"
+                    else "Upload surveyed points to turn 'unverified' into a measured RMSE.")},
+        {"id": "evaluate", "label": "Evaluate evidence (CPU)",
+         "status": "done" if status == "evaluated" else "ready" if aligned or stale else "waiting",
+         "detail": ("Current evaluation recomputed from its verified inputs." if status == "evaluated"
+                    else "Recomputes accuracy and timing from the evidence on disk.")},
+    ]
+    return rows
+
+
+def advance(root, scene):
+    """One click: run every CPU step that can run now, in order, and stop honestly.
+
+    Never starts GPU work: when the next step is the reconstruction the trace says so
+    and names where to approve it. Each step is the same function its own button calls,
+    so a one-click result is identical to clicking through by hand.
+    """
+    trace = []
+
+    def run(stage, action):
+        try:
+            action(root, scene)
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            trace.append({"stage": stage, "status": "failed", "detail": str(error)})
+            return False
+        trace.append({"stage": stage, "status": "done"})
+        return True
+
+    state = scene_status(root, scene)
+    if not all(r["status"] == "ready" for r in state["readiness"][:3]):
+        trace.append({"stage": "inputs", "status": "needs_you",
+                      "detail": "Upload telemetry and flight metadata first."})
+        return {"trace": trace, "state": state}
+    if state["status"] == "invalid":
+        # A stale evaluation only needs re-evaluating; changed inputs need preparing,
+        # which evaluate reports by refusing. Try the cheaper one first.
+        if not run("evaluate", evaluate_scene):
+            trace.pop()
+            run("prepare", prepare_scene)
+        state = scene_status(root, scene)
+    if state["status"] == "not_prepared":
+        run("prepare", prepare_scene)
+        state = scene_status(root, scene)
+    steps = {row["id"]: row for row in state["steps"]}
+    if steps["reconstruct"]["status"] != "done":
+        trace.append({"stage": "reconstruct", "status": steps["reconstruct"]["status"],
+                      "detail": steps["reconstruct"]["detail"]})
+        return {"trace": trace, "state": state}
+    if steps["align"]["status"] == "ready" and run("align", align_scene):
+        state = scene_status(root, scene)
+        steps = {row["id"]: row for row in state["steps"]}
+    if steps["evaluate"]["status"] == "ready":
+        run("evaluate", evaluate_scene)
+        state = scene_status(root, scene)
+    return {"trace": trace, "state": state}
 
 
 # Measured on this RTX 3050 with 72 images at 1000 px: geometric consistency
@@ -808,8 +1184,15 @@ def scene_status(root, scene):
 # cloud and looks like a fast win.
 DENSE_PROFILES = {
     "survey": {"consistency": True, "max_image_size": 1600},
-    "fast": {"consistency": False, "max_image_size": 1000},
-    "budget": {"consistency": False, "max_image_size": 700},
+    # iterations/samples: measured 2026-09-26 on rocks (72 frames, identical poses),
+    # scratch/gpu_dense_speed_ablation.py -> scratch/gpubench/speed_ablation.json.
+    # PatchMatch 3 iterations / 8 samples instead of COLMAP's 5 / 15: dense 457.7 s ->
+    # 196.6 s (2.33x) with recall against the consistency-on cloud 0.942 -> 0.937 at
+    # 0.25% of the scene diagonal. Cutting source views to 6 was 1.55x faster but lost
+    # ~38% of the surface (recall 0.62, unrecovered by a lower fusion threshold) and was
+    # rejected. Not measured with geometric consistency on, so "survey" keeps defaults.
+    "fast": {"consistency": False, "max_image_size": 1000, "num_iterations": 3, "num_samples": 8},
+    "budget": {"consistency": False, "max_image_size": 700, "num_iterations": 3, "num_samples": 8},
 }
 CAPTURE_BUDGET_FRAMES = 400
 """Frames the capture plan is allowed to spend. Matches the keyframe target the run
@@ -831,7 +1214,9 @@ def dense_commands(root, workspace, dense_dir, *, profile="survey", image_dir="f
     size = str(settings["max_image_size"])
     return [
         {"stage": "undistort", "requires_gpu": False, "argv": [colmap, "image_undistorter", "--image_path", str(workspace / image_dir), "--input_path", str(workspace / "colmap/sparse/txt"), "--output_path", str(dense_dir), "--output_type", "COLMAP", "--max_image_size", size]},
-        {"stage": "dense", "requires_gpu": True, "argv": [colmap, "patch_match_stereo", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--PatchMatchStereo.geom_consistency", "true" if consistency else "false", "--PatchMatchStereo.max_image_size", size]},
+        {"stage": "dense", "requires_gpu": True, "argv": [colmap, "patch_match_stereo", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--PatchMatchStereo.geom_consistency", "true" if consistency else "false", "--PatchMatchStereo.max_image_size", size,
+                                                           *[flag for key, option in (("num_iterations", "--PatchMatchStereo.num_iterations"), ("num_samples", "--PatchMatchStereo.num_samples"))
+                                                             if key in settings for flag in (option, str(settings[key]))]]},
         {"stage": "fusion", "requires_gpu": False, "argv": [colmap, "stereo_fusion", "--workspace_path", str(dense_dir), "--workspace_format", "COLMAP", "--input_type", "geometric" if consistency else "photometric", "--output_path", str(dense_dir / "fused.ply")]},
     ]
 
@@ -864,7 +1249,7 @@ def _publish_run(work, run, record):
     })
 
 
-def _progressive_result(root, run, image_dir, dense_profile):
+def _progressive_result(root, run, image_dir, dense_profile, preparation=None):
     """Execute the streaming window plan over the frames the colmap stage just solved.
 
     The plan's seconds stay predictions; survey_progressive records *measured*
@@ -879,7 +1264,32 @@ def _progressive_result(root, run, image_dir, dense_profile):
     plan = streaming.progressive_plan(
         len(frames), streaming.DEFAULT_WINDOWS, rates=streaming.MEASURED_RATES,
         image_px=DENSE_PROFILES[dense_profile]["max_image_size"])
-    return survey_progressive.execute_plan(root, run, plan, image_dir=image_dir)
+    return survey_progressive.execute_plan(root, run, plan, image_dir=image_dir,
+                                           on_window=_first_map(run, preparation))
+
+
+def _first_map(run, preparation):
+    """Per-window first-map preview (DIS-01), georeferenced when the run has GPS."""
+    import survey_firstmap
+    started = time.perf_counter()
+    times = {}
+    poses = run / "keyframes_poses.jsonl"
+    if poses.is_file():
+        for line in poses.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                times[Path(row["file"]).name] = row.get("t_sec")
+                times[row["file"]] = row.get("t_sec")
+    telemetry = (preparation or {}).get("telemetry")
+    georeference = None
+    if telemetry:
+        _, georef = _modules()
+        georeference = lambda rows: georef.align_camera_trajectory(rows, telemetry)
+
+    def on_window(index, txt_dir, stats):
+        return survey_firstmap.publish(run, index, txt_dir, georeference=georeference,
+                                       times=times, started=started, stats=stats)
+    return on_window
 
 
 def _depth_views(run, *, kind="geometric"):
@@ -937,9 +1347,15 @@ def _preflight(root, video, expected_duration):
     return duration, int(width), int(height)
 
 
-def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey", progressive=False):
+VERTICAL_DATUMS = ("ellipsoidal", "egm96")
+
+
+def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey", progressive=False,
+                      vertical_datum="ellipsoidal", application=None, dense_profile_set_by="caller"):
     if allow_gpu is not True:
         raise PermissionError("GPU reconstruction requires explicit approval and --allow-gpu. No work started.")
+    if vertical_datum not in VERTICAL_DATUMS:
+        raise ValueError("vertical_datum must be one of " + ", ".join(VERTICAL_DATUMS))
     started = time.perf_counter()
     import cv2
     import numpy as np
@@ -979,6 +1395,9 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey", p
         mesh_command(root, run / "dense"),
     ]
     record = {"schema_version": 1, "id": run_id, "preparation_id": preparation["id"], "status": "running",
+              "application": None if not application else {"id": application, "set_by": "operator",
+                                                           "dense_profile": dense_profile,
+                                                           "dense_profile_set_by": dense_profile_set_by},
               "inputs": preparation["inputs"], "steps": [], "hardware": _hardware(),
               "benchmark_qualified": False, "duration_source": "decoder_metadata",
               "timing_scope": "From approval gate through setup, decode metadata, all uncached stages, export, hashes and manifest writes; final manifest/pointer commit excluded.",
@@ -992,7 +1411,10 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey", p
     try:
         _publish_run(work, run, record)
         record.update(video_duration_s=duration, video_resolution=[source_width, source_height])
-        code_paths = [Path(__file__), Path(evaluation.__file__), Path(georef.__file__)]
+        import survey_gravity
+        import survey_vertical
+        code_paths = [Path(__file__), Path(evaluation.__file__), Path(georef.__file__),
+                      Path(survey_gravity.__file__), Path(survey_vertical.__file__)]
         code_paths += [Path(command["argv"][1]) for command in commands
                        if str(command["argv"][1]).endswith(".py")]
         record["code_sha256"] = {str(path.resolve()): evaluation.file_fingerprint(path)["sha256"] for path in code_paths}
@@ -1019,14 +1441,17 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey", p
                 t0_progressive = time.perf_counter()
                 progressive_status = "done"
                 try:
-                    record["progressive"] = _progressive_result(root, run, image_dir, dense_profile)
+                    record["progressive"] = _progressive_result(root, run, image_dir, dense_profile,
+                                                                preparation)
                 except (ValueError, KeyError, IndexError, RuntimeError, OSError) as error:
                     record["progressive_error"] = str(error)
                     progressive_status = "failed"
                 record["steps"].append({"name": "progressive", "status": progressive_status, "secs": time.perf_counter() - t0_progressive})
                 _publish_run(work, run, record)
         t0 = time.perf_counter()
-        alignment = georef.align_camera_trajectory(_camera_rows(run / "keyframes_poses.jsonl"), preparation["telemetry"])
+        alignment = _georeference(_camera_rows(run / "keyframes_poses.jsonl"), preparation["telemetry"],
+                                  preparation["metadata"], _read_aux(root, scene),
+                                  _safe_path(run, POINTS3D))
         alignment.update(preparation_id=preparation["id"], run_id=run_id,
                          pose_sha256=evaluation.file_fingerprint(run / "keyframes_poses.jsonl")["sha256"])
         write_json(run / "georeference.json", alignment)
@@ -1036,14 +1461,24 @@ def reconstruct_scene(root, scene, *, allow_gpu=False, dense_profile="survey", p
         _export_points(points, colors, alignment, run / "dense_points.ply")
         import survey_deliver as deliver
         delivery = deliver.deliver(points, colors, alignment, _safe_path(run, "products"),
-                                   mesh_path=_safe_path(run, "dense/mesh.ply"))
+                                   mesh_path=_safe_path(run, "dense/mesh.ply"),
+                                   vertical_datum=vertical_datum,
+                                   # The undistorter's own output: pinhole cameras and
+                                   # the frames they describe, in the mesh's frame.
+                                   texture_source={"model_dir": _safe_path(run, "dense/sparse"),
+                                                   "image_dir": _safe_path(run, "dense/images")})
         product_manifest = delivery["local_enu"]["manifest"]
         record["products"] = product_manifest
+        if application:
+            import applications
+            record["delivery_requested"] = applications.ledger_for(delivery["local_enu"]["formats"], application)
         record["delivery"] = {"meshed": delivery["meshed"], "mesh": delivery["mesh"],
                               "cloud_point_count": delivery["cloud_point_count"],
                               "local_enu": delivery["local_enu"]["formats"],
                               "georeferenced": (delivery["georeferenced"] or {}).get("formats"),
                               "crs": (delivery["georeferenced"] or {}).get("crs"),
+                              "heights": (delivery["georeferenced"] or {}).get("heights"),
+                              "texture": delivery.get("texture"),
                               "refusals": delivery["refusals"]}
         sparse_points = _safe_path(run, POINTS3D)
         if sparse_points.is_file():

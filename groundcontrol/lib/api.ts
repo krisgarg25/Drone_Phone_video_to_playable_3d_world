@@ -30,12 +30,61 @@ export type Criterion = {
 export type Artifact = { name: string; url: string; kind: string };
 export type FormatRow = { format: string; status: string; path?: string; reason?: string; geometry?: string };
 
+/** Which parameters this flight's geometry can separate at all. `false` is not a
+ *  failure to calibrate — it means the trajectory cannot support the claim. */
+export type Identifiability = {
+  clock_offset: boolean; lever_arm_along_track: boolean; lever_arm_cross_track: boolean;
+  rotation_about_trajectory_axis: boolean; metric_scale: boolean;
+};
+
+/**
+ * The GPS diagnostics `survey_gnss` already wrote into the preparation manifest.
+ *
+ * Every figure here is a *reported* per-axis standard deviation or a *bound*, never a
+ * measured error: there is no covariance matrix in `survey_gnss` (uncertainties are
+ * scalars per axis), the clock offset is bounded but never estimated
+ * (`offset_estimate_s` is always null by design), and `accuracy_validated` is false in
+ * every sub-report because validating accuracy needs an independent surveyed
+ * reference. A screen that renders one of these numbers as a measurement has
+ * misread it.
+ */
+export type GnssReport = {
+  accuracy_validated: boolean;
+  std_basis: string;
+  quality: {
+    count: number; duration_s: number; path_length_m: number; median_step_m: number | null;
+    median_horizontal_std_m: number; median_vertical_std_m: number;
+    displacement_below_noise: boolean; suspicious_count: number;
+    gaps_over_threshold_count: number; gap_threshold_s: number; max_speed_m_s: number;
+    warnings: string[]; speeds_are_implied_not_measured: boolean; accuracy_validated: boolean;
+  } | null;
+  clock: {
+    status: string; convention: string;
+    offset_bounds_s: [number, number] | null; offset_width_s: number | null;
+    worst_case_along_track_error_m: number | null; infeasibility_s: number | null;
+    max_speed_m_s: number; offset_estimate_s: number | null;
+    estimates_offset: boolean; warnings: string[];
+  } | null;
+  fix_quality: {
+    status: string; quality_known: boolean; hdop_supplied: boolean; fallback: string | null;
+    all_rows_usable: boolean; dop_scaling: string;
+    measured_on_this_hardware: boolean; precision_invented: boolean; warnings: string[];
+  } | null;
+  observability: {
+    status: string; geometry: string | null; identifiability: Identifiability | null;
+    georef_rejects_this_geometry: boolean;
+    never_claim: string[]; warnings: string[];
+    estimates_anything: boolean; accuracy_validated: boolean;
+  } | null;
+};
+
 export type SurveyState = {
   scene: string;
   status: string;
   readiness: Readiness[];
   evaluation: { criteria: Criterion[] };
   alignment: Record<string, unknown> | null;
+  gnss?: GnssReport | null;
   artifacts: Artifact[];
   blockers: string[];
   commands?: { label: string; argv: string[]; requires_gpu: boolean }[];
@@ -44,7 +93,21 @@ export type SurveyState = {
   position_reference?: string;
   latest_run?: { id: string; status: string; secs?: number; error?: string };
   measurements?: unknown[];
+  /** The survey path as six rows, derived server-side from the validated status. */
+  steps?: SurveyStep[];
+  geoid?: { model: string; available: boolean };
   [key: string]: unknown;
+};
+
+export type SurveyStepStatus =
+  "done" | "ready" | "needs_you" | "running" | "failed" | "optional" | "waiting";
+export type SurveyStep = {
+  id: "inputs" | "prepare" | "reconstruct" | "align" | "checkpoints" | "evaluate";
+  label: string; status: SurveyStepStatus; detail: string;
+};
+export type AdvanceResult = {
+  trace: { stage: string; status: string; detail?: string }[];
+  state: SurveyState;
 };
 
 export type Loaded =
@@ -80,14 +143,25 @@ export async function load(scene: string): Promise<Loaded> {
   }
 }
 
-/** CPU-only actions. GPU reconstruction stays on the CLI behind --allow-gpu. */
-export async function act(action: "inputs" | "prepare" | "align" | "evaluate",
+const post = <T,>(path: string, body: Record<string, unknown>) => get<T>(path, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+/** CPU-only actions. GPU reconstruction stays behind the run dialog's explicit approval. */
+export async function act(action: "inputs" | "prepare" | "align" | "evaluate" | "checkpoints",
                           body: Record<string, unknown>) {
-  return get<SurveyState>(`/api/survey/${action}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return post<SurveyState>(`/api/survey/${action}`, body);
+}
+
+/** Runs every CPU step that can run now, in order; never starts GPU work. */
+export async function advance(scene: string) {
+  return post<AdvanceResult>("/api/survey/advance", { scene });
+}
+
+export async function surveyStatus(scene: string) {
+  return get<SurveyState>(`/api/survey?scene=${encodeURIComponent(scene)}`);
 }
 
 /* --------------------------------------------------------------------------

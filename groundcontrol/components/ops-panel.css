@@ -1,0 +1,46 @@
+.ops-panel .ops-kpis { margin-top: 10px; }
+.ops-kpis .good b { color: hsl(142 55% 38%); }
+.ops-kpis .warn b { color: hsl(28 85% 45%); }
+.ops-kpis .bad b { color: hsl(2 70% 50%); }
+.ops-kpis .cool b { color: hsl(216 70% 50%); }
+.ops-tools { grid-template-columns: repeat(2, 1fr); }
+.ops-epoch { margin-top: 10px; }
+.ops-epoch .plan-field { width: 100%; }
+.ops-mgrs { display: block; font-family: var(--font-mono, ui-monospace, monospace); font-size: 10px; color: hsl(var(--st-muted)); letter-spacing: 0.02em; }
+.ops-grade { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; }
+.ops-grade.good { background: hsl(142 50% 90%); color: hsl(142 60% 28%); }
+.ops-grade.warn { background: hsl(32 90% 90%); color: hsl(28 80% 35%); }
+.ops-grade.bad { background: hsl(2 80% 92%); color: hsl(2 65% 40%); }
+.ops-grade.muted { background: hsl(var(--st-bg)); color: hsl(var(--st-muted)); }
+.ops-firstmap { width: 100%; height: auto; border-radius: 6px; background: repeating-conic-gradient(hsl(var(--st-line)) 0 25%, transparent 0 50%) 0 0 / 12px 12px; image-rendering: pixelated; }
+.ops-notes { margin-top: 6px; }
+.ops-notes summary { cursor: pointer; font-size: 10.5px; color: hsl(var(--st-muted)); }
+.ops-upload { position: relative; cursor: pointer; justify-content: center; margin-bottom: 8px; }
+.ops-profile i.gap { background: hsl(var(--st-line)); }
+.ops-panel .plan-feature-actions { margin-top: 8px; }
+/* Inspect / Twin (Phase 5) */
+.insp-frames { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0 10px; }
+.insp-frame { margin: 0; font-size: 10px; }
+.insp-frame figcaption { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; color: hsl(var(--st-ink)); word-break: break-all; }
+.insp-frame figcaption small { color: hsl(var(--st-muted)); }
+.insp-frame-img { position: relative; display: block; border-radius: 5px; overflow: hidden; background: hsl(var(--st-bg)); }
+.insp-frame-img img { display: block; width: 100%; height: auto; }
+.insp-frame-img i { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 2px solid #ff3b30; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.4); }
+.insp-frame-missing { display: block; padding: 18px 6px; text-align: center; color: hsl(var(--st-muted)); background: hsl(var(--st-bg)); border-radius: 5px; }
+.insp-register li.active, .twin-panel .plan-existing li.active { background: hsl(var(--st-bg)); }
+.insp-item { display: flex; align-items: center; gap: 8px; text-align: left; width: 100%; }
+.insp-item img { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; flex: none; }
+.insp-item strong { display: block; font-size: 11.5px; font-weight: 600; color: hsl(var(--st-ink)); }
+.insp-item small { font-size: 10.5px; color: hsl(var(--st-muted)); }
+.insp-sev { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.insp-detail { border: 1px solid hsl(var(--st-line)); border-radius: 6px; padding: 8px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.insp-raster { image-rendering: pixelated; margin-top: 8px; }
+.insp-section { width: 100%; height: auto; background: #fff; border-radius: 5px; margin-top: 8px; }
+.plan-field textarea { width: 100%; resize: vertical; font: inherit; font-size: 12px; padding: 5px 6px; border: 1px solid hsl(var(--st-line)); border-radius: 4px; background: hsl(var(--st-surface, 0 0% 100%)); color: hsl(var(--st-ink)); }
+.twin-card-title { font-size: 12px; margin: 0; }
+.twin-timeline { list-style: none; margin: 4px 0; padding: 0; }
+.twin-timeline li { display: flex; gap: 8px; padding: 6px 0; border-left: 2px solid hsl(var(--st-line)); margin-left: 5px; padding-left: 10px; position: relative; }
+.twin-timeline li div { display: flex; flex-direction: column; gap: 1px; font-size: 11px; }
+.twin-timeline li small { color: hsl(var(--st-muted)); font-size: 10.5px; }
+.twin-dot { position: absolute; left: -6px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: hsl(var(--st-muted)); }
+.twin-timeline li.current .twin-dot { background: hsl(var(--st-accent, 188 70% 35%)); }
