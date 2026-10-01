@@ -101,7 +101,7 @@ export function SurveyControls({ scene, onChange }: { scene: string; onChange: (
     {trace.length > 0 && <ul className="survey-trace">{trace.map((row, index) => <li key={index}><b>{row.stage}</b> · {row.status.replaceAll("_", " ")}{row.detail ? ` — ${row.detail}` : ""}</li>)}</ul>}
 
     {alignedOrLater && <div className="survey-form">
-      <div className="section-label">SURVEYED CHECKPOINTS</div>
+      <div className="section-label"><span>Surveyed checkpoints</span></div>
       {rmse?.rmse_3d_m !== undefined && <div className="datum-row"><span>Measured 3D RMSE</span><span>{rmse.rmse_3d_m.toFixed(3)} m · {rmse.count} hold-out point{rmse.count === 1 ? "" : "s"}</span></div>}
       <p className="inspector-copy">One row per point: its surveyed position and the same feature read off the delivered model. Degrees, the scene&apos;s UTM zone or local ENU are all accepted.</p>
       <label className="field">Checkpoint CSV<input type="file" accept=".csv,.txt" onChange={(event) => setPoints(event.target.files?.[0] ?? null)} disabled={busy} /></label>

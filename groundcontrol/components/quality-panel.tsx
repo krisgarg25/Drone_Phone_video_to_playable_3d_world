@@ -111,7 +111,7 @@ export function QualityPanel({ project }: { project: ProjectDetail }) {
       <div className="section-label"><span>CAPTURE DECISION</span><Icon name="compass" size={14} /></div>
       {scenario.evidence.length ? scenario.evidence.map((e, i) => <p className="quality-evidence" key={i}><b>{e.signal}</b>{e.value === null ? null : <span className="num">{String(e.value)}</span>}<span>{e.because}</span></p>)
         : <p className="quality-basis">The preset was chosen by hand, so no measurement decided it.</p>}
-      {scenario.advice ? <p className="notice"><Icon name="camera" /><p>{scenario.advice}</p></p> : null}
+      {scenario.advice ? <div className="notice"><Icon name="camera" /><p>{scenario.advice}</p></div> : null}
       {scenario.applied.length ? <details className="quality-applied"><summary>Parameters this run applied, and who set each one</summary>
         <table><tbody>{scenario.applied.map((a) => <tr key={a.param}><td className="mono">{a.param}</td><td className="num">{a.value === null ? "default" : String(a.value)}</td><td>{a.set_by}</td></tr>)}</tbody></table>
         <p className="quality-basis">A parameter nobody chose shows as a script default rather than disappearing. Two of these - the SIFT detector thresholds - have been in the preset table since it was written and never reached COLMAP, because they were missing from the plan the mapper reads; every capture style ran the room detector until they were added.</p>

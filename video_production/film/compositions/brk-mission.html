@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+
+#brk-mission { position: absolute; inset: 0; overflow: hidden; background: transparent; color: var(--ink);
+  font-family: "Geist", sans-serif; 
+  --bg: hsl(225 12% 5%); --panel: hsl(222 12% 8%); --raised: hsl(222 11% 11%);
+  --line: hsl(222 9% 22%); --ink: hsl(220 25% 96%); --dim: hsl(218 12% 76%);
+  --muted: hsl(218 8% 62%); --accent: hsl(36 100% 57%); --green: hsl(156 62% 52%);
+  --soft: hsl(36 55% 11%);
+ }
+#brk-mission * { box-sizing: border-box; }
+#brk-mission .mono { font-family: "Geist Mono", monospace; }
+#brk-mission .eyebrow { font-family: "Geist Mono", monospace; font-size: 24px; letter-spacing: 0.02em; color: var(--accent);
+  display: flex; align-items: center; gap: 16px; }
+#brk-mission .eyebrow .rule { display: inline-block; width: 44px; height: 2px; background: var(--accent); transform-origin: 0 50%; }
+#brk-mission .h1 { font-size: 84px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 8px; }
+#brk-mission .h2 { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 4px; }
+#brk-mission .body { font-size: 32px; font-weight: 350; color: var(--dim); line-height: 1.32; margin: 0; }
+#brk-mission .acc { color: var(--accent); }
+#brk-mission .grn { color: var(--green); }
+#brk-mission .wm { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.05em 0.14em; margin: 0 -0.05em -0.14em; }
+#brk-mission .w { display: inline-block; will-change: transform; }
+#brk-mission .win { position: absolute; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 90px -30px hsl(0 0% 0% / .8), 0 0 0 1px hsl(0 0% 100% / .03); }
+#brk-mission .bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 18px;
+  background: var(--raised); border-bottom: 2px solid var(--line); font-family: "Geist Mono", monospace; font-size: 19px; color: var(--dim); }
+#brk-mission .bar i { width: 11px; height: 11px; border-radius: 50%; background: hsl(222 9% 28%); display: inline-block; }
+#brk-mission .bar b { font-weight: 500; margin-left: 10px; color: var(--ink); }
+#brk-mission .crop { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#brk-mission .crop > video, #brk-mission .crop > img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+#brk-mission .stat { font-family: "Geist Mono", monospace; font-size: 76px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+#brk-mission .stat-l { font-size: 26px; color: var(--dim); margin-top: 10px; line-height: 1.3; }
+#brk-mission .pill { display: inline-flex; align-items: center; gap: 12px; padding: 10px 20px; border-radius: 999px; white-space: nowrap;
+  font-size: 26px; font-weight: 600; background: hsl(222 12% 8% / .92); border: 2px solid var(--line); }
+#brk-mission .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+#brk-mission .amb { position: absolute; inset: 0; overflow: hidden; }
+#brk-mission .amb-grid { position: absolute; left: -88px; top: -88px; width: 2096px; height: 1256px;
+  background-image: radial-gradient(hsl(220 25% 85% / .13) 1.3px, hsl(220 25% 85% / 0) 1.9px); background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%);
+          mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%); }
+#brk-mission .amb-a { position: absolute; left: -520px; top: -700px; width: 1600px; height: 1600px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(36 100% 57% / .13), hsl(36 100% 57% / 0) 62%); }
+#brk-mission .amb-b { position: absolute; left: 1000px; top: 300px; width: 1500px; height: 1500px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(212 70% 55% / .10), hsl(212 70% 55% / 0) 62%); }
+#brk-mission .vig { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 85% 80% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+
+#brk-mission .rp { position: absolute; width: 0; height: 0; pointer-events: none; }
+#brk-mission .rp i { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,.95); box-shadow: 0 0 0 1px rgba(0,0,0,.28), 0 0 14px rgba(255,255,255,.35); opacity: 0; }
+#brk-mission .rp b { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.75), rgba(255,255,255,0) 70%); opacity: 0; }
+</style>
+      <div id="brk-mission" data-composition-id="brk-mission" data-width="1920" data-height="1080" data-duration="23.433">
+        <div id="brk-mission-glass" style="position:absolute; inset:0; background:hsl(225 12% 5% / .55)"></div>
+        <div class="vig"></div>
+        <div id="brk-mission-head" style="position:absolute; left:96px; top:70px; width:1728px">
+          <div class="eyebrow"><span class="rule"></span><span class="eb-t">06 · Mission</span></div>
+          <p class="h1" style="margin-top:12px; font-size:68px"><span class="wm"><span class="w">More</span></span> <span class="wm"><span class="w">in</span></span> <span class="wm"><span class="w">Mission</span></span></p>
+        </div>
+        <div id="brk-mission-count" class="mono" style="position:absolute; left:96px; top:236px; font-size:24px; color:var(--dim)">4 more · each on a clean scene</div>
+        <div id="brk-mission-slot0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-mission-tile0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-enemy-guess-e9021973f6.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Enemy guess</div>
+          <div id="brk-mission-tick0" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-mission-slot1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-mission-tile1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-brief-f01924ff9d.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Brief</div>
+          <div id="brk-mission-tick1" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-mission-slot2" style="position:absolute; left:492px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-mission-tile2" style="position:absolute; left:492px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-rehearse-d456b933b4.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Rehearse</div>
+          <div id="brk-mission-tick2" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-mission-slot3" style="position:absolute; left:690px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-mission-tile3" style="position:absolute; left:690px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-landing-zones-663db7ed7e.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Landing zones</div>
+          <div id="brk-mission-tick3" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-mission-w0" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Enemy guess</b><span style="margin-left:auto; color:var(--muted)">01 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-mission-w0-v" class="" src="assets/cut/seg/mini-enemy-guess-e9021973f6.mp4" data-start="1.500" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-mission-w0-rp0" class="rp" style="left:1489px; top:395px"><b></b><i></i></div></div>
+            <div id="brk-mission-w0-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-mission-t0" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">01 / 04<span style="color:var(--muted)"> · shown at 1.9×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Enemy</span></span> <span class="wm"><span class="w">guess</span></span></p>
+          <p class="body" style="margin-top:14px">Where an enemy would watch the route from.</p>
+          
+        </div>
+        <div id="brk-mission-w1" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Brief</b><span style="margin-left:auto; color:var(--muted)">02 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-mission-w1-v" class="" src="assets/cut/seg/mini-brief-f01924ff9d.mp4" data-start="6.550" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-mission-w1-rp0" class="rp" style="left:1621px; top:603px"><b></b><i></i></div></div>
+            <div id="brk-mission-w1-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-mission-t1" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">02 / 04<span style="color:var(--muted)"> · shown at 1.7×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Brief</span></span></p>
+          <p class="body" style="margin-top:14px">A sand-table view for the briefing.</p>
+          
+        </div>
+        <div id="brk-mission-w2" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Rehearse</b><span style="margin-left:auto; color:var(--muted)">03 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-mission-w2-v" class="" src="assets/cut/seg/mini-rehearse-d456b933b4.mp4" data-start="11.600" data-duration="5.683" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-mission-w2-rp0" class="rp" style="left:1665px; top:396px"><b></b><i></i></div><div id="brk-mission-w2-rp1" class="rp" style="left:1621px; top:637px"><b></b><i></i></div><div id="brk-mission-w2-rp2" class="rp" style="left:1084px; top:519px"><b></b><i></i></div><div id="brk-mission-w2-rp3" class="rp" style="left:1340px; top:389px"><b></b><i></i></div><div id="brk-mission-w2-rp4" class="rp" style="left:864px; top:486px"><b></b><i></i></div><div id="brk-mission-w2-rp5" class="rp" style="left:1236px; top:358px"><b></b><i></i></div><div id="brk-mission-w2-rp6" class="rp" style="left:1295px; top:370px"><b></b><i></i></div><div id="brk-mission-w2-rp7" class="rp" style="left:1224px; top:374px"><b></b><i></i></div><div id="brk-mission-w2-rp8" class="rp" style="left:1518px; top:406px"><b></b><i></i></div></div>
+            <div id="brk-mission-w2-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-mission-t2" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">03 / 04<span style="color:var(--muted)"> · shown at 3.2×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Rehearse</span></span></p>
+          <p class="body" style="margin-top:14px">Walk the mission at night, goggles on.</p>
+          
+        </div>
+        <div id="brk-mission-w3" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Landing zones</b><span style="margin-left:auto; color:var(--muted)">04 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-mission-w3-v" class="" src="assets/cut/seg/mini-landing-zones-663db7ed7e.mp4" data-start="16.683" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-mission-w3-rp0" class="rp" style="left:664px; top:506px"><b></b><i></i></div><div id="brk-mission-w3-rp1" class="rp" style="left:655px; top:506px"><b></b><i></i></div><div id="brk-mission-w3-rp2" class="rp" style="left:573px; top:506px"><b></b><i></i></div></div>
+            <div id="brk-mission-w3-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-mission-t3" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">04 / 04<span style="color:var(--muted)"> · shown at 3.0×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:50px"><span class="wm"><span class="w">Landing</span></span> <span class="wm"><span class="w">zones</span></span></p>
+          <p class="body" style="margin-top:14px">Flat, clear circles big enough for a helicopter.</p>
+          <span class="pill" style="font-size:20px; padding:6px 14px; margin-top:26px"><span class="dot" style="background:var(--muted)"></span>Open ground</span>
+        </div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          const R = "#brk-mission";
+          const $ = (s) => s.split(",").map((p) => R + " " + p.trim()).join(", ");
+          const WORDS = (s, at, o) => { o = o || {}; tl.fromTo($(s + " .w"), { yPercent: 118, rotate: o.r === undefined ? 5 : o.r, opacity: 0 },
+            { yPercent: 0, rotate: 0, opacity: 1, duration: o.d || 0.85, ease: o.e || "expo.out", stagger: o.s === undefined ? 0.055 : o.s }, at); };
+          const UP = (s, at, o) => { o = o || {}; tl.fromTo($(s), { y: o.y === undefined ? 30 : o.y, opacity: 0, filter: "blur(12px)" },
+            { y: 0, opacity: 1, filter: "blur(0px)", duration: o.d || 0.75, ease: o.e || "power3.out", stagger: o.s || 0 }, at); };
+          const OUT = (s, at, o) => { o = o || {}; tl.to($(s), { y: o.y === undefined ? -26 : o.y, opacity: 0, filter: "blur(12px)",
+            duration: o.d || 0.5, ease: "power2.in", stagger: o.s || 0 }, at); };
+          const RULE = (s, at, d) => tl.fromTo($(s), { scaleX: 0 }, { scaleX: 1, duration: d || 0.9, ease: "expo.inOut" }, at);
+          const COUNT = (s, to, at, d, fmt) => { const el = document.querySelector($(s)); const o = { v: 0 };
+            tl.fromTo(o, { v: 0 }, { v: to, duration: d, ease: "power2.out", onUpdate: () => { el.textContent = fmt(o.v); } }, at); };
+          // closed-form spring step response, normalised to the tween: a settle with a hair of overshoot
+          const SPRING = (w, z) => { const wd = w * Math.sqrt(1 - z * z);
+            const f = (p) => 1 - Math.exp(-z * w * p) * (Math.cos(wd * p) + (z * w / wd) * Math.sin(wd * p)); const e = f(1);
+            return (p) => (p >= 1 ? 1 : f(p) / e); };
+          const SPR = SPRING(10, 0.76), SOFT = SPRING(8.5, 0.97);
+          // ambient drift at a constant speed on a shared clock (t0), so scenes that cross
+          // over each other show the same background at the seam
+          const AMB = (dur, t0, k) => { t0 = t0 || 0; k = k || 1; const t1 = t0 + dur;
+            tl.fromTo($(".amb-a"), { x: 6 * k * t0, y: 3 * k * t0 }, { x: 6 * k * t1, y: 3 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-b"), { x: -5 * k * t0, y: -2.2 * k * t0 }, { x: -5 * k * t1, y: -2.2 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-grid"), { backgroundPosition: (-8 * k * t0) + "px 0px" }, { backgroundPosition: (-8 * k * t1) + "px 0px", duration: dur, ease: "none" }, 0); };
+
+          tl.fromTo($("#brk-mission-glass"), { opacity: 0 }, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0);
+          tl.fromTo($(".vig"), { opacity: 0 }, { opacity: 1, duration: 0.8 }, 0);
+          RULE("#brk-mission-head .rule", 0.30, 0.6);
+          tl.fromTo($("#brk-mission-head .eb-t"), { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, 0.60);
+          WORDS("#brk-mission-head .h1", 0.45, { s: 0.07 });
+          UP("#brk-mission-count", 0.9);
+          tl.fromTo(["#brk-mission-tile0", "#brk-mission-tile1", "#brk-mission-tile2", "#brk-mission-tile3"].map((s) => R + " " + s), { opacity: 0, y: 50, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: SPR, stagger: 0.08 }, 0.8);
+          tl.fromTo(["#brk-mission-slot0", "#brk-mission-slot1", "#brk-mission-slot2", "#brk-mission-slot3"].map((s) => R + " " + s), { opacity: 0 }, { opacity: 1, duration: 0.3 }, 1.0);
+          tl.fromTo($("#brk-mission-w0-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 2.179);
+          tl.fromTo($("#brk-mission-w0-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 2.179);
+          tl.fromTo($("#brk-mission-w0"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 1.500);
+          tl.fromTo($("#brk-mission-w0"), { x: -608.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 1.500);
+          tl.fromTo($("#brk-mission-w0-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 1.500);
+          tl.to($("#brk-mission-tile0"), { opacity: 0, duration: 0.12 }, 1.540);
+          tl.to($("#brk-mission-slot0"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 1.500);
+          WORDS("#brk-mission-t0 .h2", 1.850, { s: 0.07 });
+          UP("#brk-mission-t0 .mono, #brk-mission-t0 .body", 2.000, { s: 0.1 });
+          OUT("#brk-mission-t0", 6.150, { d: 0.45 });
+          tl.to($("#brk-mission-w0"), { x: -608.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 6.250);
+          tl.to($("#brk-mission-w0"), { opacity: 0, duration: 0.1, ease: "none" }, 6.930);
+          tl.to($("#brk-mission-tile0"), { opacity: 1, duration: 0.1 }, 6.890);
+          tl.to($("#brk-mission-slot0"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 6.950);
+          tl.fromTo($("#brk-mission-tick0"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 7.000);
+          tl.fromTo($("#brk-mission-w1-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 8.123);
+          tl.fromTo($("#brk-mission-w1-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 8.123);
+          tl.fromTo($("#brk-mission-w1"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 6.550);
+          tl.fromTo($("#brk-mission-w1"), { x: -410.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 6.550);
+          tl.fromTo($("#brk-mission-w1-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 6.550);
+          tl.to($("#brk-mission-tile1"), { opacity: 0, duration: 0.12 }, 6.590);
+          tl.to($("#brk-mission-slot1"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 6.550);
+          WORDS("#brk-mission-t1 .h2", 6.900, { s: 0.07 });
+          UP("#brk-mission-t1 .mono, #brk-mission-t1 .body", 7.050, { s: 0.1 });
+          OUT("#brk-mission-t1", 11.200, { d: 0.45 });
+          tl.to($("#brk-mission-w1"), { x: -410.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 11.300);
+          tl.to($("#brk-mission-w1"), { opacity: 0, duration: 0.1, ease: "none" }, 11.980);
+          tl.to($("#brk-mission-tile1"), { opacity: 1, duration: 0.1 }, 11.940);
+          tl.to($("#brk-mission-slot1"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 12.000);
+          tl.fromTo($("#brk-mission-tick1"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 12.050);
+          tl.fromTo($("#brk-mission-w2-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 12.024);
+          tl.fromTo($("#brk-mission-w2-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 12.024);
+          tl.fromTo($("#brk-mission-w2-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 12.737);
+          tl.fromTo($("#brk-mission-w2-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 12.737);
+          tl.fromTo($("#brk-mission-w2-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.328);
+          tl.fromTo($("#brk-mission-w2-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.328);
+          tl.fromTo($("#brk-mission-w2-rp3 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.394);
+          tl.fromTo($("#brk-mission-w2-rp3 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.394);
+          tl.fromTo($("#brk-mission-w2-rp4 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.469);
+          tl.fromTo($("#brk-mission-w2-rp4 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.469);
+          tl.fromTo($("#brk-mission-w2-rp5 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.607);
+          tl.fromTo($("#brk-mission-w2-rp5 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.607);
+          tl.fromTo($("#brk-mission-w2-rp6 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.680);
+          tl.fromTo($("#brk-mission-w2-rp6 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.680);
+          tl.fromTo($("#brk-mission-w2-rp7 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.748);
+          tl.fromTo($("#brk-mission-w2-rp7 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.748);
+          tl.fromTo($("#brk-mission-w2-rp8 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.816);
+          tl.fromTo($("#brk-mission-w2-rp8 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.816);
+          tl.fromTo($("#brk-mission-w2"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 11.600);
+          tl.fromTo($("#brk-mission-w2"), { x: -212.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 11.600);
+          tl.fromTo($("#brk-mission-w2-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.033, ease: "none" }, 11.600);
+          tl.to($("#brk-mission-tile2"), { opacity: 0, duration: 0.12 }, 11.640);
+          tl.to($("#brk-mission-slot2"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 11.600);
+          WORDS("#brk-mission-t2 .h2", 11.950, { s: 0.07 });
+          UP("#brk-mission-t2 .mono, #brk-mission-t2 .body", 12.100, { s: 0.1 });
+          OUT("#brk-mission-t2", 16.283, { d: 0.45 });
+          tl.to($("#brk-mission-w2"), { x: -212.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 16.383);
+          tl.to($("#brk-mission-w2"), { opacity: 0, duration: 0.1, ease: "none" }, 17.063);
+          tl.to($("#brk-mission-tile2"), { opacity: 1, duration: 0.1 }, 17.023);
+          tl.to($("#brk-mission-slot2"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 17.083);
+          tl.fromTo($("#brk-mission-tick2"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 17.133);
+          tl.fromTo($("#brk-mission-w3-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 19.506);
+          tl.fromTo($("#brk-mission-w3-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 19.506);
+          tl.fromTo($("#brk-mission-w3-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 19.791);
+          tl.fromTo($("#brk-mission-w3-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 19.791);
+          tl.fromTo($("#brk-mission-w3-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 20.110);
+          tl.fromTo($("#brk-mission-w3-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 20.110);
+          tl.fromTo($("#brk-mission-w3"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 16.683);
+          tl.fromTo($("#brk-mission-w3"), { x: -14.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 16.683);
+          tl.fromTo($("#brk-mission-w3-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 16.683);
+          tl.to($("#brk-mission-tile3"), { opacity: 0, duration: 0.12 }, 16.723);
+          tl.to($("#brk-mission-slot3"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 16.683);
+          WORDS("#brk-mission-t3 .h2", 17.033, { s: 0.07 });
+          UP("#brk-mission-t3 .mono, #brk-mission-t3 .body, #brk-mission-t3 .pill", 17.183, { s: 0.1 });
+          OUT("#brk-mission-t3", 21.333, { d: 0.45 });
+          tl.to($("#brk-mission-w3"), { x: -14.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 21.433);
+          tl.to($("#brk-mission-w3"), { opacity: 0, duration: 0.1, ease: "none" }, 22.113);
+          tl.to($("#brk-mission-tile3"), { opacity: 1, duration: 0.1 }, 22.073);
+          tl.to($("#brk-mission-slot3"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 22.133);
+          tl.fromTo($("#brk-mission-tick3"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 22.183);
+          tl.to(R + " > *", { opacity: 0, filter: "blur(10px)", duration: 0.8, ease: "power2.inOut" }, 22.583);
+          window.__timelines["brk-mission"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

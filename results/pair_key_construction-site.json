@@ -1,0 +1,82 @@
+[
+  {
+    "pair": "construction-site_AB_00.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_00.png",
+    "real_file": "consruction site/00000.jpg",
+    "t_sec": 0.0
+  },
+  {
+    "pair": "construction-site_AB_01.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_01.png",
+    "real_file": "consruction site/00010.jpg",
+    "t_sec": 5.24
+  },
+  {
+    "pair": "construction-site_AB_02.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_02.png",
+    "real_file": "consruction site/00020.jpg",
+    "t_sec": 8.44
+  },
+  {
+    "pair": "construction-site_AB_03.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_03.png",
+    "real_file": "consruction site/00030.jpg",
+    "t_sec": 11.6
+  },
+  {
+    "pair": "construction-site_AB_04.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_04.png",
+    "real_file": "consruction site/00040.jpg",
+    "t_sec": 14.0
+  },
+  {
+    "pair": "construction-site_AB_05.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_05.png",
+    "real_file": "consruction site/00050.jpg",
+    "t_sec": 15.6
+  },
+  {
+    "pair": "construction-site_AB_06.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_06.png",
+    "real_file": "consruction site/00060.jpg",
+    "t_sec": 17.2
+  },
+  {
+    "pair": "construction-site_AB_07.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_07.png",
+    "real_file": "consruction site/00070.jpg",
+    "t_sec": 18.8
+  },
+  {
+    "pair": "construction-site_AB_08.jpg",
+    "A": "RENDER",
+    "B": "REAL",
+    "render_file": "eval_08.png",
+    "real_file": "consruction site/00080.jpg",
+    "t_sec": 20.48
+  },
+  {
+    "pair": "construction-site_AB_09.jpg",
+    "A": "REAL",
+    "B": "RENDER",
+    "render_file": "eval_09.png",
+    "real_file": "consruction site/00090.jpg",
+    "t_sec": 22.88
+  }
+]

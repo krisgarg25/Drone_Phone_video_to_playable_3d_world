@@ -1,0 +1,156 @@
+{
+  "scene": "boulder-field-0aa9375f",
+  "status": "complete-with-warnings",
+  "produced_assets": true,
+  "secs": 1326.0,
+  "steps": [
+    {
+      "name": "keyframes",
+      "status": "done",
+      "secs": 6.5,
+      "attempts": 1
+    },
+    {
+      "name": "colmap",
+      "status": "done",
+      "secs": 179.9,
+      "attempts": 1
+    },
+    {
+      "name": "poses",
+      "status": "done",
+      "secs": 0.3,
+      "attempts": 1
+    },
+    {
+      "name": "dynamics",
+      "status": "done",
+      "secs": 0.4,
+      "attempts": 1
+    },
+    {
+      "name": "train",
+      "status": "done",
+      "secs": 913.5,
+      "attempts": 1
+    },
+    {
+      "name": "frame",
+      "status": "done",
+      "secs": 0.8,
+      "attempts": 1
+    },
+    {
+      "name": "depth",
+      "status": "done",
+      "secs": 69.5,
+      "attempts": 1
+    },
+    {
+      "name": "export",
+      "status": "done",
+      "secs": 2.1,
+      "attempts": 1
+    },
+    {
+      "name": "sky",
+      "status": "done",
+      "secs": 4.5,
+      "attempts": 1
+    },
+    {
+      "name": "clouds",
+      "status": "done",
+      "secs": 8.1,
+      "attempts": 1
+    },
+    {
+      "name": "reexport",
+      "status": "done",
+      "secs": 1.9,
+      "attempts": 1
+    },
+    {
+      "name": "colors",
+      "status": "done",
+      "secs": 0.4,
+      "attempts": 1
+    },
+    {
+      "name": "collider",
+      "status": "done",
+      "secs": 4.7,
+      "attempts": 1
+    },
+    {
+      "name": "objects",
+      "status": "done",
+      "secs": 0.5,
+      "attempts": 1
+    },
+    {
+      "name": "surface",
+      "status": "done",
+      "secs": 4.2,
+      "attempts": 1
+    },
+    {
+      "name": "nav",
+      "status": "done",
+      "secs": 1.0,
+      "attempts": 1
+    },
+    {
+      "name": "semantics",
+      "status": "done",
+      "secs": 1.8,
+      "attempts": 1
+    },
+    {
+      "name": "rooms",
+      "status": "done",
+      "secs": 1.2,
+      "attempts": 1
+    },
+    {
+      "name": "texture",
+      "status": "done",
+      "secs": 77.6,
+      "attempts": 1
+    },
+    {
+      "name": "gate",
+      "status": "done",
+      "secs": 0.3,
+      "attempts": 1
+    },
+    {
+      "name": "audit",
+      "status": "done",
+      "secs": 0.3,
+      "attempts": 1
+    },
+    {
+      "name": "evals",
+      "status": "done",
+      "secs": 5.9,
+      "attempts": 1
+    },
+    {
+      "name": "pairs",
+      "status": "done",
+      "secs": 1.0,
+      "attempts": 1
+    },
+    {
+      "name": "walktest",
+      "status": "done",
+      "secs": 39.4,
+      "attempts": 1
+    }
+  ],
+  "notes": [
+    "photometric (D3): off for COLMAP (measured on the footage: shadow area p90 11.2% of frame, spread across clip 6.0%, whole-frame level drift 1.13x)"
+  ],
+  "finished": "2026-09-28 12:46:19"
+}

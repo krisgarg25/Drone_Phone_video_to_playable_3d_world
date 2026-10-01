@@ -327,15 +327,29 @@ def load_colmap(txt_dir: Path):
                                w0=int(p[2]), h0=int(p[3]))
 
     imgs = []
-    for line in (txt_dir / "images.txt").read_text().splitlines():
+    # images.txt is two lines per image: a pose line (nine numeric fields, then the
+    # name) and its 2D-points line. The name may contain spaces, so it is read as the
+    # remainder of a capped split; the points line is told apart by its tenth field
+    # being numeric, which also makes an empty points line (zero observations) safe.
+    for line in (txt_dir / "images.txt").read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
-        p = line.split()
-        if len(p) != 10:
+        f = line.split()
+        if len(f) < 10:
             continue
-        q = np.array(list(map(float, p[1:5])))
-        t = np.array(list(map(float, p[5:8])))
-        imgs.append(dict(name=p[9], R=qvec2rot(q), t=t, cam_id=int(p[8])))
+        try:
+            float(f[9])
+            continue
+        except ValueError:
+            pass
+        p = line.split(maxsplit=9)
+        try:
+            q = np.array([float(x) for x in p[1:5]])
+            t = np.array([float(x) for x in p[5:8]])
+            cam_id = int(p[8])
+        except ValueError:
+            continue
+        imgs.append(dict(name=p[9].strip(), R=qvec2rot(q), t=t, cam_id=cam_id))
     return cams, imgs
 
 
@@ -371,6 +385,10 @@ def load_points3d(txt_dir: Path):
 def prepare_dataset(work: Path, max_images: int | None = None):
     txt = work / "colmap" / "sparse" / "txt"
     cams, imgs = load_colmap(txt)
+    if not imgs:
+        raise ValueError(f"no registered poses read from {txt / 'images.txt'} "
+                         f"({len(cams)} cameras) - the colmap step produced a model "
+                         f"this reader cannot parse")
 
     und_dir = work / "frames_undist"
     und_dir.mkdir(exist_ok=True)
@@ -1215,6 +1233,12 @@ def main():
                          "left. Lower it for detail, at the cost of VRAM and sort time.")
     ap.add_argument("--refine-stop", type=int, default=9000)
     ap.add_argument("--save-every", type=int, default=3000)
+    ap.add_argument("--preview-image", dest="preview_image", default=None,
+                    help="training image (e.g. rocks/00041.jpg) whose camera is rendered "
+                         "every --preview-every steps into train_progress/preview/, a "
+                         "fixed-view timelapse of the fit. Instrumentation only.")
+    ap.add_argument("--preview-every", dest="preview_every", type=int, default=100)
+    ap.add_argument("--preview-width", dest="preview_width", type=int, default=1920)
     ap.add_argument("--antialias", action=argparse.BooleanOptionalAction, default=True,
                     help="gsplat antialiased rasterization (big sharpness win when "
                          "training resolution differs from capture resolution)")
@@ -1546,6 +1570,19 @@ def main():
     def say(msg):
         print(msg, flush=True)
         log.write(msg + "\n")
+
+    # The step_*.jpg previews below come from whichever view the step drew, so
+    # they cannot be played in sequence. --preview-image pins one camera instead.
+    pv_idx = None
+    if args.preview_image:
+        want = args.preview_image.replace("\\", "/")
+        names = [str(d["name"]).replace("\\", "/") for d in data]
+        hits = [i for i, n in enumerate(names) if n == want or n.endswith("/" + want)]
+        if hits:
+            pv_idx = hits[0]
+            (prog / "preview").mkdir(exist_ok=True)
+        else:
+            say(f"[train] preview image {want} is not a training view; no preview")
         log.flush()
 
     # Checkpoint the seeds immediately. A card that fills, or a driver that
@@ -1858,6 +1895,26 @@ def main():
             for v in acc_m.values():
                 v.zero_()
             n_acc = n_m = 0
+
+        if pv_idx is not None and (step == 1 or step % args.preview_every == 0
+                                   or step == args.steps):
+            pv_s = args.preview_width / W
+            pv_w, pv_h = args.preview_width, int(round(H * pv_s))
+            pv_K = gpu_Ks[pv_idx:pv_idx + 1].clone()
+            pv_K[:, :2, :] *= pv_s
+            snap = capture.opas if capture is not None else None
+            with trained_opacities(params, snap), torch.no_grad():
+                rgb_pv, _, _ = rendering(
+                    params["means"], F.normalize(params["quats"], dim=1),
+                    torch.exp(params["scales"]), torch.sigmoid(params["opacities"]),
+                    torch.cat([params["sh0"], params["shN"]], dim=1),
+                    gpu_viewmats[pv_idx:pv_idx + 1], pv_K, pv_w, pv_h, render_mode="RGB",
+                    sh_degree=SH_DEG, packed=True,
+                    rasterize_mode="antialiased" if args.antialias else "classic")
+                pv = (rgb_pv[0].clamp(0, 1) * 255).byte().cpu().numpy()
+            if not rb.save_image(Image.fromarray(pv), prog / "preview" / f"{step:06d}.jpg",
+                                 quality=92):
+                say(f"[train] step {step}: fixed-view preview refused, continuing")
 
         if step % args.save_every == 0 or step == args.steps:
             # Not splat.ply: a run that dies at step 12k would otherwise leave a

@@ -1,30 +1,30 @@
-import type { Metadata } from "next";
-import { IBM_Plex_Mono, Sora } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const sora = Sora({
+const ui = Geist({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-sora",
+  variable: "--font-ui",
   display: "swap",
 });
 
-const plex = IBM_Plex_Mono({
+const mono = Geist_Mono({
   subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-plex-mono",
+  variable: "--font-mono-ui",
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Ground Control · Reconstruction Studio",
   description:
-    "Turn drone and handheld video into a 3D workspace. Reconstruct, inspect, measure and export on your own machine.",
+    "Turn a single drone pass into a georeferenced, measurable 3D workspace. Reconstruct, inspect, measure and plan on your own machine.",
 };
+
+export const viewport: Viewport = { themeColor: "#0b0c0f", colorScheme: "dark" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sora.variable} ${plex.variable}`}>
+    <html lang="en" className={`${ui.variable} ${mono.variable}`}>
       <body className="antialiased">{children}</body>
     </html>
   );

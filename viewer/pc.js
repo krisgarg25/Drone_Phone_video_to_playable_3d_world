@@ -777,6 +777,13 @@ async function boot() {
   window.__stage = "start";
   setLoad("Rendering 3D scene & camera frustums…");
 
+  // A scene built from uniformly tiny, flat splats (a synthetic textured ground) loses
+  // its far half to the engine's small-splat cull; such a scene lowers the thresholds.
+  const cull = col.splat_cull;
+  if (cull && application.scene.gsplat) {
+    if (Number.isFinite(cull.min_pixel_size)) application.scene.gsplat.minPixelSize = cull.min_pixel_size;
+    if (Number.isFinite(cull.min_contribution)) application.scene.gsplat.minContribution = cull.min_contribution;
+  }
   application.scene.fog.type = EMBED ? "none" : FOG_LINEAR;
   application.scene.fogColor = SKY.clone();
   application.scene.fogStart = 35;
@@ -2260,8 +2267,11 @@ async function boot() {
           break;
         }
         if (workspaceMode !== "orbit") setWorkspaceMode("orbit");
+        // Optional lens: a "view from the photo" leaves the photo's narrow field of view
+        // behind, and an orbit resumed from there can ease it back.
+        if (Number.isFinite(cmd.value.fov) && cmd.value.fov > 1 && cmd.value.fov < 179) cameraEnt.camera.fov = cmd.value.fov;
         remoteOrbit = true;
-        try { workspaceOrbit = { ...workspaceOrbit, ...cmd.value, target: [...cmd.value.target] }; applyWorkspaceOrbit(); }
+        try { const { fov: _fov, ...orbit } = cmd.value; workspaceOrbit = { ...workspaceOrbit, ...orbit, target: [...orbit.target] }; applyWorkspaceOrbit(); }
         finally { remoteOrbit = false; }
         break;
     }

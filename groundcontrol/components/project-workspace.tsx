@@ -1,22 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
+import Link from "next/link";
 import { pipeline } from "@/lib/api";
 import {
   duplicatePlacement, duration, isPoint, liftPlacement, moveToPlacement, placementPoint, placementsGeoJSON,
-  provisionalPlacement, resizePlacement, slidePlacement, WORKFLOWS, workspace, downloadBlob, yawPlacement,
+  provisionalPlacement, resizePlacement, slidePlacement, workspace, downloadBlob, yawPlacement,
   type Layer, type MeasurementKind, type Mode, type Placement, type Point, type ProjectDetail, type ProjectList,
 } from "@/lib/workspace";
 import { Studio, Status, Offline } from "./studio";
 import { Icon, type IconName } from "./studio-icons";
 import { RunDialog } from "./run-dialog";
+import { InfoTip, ViewerSlot } from "./on-viewer";
+import { MODE_INFO } from "@/lib/modes";
 import { ViewerPanel } from "./viewer-panel";
 import { MeasurementPanel } from "./measurement-panel";
 import { PlacementPanel } from "./placement-panel";
 import { WalkthroughPanel } from "./walkthrough-panel";
-import { DetailsPanel, ExportPanel, GnssReference } from "./project-details";
+import { DetailsPanel, ExportPanel } from "./project-details";
 import { QualityPanel } from "./quality-panel";
+import { ExploreOverview } from "./explore-overview";
 import { PlanPanel, type PlanView } from "./plan-panel";
 import { MissionPanel } from "./mission-panel";
 import { AarReplay } from "./aar-replay";
@@ -37,14 +40,22 @@ import {
   type FacadeResult, type PlanMesh, type ProposalIndex, type ShadowResult, type ShadowSettings, type XZ,
 } from "@/lib/plan";
 import "./workspace-modes.css";
+import "./immersive.css";
 
 const LAYERS: { key: Layer; label: string; detail: string; icon: IconName }[] = [
-  { key: "splats", label: "Photorealistic model", detail: "Gaussian splats", icon: "cube" },
-  { key: "cameras", label: "Camera positions", detail: "Recovered capture trajectory", icon: "camera" },
-  { key: "points", label: "Sparse point cloud", detail: "Triangulated feature points", icon: "grid" },
-  { key: "coverage", label: "Observed coverage", detail: "View-support diagnostic", icon: "layers" },
-  { key: "collider", label: "Collision surface", detail: "Navigation geometry · estimated", icon: "compass" },
-  { key: "semantics", label: "Semantic classes", detail: "Ground · road · building · vegetation · obstacle", icon: "layers" },
+  { key: "splats", label: "Photo-real model", detail: "What the site looks like", icon: "cube" },
+  { key: "cameras", label: "Camera path", detail: "Where the drone flew and pointed", icon: "camera" },
+  { key: "points", label: "Feature points", detail: "Points matched between photos", icon: "grid" },
+  { key: "coverage", label: "Camera coverage", detail: "How well each area was seen", icon: "eye" },
+  { key: "collider", label: "Solid surface", detail: "Used for measuring and walking", icon: "mountain" },
+  { key: "semantics", label: "Object types", detail: "Ground, road, building, trees, obstacles", icon: "layers" },
+];
+/** The nine workspaces, grouped by what the operator is doing. */
+const MODE_GROUPS: { label: string; items: [string, string, IconName][] }[] = [
+  { label: "View", items: [["layers", "Explore", "compass"], ["measure", "Measure", "ruler"]] },
+  { label: "Analyze", items: [["inspect", "Inspect", "search"], ["ops", "Operations", "radar"], ["twin", "Twin", "twin"]] },
+  { label: "Plan", items: [["plan", "Plan", "building"], ["mission", "Mission", "flag"], ["place", "Place", "cube"]] },
+  { label: "Experience", items: [["walk", "Walk", "play"]] },
 ];
 const INITIAL_LAYERS: Record<Layer, boolean> = { splats: true, cameras: false, points: false, coverage: false, collider: false, semantics: false };
 const MODES = ["measure", "place", "plan", "mission", "ops", "inspect", "twin", "walk"];
@@ -97,6 +108,9 @@ export function ProjectWorkspace({ scene, initialTab = "layers" }: { scene: stri
   const addSeq = useRef(0);
   const [message, setMessage] = useState("");
   const [logsOpen, setLogsOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [viewerSlot, setViewerSlot] = useState<HTMLDivElement | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const iframe = useRef<HTMLIFrameElement>(null);
@@ -292,6 +306,9 @@ export function ProjectWorkspace({ scene, initialTab = "layers" }: { scene: stri
     if (ready && !game && project) command("measurements", { value: tab === "place" || tab === "walk" || PANEL_TABS.includes(tab) ? [] : project.measurements });
   }, [ready, game, project, tab, command]);
   useEffect(() => { if (ready && !game) command("placements", { value: draft }); }, [ready, game, draft, command]);
+  // A scene with no recovered cameras has no capture pose to open on: frame the model instead.
+  const noCameras = project?.registered_count === 0;
+  useEffect(() => { if (ready && !game && noCameras) command("fit"); }, [ready, game, noCameras, command]);
   useEffect(() => {
     if (ready && !game) command("measurement-tool", { kind, unit: project?.scale.unit === "m" ? "m" : "units" });
   }, [kind, ready, game, project?.scale.unit, command]);
@@ -769,16 +786,33 @@ export function ProjectWorkspace({ scene, initialTab = "layers" }: { scene: stri
     };
     window.addEventListener("popstate", back); return () => window.removeEventListener("popstate", back);
   }, [command, flushNow]);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+      if (event.key === "\\") { event.preventDefault(); setPanelOpen((open) => !open); }
+    };
+    window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
+  }, []);
   async function cancel() { try { await workspace.cancel(scene); setConfirmCancel(false); await refresh(); } catch (cause) { setMessage(cause instanceof Error ? cause.message : String(cause)); } }
   const running = project?.job.scene === scene && ["running", "starting"].includes(project.job.status);
   if (!project) return <Studio connected={!error}><main className="library-main">{error ? <Offline message={error} retry={() => void refresh()} /> : <div className="loading-state"><span className="spinner" />Opening project…</div>}</main></Studio>;
-  return <Studio project={project.name} connected={!error}>
-    <main className={`workspace-main workspace-${tab}`}>
-      <header className="workspace-header"><div className="workspace-title"><span className="brand-symbol"><Icon name="cube" size={25} /></span><div><h1>{project.name}</h1><Status status={project.status} /></div></div><nav className="workspace-modes" aria-label="Choose workspace">{[["layers", "Explore", "compass"], ["measure", "Measure", "ruler"], ["plan", "Plan", "grid"], ["mission", "Mission", "pin"], ["ops", "Operations", "activity"], ["inspect", "Inspect", "search"], ["twin", "Twin", "layers"], ["place", "Place", "cube"], ["walk", "Walkthrough", "play"]]
-            // The application's tabs lead; the rest wait behind "All tools" (and the open tab always shows).
-            .filter(([value]) => allTools || !project.application || project.application.workspace_tabs.includes(value) || value === "layers" || value === tab)
-            .map(([value, label, icon]) => <button key={value} aria-pressed={tab === value} className={tab === value ? "active" : ""} onClick={() => switchTab(value)}><Icon name={icon as IconName} size={16} /><span>{label}</span></button>)}
-            {project.application && <button className="workspace-more" aria-pressed={allTools} title={allTools ? `Show only the ${project.application.label} tools` : "Show every tool"} onClick={() => setAllTools(!allTools)}><Icon name={allTools ? "close" : "plus"} size={14} /><span>{allTools ? "Fewer" : "All tools"}</span></button>}</nav><div className="workspace-actions"><button className="icon-button" title="Processing" aria-label="Processing" onClick={() => setLogsOpen(!logsOpen)}><Icon name="activity" size={16} /></button><button className="button secondary small" onClick={() => switchTab("exports")}><Icon name="download" size={15} />Exports</button><button className="button primary small" onClick={() => setRunOpen(true)}><Icon name="play" size={14} />Reconstruct</button></div></header>
+  const info = MODE_INFO[tab] ?? MODE_INFO.layers;
+  /** Fly the orbit camera to a point, keeping the current heading. */
+  const focusOn = (point: [number, number, number], distance = 45) => { setMessage(""); command("camera-set", { value: { target: point, distance, yaw: lastOrbit.current?.yaw ?? 0.6, pitch: 0.75 } }); };
+  const setLayer = (key: Layer, value: boolean) => { setLayers((previous) => ({ ...previous, [key]: value })); command("layer", { layer: key, value }); };
+  return <ViewerSlot.Provider value={viewerSlot}><Studio project={project.name} connected={!error}>
+    <main className={`workspace-main workspace-${tab}${panelOpen ? "" : " panel-closed"}`}>
+      <header className="workspace-header">
+        <div className="workspace-title"><Link className="workspace-back" href="/" aria-label="Back to projects" title="All projects"><Icon name="back" size={16} /></Link><div><span className="workspace-crumb">{project.application?.label ?? "All projects"}</span><h1>{project.name}<Status status={project.status} /></h1></div></div>
+        <nav className="workspace-modes" aria-label="Choose workspace">{MODE_GROUPS.map((group) => {
+          // The application's tabs lead; the rest wait behind "All tools" (and the open tab always shows).
+          const items = group.items.filter(([value]) => allTools || !project.application || project.application.workspace_tabs.includes(value) || value === "layers" || value === tab);
+          return items.length ? <div key={group.label} className="mode-group" role="group" aria-label={group.label}>{items.map(([value, label, icon]) => { const on = tab === value || (value === "layers" && ["layers", "quality", "details", "exports"].includes(tab)); return <button key={value} aria-pressed={on} className={on ? "active" : ""} onClick={() => switchTab(value)} data-tip={MODE_INFO[value]?.what}><Icon name={icon} size={15} /><span>{label}</span></button>; })}</div> : null;
+        })}
+          {project.application && <button className="workspace-more" aria-pressed={allTools} title={allTools ? `Show only the ${project.application.label} tools` : "Show every tool"} onClick={() => setAllTools(!allTools)}><Icon name={allTools ? "close" : "plus"} size={14} /><span>{allTools ? "Focus" : "All tools"}</span></button>}</nav>
+        <div className="workspace-actions"><button className={`icon-button${logsOpen ? " is-on" : ""}`} data-tip="Processing log" aria-label="Processing log" aria-pressed={logsOpen} onClick={() => setLogsOpen(!logsOpen)}><Icon name="activity" size={16} /></button><Link className="button secondary small" data-tip="Choose files, rename them and download" href={`/projects/${encodeURIComponent(scene)}/export`}><Icon name="download" size={15} /><span>Export</span></Link><button className="button primary small" data-tip="Build or rebuild the 3D model from the video" onClick={() => setRunOpen(true)}><Icon name="play" size={13} /><span>Reconstruct</span></button></div>
+      </header>
       {error && <div className="job-banner"><Icon name="info" /><span>Connection lost. Showing the last project state; changes cannot be saved until reconnected.</span><button className="text-button" onClick={() => void refresh()}>Retry</button></div>}
       {running && <div className="job-banner"><span className="spinner" /><span>Processing this capture<small>{project.job.step || "Starting reconstruction"} · you can keep exploring existing outputs</small></span><button className="button danger small" onClick={() => confirmCancel ? void cancel() : setConfirmCancel(true)}>{confirmCancel ? "Confirm stop" : "Stop job"}</button>{confirmCancel && <button className="text-button" onClick={() => setConfirmCancel(false)}>Keep running</button>}</div>}
       <div className="workspace-grid">
@@ -795,7 +829,7 @@ export function ProjectWorkspace({ scene, initialTab = "layers" }: { scene: stri
             onDuplicate={(source) => addRow(duplicatePlacement(source, `local-${++addSeq.current}`))}
             onDelete={removePlacement} onExport={exportLayout} onFit={() => command("fit")}
           />}
-          {(tab === "walk" && !game) ? <WalkthroughPanel project={project} bots={bots} onEnter={(count) => { clear(); setBots(count); setReady(false); setGame(true); }} /> : <ViewerPanel compare={comparing ? { mode: planView as "swipe" | "side", iframeRef: compareFrame, position: swipe, onPosition: setSwipe, onLoad: () => { setCompareReady(false); compareCommand("get-state"); } } : undefined} project={project} iframeRef={iframe} ready={ready} mode={mode} selectedFrame={selectedFrame} message={message} framesOpen={framesOpen} showFrames={tab !== "place" && tab !== "walk" && !PANEL_TABS.includes(tab)} showMessage={tab !== "place"} arena={tab === "walk"} game={game} bots={bots} onCommand={command} onFrame={chooseFrame} onFramesToggle={() => setFramesOpen(!framesOpen)} onRun={() => setRunOpen(true)} gameQuery={gameQuery?.query} onExitGame={() => {
+          {(tab === "walk" && !game) ? <WalkthroughPanel project={project} bots={bots} onEnter={(count) => { clear(); setBots(count); setReady(false); setGame(true); }} /> : <ViewerPanel tools={<button className={`icon-button${layersOpen ? " is-on" : ""}`} aria-label="Layers" aria-pressed={layersOpen} data-tip="Layers: choose what to show" disabled={!ready} onClick={() => setLayersOpen(!layersOpen)}><Icon name="layers" size={16} /></button>} compare={comparing ? { mode: planView as "swipe" | "side", iframeRef: compareFrame, position: swipe, onPosition: setSwipe, onLoad: () => { setCompareReady(false); compareCommand("get-state"); } } : undefined} project={project} iframeRef={iframe} ready={ready} mode={mode} selectedFrame={selectedFrame} message={message} framesOpen={framesOpen} showFrames={!["place", "walk", "measure"].includes(tab) && !PANEL_TABS.includes(tab)} showMessage={tab !== "place"} arena={tab === "walk"} game={game} bots={bots} onCommand={command} onFrame={chooseFrame} onFramesToggle={() => setFramesOpen(!framesOpen)} onRun={() => setRunOpen(true)} gameQuery={gameQuery?.query} onExitGame={() => {
             if (gameQuery) { iframe.current?.contentWindow?.postMessage({ namespace: "groundcontrol", type: "command", command: "end-rehearsal" }, window.location.origin); return; }
             setGame(false); setReady(false);
           }} />}
@@ -803,12 +837,24 @@ export function ProjectWorkspace({ scene, initialTab = "layers" }: { scene: stri
           {tab === "mission" && sandTable && planState && <div className="aar-overlay"><SandTable state={planState} analysis={analysis} basemap={basemap} onClose={() => setSandTable(false)} /></div>}
           {tab === "mission" && openRun && <div className="aar-overlay"><AarReplay run={openRun} basemap={basemap} onClose={() => setOpenRun(null)}
             onPdf={() => { const current = planStateRef.current; if (current) missionApi.aarPdf(scene, current.proposal.id, openRun.id).then(downloadFile).catch((cause) => setPlanMessage(cause instanceof Error ? cause.message : String(cause))); }} /></div>}
-          {tab === "measure" && <div className="surface-controls"><span>MEASURE ON</span><button aria-pressed={layers.collider} disabled={!ready || !capabilities.collider} onClick={() => command("layer", { layer: "collider", value: !layers.collider })}>Collision surface</button><button aria-pressed={layers.points} disabled={!ready || !capabilities.points} onClick={() => command("layer", { layer: "points", value: !layers.points })}>Cloud points</button></div>}
+          {tab === "measure" && <div className="surface-controls"><span>Snap to</span><button aria-pressed={layers.collider} disabled={!ready || !capabilities.collider} onClick={() => command("layer", { layer: "collider", value: !layers.collider })}>Solid surface</button><button aria-pressed={layers.points} disabled={!ready || !capabilities.points} onClick={() => command("layer", { layer: "points", value: !layers.points })}>Feature points</button></div>}
+          <div className="pick-guide-slot" ref={setViewerSlot} />
+          {layersOpen && tab !== "walk" && <div className="layers-pop" role="dialog" aria-label="Layers"><div className="layers-pop-head"><div><strong>Layers</strong><span>What to show on the model</span></div><button className="icon-button" aria-label="Close layers" onClick={() => setLayersOpen(false)}><Icon name="close" size={14} /></button></div>{LAYERS.map((layer) => <label className="layer-control" key={layer.key}><Icon name={layer.icon} size={17} /><span>{layer.label}<small>{layer.detail}</small></span><input type="checkbox" aria-label={layer.label} checked={layers[layer.key]} disabled={!ready || (layer.key !== "splats" && !capabilities[layer.key])} onChange={(event) => setLayer(layer.key, event.target.checked)} /></label>)}</div>}
+          {!panelOpen && !["place", "walk"].includes(tab) && <button className="panel-reveal" onClick={() => setPanelOpen(true)} data-tip="Show panel  (\)"><Icon name="sidebar" size={16} /><span>{info.label}</span></button>}
         </div>
-        {!["place", "walk"].includes(tab) && <aside className="inspector" aria-label="Project tools">{tab !== "measure" && !PANEL_TABS.includes(tab) && <div className="inspector-tabs">{[["layers", "Layers"], ["quality", "Quality"], ["details", "Details"], ["exports", "Files"]].map(([value, label]) => <button key={value} className={tab === value ? "active" : ""} onClick={() => switchTab(value)}>{label}</button>)}</div>}
-          {tab === "layers" && <><section className="inspector-section"><div className="section-label"><span>SCENE LAYERS</span><Icon name="layers" size={14} /></div>{LAYERS.map((layer) => <label className="layer-control" key={layer.key}><Icon name={layer.icon} size={17} /><span>{layer.label}<small>{layer.detail}</small></span><input type="checkbox" aria-label={layer.label} checked={layers[layer.key]} disabled={!ready || (layer.key !== "splats" && !capabilities[layer.key])} onChange={(event) => { const value = event.target.checked; setLayers((previous) => ({ ...previous, [layer.key]: value })); command("layer", { layer: layer.key, value }); }} /></label>)}</section>{project.semantics && <section className="inspector-section"><div className="section-label"><span>SCENE CLASSIFICATION</span><Icon name="layers" size={14} /></div><div className="class-list">{Object.entries(project.semantics.counts).filter(([, n]) => n > 0).map(([cls, n]) => { const s = project.semantics?.summary?.[cls as string]; return <div className="datum-row" key={cls}><span><i className={`class-dot class-${cls}`} />{cls}</span><span>{n.toLocaleString()}{s?.area_m2 ? ` · ${s.area_m2.toLocaleString()} m²` : ""}</span></div>; })}</div><p className="inspector-copy">Heuristic geometric + colour labels; area is a grid-occupancy footprint proxy (coarse, not surveyed ground truth).</p></section>}<section className="inspector-section"><div className="section-label">SPATIAL REFERENCE</div><div className="datum-row"><span>Scale</span><span>{project.scale.status === "metric" ? "Metric · pose referenced" : project.scale.status === "estimated" ? "Estimated" : "Relative"}</span></div>{project.scale_check && <div className="datum-row" title={`A learned depth model estimated ${project.scale_check.ruler_m_per_unit} m per scene unit against this scene's ${project.scale_check.existing_m_per_unit ?? "?"} m. It changes no measurement: on the one scene checked with a tape measure this ruler read 18% low where the pose-referenced scale read 4% low, so treat a disagreement as a question to investigate, not a correction to apply.`}><span>Second ruler (learned)</span><span>{project.scale_check.gap_percent === null ? "Not comparable" : `${project.scale_check.gap_percent}% apart`}</span></div>}
-<div className="datum-row"><span>Location</span><span>{project.georeference.status === "local" ? "Local coordinates" : project.georeference.crs}</span></div><div className="datum-row"><span>Accuracy</span><span>{project.accuracy.status === "verified" ? `${project.accuracy.rmse_m} m RMSE` : "Not independently verified"}</span></div><GnssReference project={project} /><p className="inspector-copy">{project.scale.source}</p></section><section className="inspector-section"><div className="section-label">{WORKFLOWS[project.workflow]?.label ?? "Explore"} WORKFLOW</div><p className="inspector-copy">{project.workflow === "inspection" ? "Select a source frame to inspect detail. Use annotations to record observations on the model." : project.workflow === "survey" ? "Inspect scale before measuring. Use Details for survey inputs and Exports for generated products." : project.workflow === "response" ? "Enable observed coverage to see view support. Unknown areas are not proof of safe passage." : project.workflow === "heritage" ? "Use orbit or walk to explore. Save a snapshot of the current viewpoint from the viewport toolbar." : "Orbit the reconstruction, inspect original camera views, and switch layers to understand its geometry."}</p></section>{selectedFrame >= 0 && project.frames[selectedFrame] && <div className="frame-inspection"><Image unoptimized width={640} height={400} src={project.frames[selectedFrame].url} alt={`Inspected source frame ${selectedFrame + 1}`} /><p>Frame {selectedFrame + 1} · {project.frames[selectedFrame].name}</p></div>}</>}
-          {tab === "measure" && <MeasurementPanel project={project} ready={ready && !!capabilities.collider && !error} points={points} hover={hover} kind={kind} onTool={chooseTool} onClear={clear} onUndo={undoPoint} onSaved={(next) => { dataVersion.current++; setProject(next); }} onSelect={(id) => command("select", { id })} />}
+        {!["place", "walk"].includes(tab) && <aside className="inspector" aria-label="Project tools" hidden={!panelOpen} onClick={(event) => {
+          // Section titles fold their section. Controls inside a title keep their own click.
+          const target = event.target as HTMLElement;
+          const label = target.closest(".inspector-section > .section-label:first-child");
+          if (label && !target.closest("button, input, select, a, label")) label.parentElement?.classList.toggle("is-collapsed");
+        }}>
+          <div className="panel-head"><span className="panel-icon"><Icon name={info.icon} size={18} /></span><div><h2>{MODE_INFO[["quality", "details", "exports"].includes(tab) ? "layers" : tab]?.label ?? info.label}</h2><p>{info.what}</p></div>
+            <InfoTip label="How it works"><b>How it works</b><ol>{info.how.map((step) => <li key={step}>{step}</li>)}</ol></InfoTip>
+            <button className="icon-button" aria-label="Hide panel" data-tip="Hide panel  (\)" onClick={() => setPanelOpen(false)}><Icon name="sidebar" size={16} /></button></div>
+          {tab !== "measure" && !PANEL_TABS.includes(tab) && <div className="inspector-tabs">{[["layers", "Overview"], ["quality", "Quality"], ["details", "Project"], ["exports", "Files"]].map(([value, label]) => <button key={value} className={tab === value ? "active" : ""} onClick={() => switchTab(value)}>{label}</button>)}</div>}
+          {tab === "layers" && <ExploreOverview project={project} layers={layers} capabilities={capabilities} ready={ready} selectedFrame={selectedFrame}
+            onLayer={setLayer} onTab={switchTab} onCloseFrame={() => setSelectedFrame(-1)} />}
+          {tab === "measure" && <MeasurementPanel project={project} ready={ready && !!capabilities.collider && !error} points={points} hover={hover} kind={kind} onTool={chooseTool} onClear={clear} onUndo={undoPoint} onSaved={(next) => { dataVersion.current++; setProject(next); }} onSelect={(id) => command("select", { id })} onFocus={(point) => focusOn(point, 18)} />}
           {tab === "plan" && <PlanPanel
             scene={scene} state={planState} index={planIndex} catalogue={catalogue} selected={planSelected}
             tool={planTool} points={planPoints.length} view={planView} busy={planBusy} message={planMessage}
@@ -866,20 +912,20 @@ export function ProjectWorkspace({ scene, initialTab = "layers" }: { scene: stri
           />}
           {tab === "ops" && <OpsPanel scene={scene} ready={ready && !error} tool={opsTool} points={opsPoints}
             onTool={chooseOpsTool} onOverlay={setOpsOverlay} onDownload={(file) => { downloadFile(file); setMessage(`Downloaded ${file.filename}.`); }}
-            onPlan={() => switchTab("plan")}
+            onPlan={() => switchTab("plan")} onFocus={focusOn}
             onUndoPoint={() => { const next = opsPoints.slice(0, -1); setOpsPoints(next); command("set-picks", { value: next }); command("pick", { value: true, limit: opsTool ? TOOL_HINT[opsTool].limit : 1 }); }} />}
           {tab === "inspect" && <InspectPanel scene={scene} ready={ready && !error} tool={inspTool} points={inspPoints}
-            onTool={chooseInspTool} onOverlay={setInspOverlay} onPlan={() => switchTab("plan")}
+            onTool={chooseInspTool} onOverlay={setInspOverlay} onPlan={() => switchTab("plan")} onMeasure={() => switchTab("measure")} onFrame={(index) => command("frame", { index })}
             onUndoPoint={() => { const next = inspPoints.slice(0, -1); setInspPoints(next); command("set-picks", { value: next }); command("pick", { value: true, limit: inspTool ? INSPECT_TOOLS[inspTool].limit : 1 }); }} />}
-          {tab === "twin" && <TwinPanel scene={scene} ready={ready && !error} capabilities={capabilities} view={twinView} onView={chooseTwinView} onOverlay={setTwinOverlay} />}
+          {tab === "twin" && <TwinPanel scene={scene} ready={ready && !error} capabilities={capabilities} view={twinView} onView={chooseTwinView} onOverlay={setTwinOverlay} onFocus={(point) => focusOn(point, 30)} />}
           {tab === "details" && <DetailsPanel key={scene} project={project} onSaved={setProject} refresh={() => void refresh()} />}
           {tab === "exports" && <ExportPanel project={project} />}
           {tab === "quality" && <QualityPanel project={project} />}
         </aside>}
       </div>
       {logsOpen && <section className="job-panel" aria-label="Processing details"><ul className="step-list">{project.steps.map((step) => <li key={step.name} className={step.status}><Icon name={step.status === "done" || step.status === "recovered" ? "check" : "clock"} size={12} /><span>{step.name}</span><small>{duration(step.secs)}</small></li>)}</ul><pre className="job-terminal" role="log" aria-label="Processing output">{logs.length ? logs.join("\n") : "No processing output available yet."}</pre></section>}
-      <footer className="workspace-statusbar"><span>{project.registered_count} CAMERAS</span><span>{project.scale.unit === "m" ? "METRES" : "RELATIVE UNITS"} · Y-UP</span><span>{game ? `BOT SESSION · ${bots} BOTS` : ready ? "VIEWER CONNECTED" : "VIEWER NOT READY"}</span><span>{tab === "measure" ? "MEASUREMENT" : tab === "plan" ? "PLANNING EDITOR" : tab === "mission" ? "MISSION PLANNING" : tab === "ops" ? "OPERATIONS" : tab === "inspect" ? "INSPECTION" : tab === "twin" ? "DIGITAL TWIN" : tab === "place" ? "3D PLACEMENT EDITOR" : tab === "walk" ? "ARENA" : WORKFLOWS[project.workflow]?.label.toUpperCase()} WORKSPACE</span></footer>
+      <footer className="workspace-statusbar"><span><i className={`status-dot ${ready || game ? "online" : ""}`} />{game ? `Game session · ${bots} bots` : ready ? "3D view ready" : "Loading 3D view"}</span><span>{project.registered_count.toLocaleString()} cameras</span><span>{project.scale.unit === "m" ? "Units: metres" : "Units: relative"}</span><span>{project.georeference.status === "georeferenced" ? project.georeference.crs : "Local coordinates"}</span></footer>
     </main>
     {runOpen && <RunDialog project={project} options={options} onClose={() => setRunOpen(false)} onStarted={() => { cursor.current = "0"; setLogs([]); setLogsOpen(true); void refresh(); }} />}
-  </Studio>;
+  </Studio></ViewerSlot.Provider>;
 }

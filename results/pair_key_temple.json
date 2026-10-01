@@ -12,71 +12,71 @@
     "A": "REAL",
     "B": "RENDER",
     "render_file": "eval_01.png",
-    "real_file": "temple/00012.jpg",
-    "t_sec": 2.536
+    "real_file": "temple/00028.jpg",
+    "t_sec": 4.271
   },
   {
     "pair": "temple_AB_02.jpg",
     "A": "REAL",
     "B": "RENDER",
     "render_file": "eval_02.png",
-    "real_file": "temple/00024.jpg",
-    "t_sec": 4.137
+    "real_file": "temple/00056.jpg",
+    "t_sec": 8.475
   },
   {
     "pair": "temple_AB_03.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_03.png",
-    "real_file": "temple/00036.jpg",
-    "t_sec": 5.739
+    "real_file": "temple/00084.jpg",
+    "t_sec": 12.179
   },
   {
     "pair": "temple_AB_04.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_04.png",
-    "real_file": "temple/00048.jpg",
-    "t_sec": 7.608
+    "real_file": "temple/00112.jpg",
+    "t_sec": 15.916
   },
   {
     "pair": "temple_AB_05.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_05.png",
-    "real_file": "temple/00060.jpg",
-    "t_sec": 9.409
+    "real_file": "temple/00140.jpg",
+    "t_sec": 19.786
   },
   {
     "pair": "temple_AB_06.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_06.png",
-    "real_file": "temple/00072.jpg",
-    "t_sec": 11.445
+    "real_file": "temple/00168.jpg",
+    "t_sec": 23.624
   },
   {
     "pair": "temple_AB_07.jpg",
     "A": "REAL",
     "B": "RENDER",
     "render_file": "eval_07.png",
-    "real_file": "temple/00084.jpg",
-    "t_sec": 13.146
+    "real_file": "temple/00196.jpg",
+    "t_sec": 27.427
   },
   {
     "pair": "temple_AB_08.jpg",
     "A": "RENDER",
     "B": "REAL",
     "render_file": "eval_08.png",
-    "real_file": "temple/00096.jpg",
-    "t_sec": 14.748
+    "real_file": "temple/00224.jpg",
+    "t_sec": 31.498
   },
   {
     "pair": "temple_AB_09.jpg",
     "A": "REAL",
     "B": "RENDER",
     "render_file": "eval_09.png",
-    "real_file": "temple/00108.jpg",
-    "t_sec": 16.483
+    "real_file": "temple/00252.jpg",
+    "t_sec": 35.502
   }
 ]

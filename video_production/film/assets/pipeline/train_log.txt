@@ -1,0 +1,85 @@
+[train] start steps=15000 cap=1115861 1136x638 ssim_w=0.2 absgrad=True grow_grad2d=0.0006 refine_stop=11250 antialias=True opa_reg=0.002
+[train] opacity reset every 3000 steps while step < refine_stop (11250) (gsplat clamps every opacity to 0.04 at the end of those steps), at steps [3000, 6000, 9000] of this run
+[train] depth term: OFF (measuring), weight=0.0 warmup 500 -> 2750 of 15000 steps. 47240 sparse points over 72 views: median 37244 points/view (min 31299), covering 5.139% of the frame; median point confidence 0.51; cloud 3-nearest spacing 0.07599 scene units; built for 72/72 views (scratch 13.82 MB + 30.59 MB of points resident); MEASURING ONLY (--depth-weight 0), sampled every 50 steps and never added to the loss
+[train] no scale anchor in frame.json: every length below is in arbitrary COLMAP units, NOT metres
+[train] blur-aware sampling: effective weight range 0.86x - 1.20x per frame
+[train] step    200 loss 0.0983 | rgb 0.0492 ssim 0.0677 opa 0.0010 depth 0.0000 [raw 0.3721 w 0.0000 cov 4.3% sup 0.023 err 2.018u] psnr 19.92  N 47240 11s (17.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step    400 loss 0.0681 | rgb 0.0278 ssim 0.0493 opa 0.0009 depth 0.0000 [raw 0.3507 w 0.0000 cov 4.5% sup 0.022 err 2.169u] psnr 26.94  N 47240 20s (20.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step    600 loss 0.0750 | rgb 0.0214 ssim 0.0441 opa 0.0009 depth 0.0000 [raw 0.3511 w 0.0000 cov 4.4% sup 0.022 err 2.062u] psnr 24.76  N 58009 28s (21.6 it/s) mem 1.68GiB res 1.85GiB
+[train] step    800 loss 0.0717 | rgb 0.0228 ssim 0.0501 opa 0.0010 depth 0.0000 [raw 0.3490 w 0.0000 cov 4.6% sup 0.025 err 1.958u] psnr 26.90  N 68359 36s (22.2 it/s) mem 1.68GiB res 1.85GiB
+[train] step   1000 loss 0.0561 | rgb 0.0201 ssim 0.0469 opa 0.0009 depth 0.0000 [raw 0.3860 w 0.0000 cov 4.5% sup 0.023 err 2.106u] psnr 30.43  N 76825 45s (22.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step   1200 loss 0.0555 | rgb 0.0188 ssim 0.0446 opa 0.0009 depth 0.0000 [raw 0.3824 w 0.0000 cov 4.5% sup 0.023 err 1.98u] psnr 30.50  N 91803 53s (22.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step   1400 loss 0.0581 | rgb 0.0200 ssim 0.0464 opa 0.0009 depth 0.0000 [raw 0.3761 w 0.0000 cov 4.7% sup 0.025 err 1.823u] psnr 29.63  N 98119 62s (22.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step   1600 loss 0.0556 | rgb 0.0186 ssim 0.0444 opa 0.0008 depth 0.0000 [raw 0.3825 w 0.0000 cov 4.7% sup 0.024 err 1.774u] psnr 29.97  N 104069 71s (22.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step   1800 loss 0.0645 | rgb 0.0179 ssim 0.0431 opa 0.0008 depth 0.0000 [raw 0.3890 w 0.0000 cov 4.6% sup 0.024 err 1.796u] psnr 27.52  N 114521 80s (22.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step   2000 loss 0.0750 | rgb 0.0189 ssim 0.0446 opa 0.0008 depth 0.0000 [raw 0.3906 w 0.0000 cov 4.7% sup 0.024 err 1.782u] psnr 26.30  N 119237 89s (22.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step   2200 loss 0.0675 | rgb 0.0176 ssim 0.0423 opa 0.0007 depth 0.0000 [raw 0.4487 w 0.0000 cov 4.4% sup 0.022 err 2.242u] psnr 28.34  N 122598 99s (22.3 it/s) mem 1.68GiB res 1.85GiB
+[train] step   2400 loss 0.0581 | rgb 0.0171 ssim 0.0415 opa 0.0007 depth 0.0000 [raw 0.4387 w 0.0000 cov 4.6% sup 0.023 err 2.047u] psnr 29.68  N 131816 109s (22.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step   2600 loss 0.0563 | rgb 0.0180 ssim 0.0429 opa 0.0007 depth 0.0000 [raw 0.4260 w 0.0000 cov 4.6% sup 0.024 err 1.9u] psnr 29.93  N 136218 119s (21.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step   2800 loss 0.0539 | rgb 0.0165 ssim 0.0399 opa 0.0007 depth 0.0000 [raw 0.5067 w 0.0000 cov 4.3% sup 0.021 err 2.542u] psnr 30.30  N 140058 129s (21.7 it/s) mem 1.68GiB res 1.85GiB
+[train] step   3000 loss 0.0500 | rgb 0.0166 ssim 0.0400 opa 0.0007 depth 0.0000 [raw 0.4753 w 0.0000 cov 4.5% sup 0.022 err 2.309u] psnr 31.11  N 148096 139s (21.6 it/s) mem 1.68GiB res 1.85GiB
+[train] step   3200 loss 0.0625 | rgb 0.0212 ssim 0.0435 opa 0.0006 depth 0.0000 [raw 0.5190 w 0.0000 cov 4.4% sup 0.022 err 2.606u] psnr 29.04  [recovering from the step-3000 opacity reset: not a quality reading] N 129256 149s (21.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step   3400 loss 0.0568 | rgb 0.0163 ssim 0.0393 opa 0.0007 depth 0.0000 [raw 0.4794 w 0.0000 cov 4.4% sup 0.024 err 2.229u] psnr 29.14  [recovering from the step-3000 opacity reset: not a quality reading] N 133399 159s (21.3 it/s) mem 1.68GiB res 1.85GiB
+[train] step   3600 loss 0.0463 | rgb 0.0158 ssim 0.0378 opa 0.0007 depth 0.0000 [raw 0.4612 w 0.0000 cov 4.6% sup 0.024 err 2.059u] psnr 31.35  [recovering from the step-3000 opacity reset: not a quality reading] N 141362 170s (21.2 it/s) mem 1.68GiB res 1.85GiB
+[train] step   3800 loss 0.0567 | rgb 0.0163 ssim 0.0386 opa 0.0007 depth 0.0000 [raw 0.5452 w 0.0000 cov 4.3% sup 0.022 err 2.735u] psnr 29.90  N 146454 180s (21.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step   4000 loss 0.0464 | rgb 0.0154 ssim 0.0371 opa 0.0007 depth 0.0000 [raw 0.4769 w 0.0000 cov 4.6% sup 0.023 err 2.144u] psnr 31.48  N 151277 191s (20.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step   4200 loss 0.0525 | rgb 0.0146 ssim 0.0352 opa 0.0006 depth 0.0000 [raw 0.5136 w 0.0000 cov 4.4% sup 0.022 err 2.469u] psnr 30.84  N 160339 202s (20.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step   4400 loss 0.0439 | rgb 0.0153 ssim 0.0362 opa 0.0007 depth 0.0000 [raw 0.4936 w 0.0000 cov 4.5% sup 0.023 err 2.246u] psnr 31.84  N 165196 214s (20.6 it/s) mem 1.68GiB res 1.85GiB
+[train] step   4600 loss 0.0594 | rgb 0.0147 ssim 0.0351 opa 0.0007 depth 0.0000 [raw 0.4939 w 0.0000 cov 4.5% sup 0.023 err 2.293u] psnr 29.43  N 169978 226s (20.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step   4800 loss 0.0373 | rgb 0.0141 ssim 0.0331 opa 0.0006 depth 0.0000 [raw 0.5089 w 0.0000 cov 4.4% sup 0.022 err 2.386u] psnr 32.78  N 178590 237s (20.3 it/s) mem 1.68GiB res 1.85GiB
+[train] step   5000 loss 0.0565 | rgb 0.0142 ssim 0.0329 opa 0.0007 depth 0.0000 [raw 0.4903 w 0.0000 cov 4.4% sup 0.023 err 2.215u] psnr 29.73  N 183041 248s (20.2 it/s) mem 1.68GiB res 1.85GiB
+[train] step   5200 loss 0.0408 | rgb 0.0136 ssim 0.0317 opa 0.0007 depth 0.0000 [raw 0.5206 w 0.0000 cov 4.4% sup 0.022 err 2.358u] psnr 32.62  N 187899 259s (20.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step   5400 loss 0.0332 | rgb 0.0130 ssim 0.0300 opa 0.0007 depth 0.0000 [raw 0.4381 w 0.0000 cov 4.6% sup 0.025 err 1.791u] psnr 33.67  N 196251 271s (19.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step   5600 loss 0.0417 | rgb 0.0133 ssim 0.0305 opa 0.0007 depth 0.0000 [raw 0.4862 w 0.0000 cov 4.5% sup 0.023 err 2.041u] psnr 32.16  N 200750 282s (19.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step   5800 loss 0.0320 | rgb 0.0128 ssim 0.0290 opa 0.0007 depth 0.0000 [raw 0.4641 w 0.0000 cov 4.6% sup 0.023 err 1.865u] psnr 34.24  N 205946 294s (19.7 it/s) mem 1.68GiB res 1.85GiB
+[train] step   6000 loss 0.0333 | rgb 0.0126 ssim 0.0283 opa 0.0007 depth 0.0000 [raw 0.4478 w 0.0000 cov 4.6% sup 0.024 err 1.758u] psnr 33.49  N 214956 306s (19.6 it/s) mem 1.68GiB res 1.85GiB
+[train] step   6200 loss 0.0406 | rgb 0.0161 ssim 0.0311 opa 0.0006 depth 0.0000 [raw 0.5111 w 0.0000 cov 4.4% sup 0.022 err 2.27u] psnr 32.25  [recovering from the step-6000 opacity reset: not a quality reading] N 185308 319s (19.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step   6400 loss 0.0422 | rgb 0.0122 ssim 0.0271 opa 0.0007 depth 0.0000 [raw 0.4297 w 0.0000 cov 4.6% sup 0.024 err 1.664u] psnr 32.02  [recovering from the step-6000 opacity reset: not a quality reading] N 189389 331s (19.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step   6600 loss 0.0378 | rgb 0.0116 ssim 0.0254 opa 0.0007 depth 0.0000 [raw 0.4392 w 0.0000 cov 4.6% sup 0.024 err 1.747u] psnr 33.32  [recovering from the step-6000 opacity reset: not a quality reading] N 199053 343s (19.3 it/s) mem 1.68GiB res 1.85GiB
+[train] step   6800 loss 0.0431 | rgb 0.0119 ssim 0.0257 opa 0.0007 depth 0.0000 [raw 0.4852 w 0.0000 cov 4.4% sup 0.023 err 2.023u] psnr 32.02  N 203015 355s (19.2 it/s) mem 1.68GiB res 1.85GiB
+[train] step   7000 loss 0.0286 | rgb 0.0112 ssim 0.0240 opa 0.0007 depth 0.0000 [raw 0.4589 w 0.0000 cov 4.5% sup 0.023 err 1.848u] psnr 34.88  N 207923 367s (19.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step   7200 loss 0.0290 | rgb 0.0108 ssim 0.0227 opa 0.0007 depth 0.0000 [raw 0.4484 w 0.0000 cov 4.6% sup 0.024 err 1.742u] psnr 34.70  N 217652 380s (19.0 it/s) mem 1.68GiB res 1.85GiB
+[train] step   7400 loss 0.0370 | rgb 0.0114 ssim 0.0240 opa 0.0007 depth 0.0000 [raw 0.4326 w 0.0000 cov 4.6% sup 0.024 err 1.585u] psnr 32.67  N 221775 392s (18.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step   7600 loss 0.0237 | rgb 0.0104 ssim 0.0212 opa 0.0007 depth 0.0000 [raw 0.4045 w 0.0000 cov 4.7% sup 0.025 err 1.448u] psnr 36.18  N 225948 405s (18.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step   7800 loss 0.0302 | rgb 0.0100 ssim 0.0201 opa 0.0007 depth 0.0000 [raw 0.4561 w 0.0000 cov 4.5% sup 0.023 err 1.815u] psnr 34.81  N 235306 418s (18.7 it/s) mem 1.68GiB res 1.85GiB
+[train] step   8000 loss 0.0274 | rgb 0.0102 ssim 0.0204 opa 0.0007 depth 0.0000 [raw 0.4035 w 0.0000 cov 4.7% sup 0.025 err 1.441u] psnr 34.73  N 238899 431s (18.6 it/s) mem 1.68GiB res 1.85GiB
+[train] step   8200 loss 0.0222 | rgb 0.0097 ssim 0.0189 opa 0.0007 depth 0.0000 [raw 0.4144 w 0.0000 cov 4.6% sup 0.023 err 1.518u] psnr 36.73  N 241666 444s (18.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step   8400 loss 0.0207 | rgb 0.0091 ssim 0.0169 opa 0.0007 depth 0.0000 [raw 0.3967 w 0.0000 cov 4.7% sup 0.024 err 1.408u] psnr 36.75  N 249189 457s (18.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step   8600 loss 0.0216 | rgb 0.0092 ssim 0.0170 opa 0.0007 depth 0.0000 [raw 0.4207 w 0.0000 cov 4.5% sup 0.024 err 1.574u] psnr 36.37  N 251750 470s (18.3 it/s) mem 1.68GiB res 1.85GiB
+[train] step   8800 loss 0.0200 | rgb 0.0087 ssim 0.0156 opa 0.0007 depth 0.0000 [raw 0.4189 w 0.0000 cov 4.6% sup 0.023 err 1.557u] psnr 36.78  N 254042 484s (18.2 it/s) mem 1.68GiB res 1.85GiB
+[train] step   9000 loss 0.0212 | rgb 0.0083 ssim 0.0145 opa 0.0007 depth 0.0000 [raw 0.4091 w 0.0000 cov 4.6% sup 0.023 err 1.489u] psnr 36.80  N 257990 497s (18.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step   9200 loss 0.0267 | rgb 0.0118 ssim 0.0181 opa 0.0006 depth 0.0000 [raw 0.4268 w 0.0000 cov 4.5% sup 0.024 err 1.73u] psnr 33.87  [recovering from the step-9000 opacity reset: not a quality reading] N 221515 511s (18.0 it/s) mem 1.68GiB res 1.85GiB
+[train] step   9400 loss 0.0187 | rgb 0.0085 ssim 0.0145 opa 0.0007 depth 0.0000 [raw 0.4271 w 0.0000 cov 4.5% sup 0.023 err 1.69u] psnr 37.47  [recovering from the step-9000 opacity reset: not a quality reading] N 223989 524s (17.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step   9600 loss 0.0170 | rgb 0.0080 ssim 0.0133 opa 0.0007 depth 0.0000 [raw 0.4145 w 0.0000 cov 4.5% sup 0.023 err 1.623u] psnr 38.56  [recovering from the step-9000 opacity reset: not a quality reading] N 229267 537s (17.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step   9800 loss 0.0166 | rgb 0.0080 ssim 0.0131 opa 0.0007 depth 0.0000 [raw 0.3863 w 0.0000 cov 4.6% sup 0.024 err 1.412u] psnr 38.27  N 231426 550s (17.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step  10000 loss 0.0179 | rgb 0.0076 ssim 0.0119 opa 0.0007 depth 0.0000 [raw 0.3900 w 0.0000 cov 4.5% sup 0.024 err 1.488u] psnr 37.91  N 233553 564s (17.7 it/s) mem 1.68GiB res 1.85GiB
+[train] step  10200 loss 0.0136 | rgb 0.0073 ssim 0.0109 opa 0.0007 depth 0.0000 [raw 0.3858 w 0.0000 cov 4.6% sup 0.024 err 1.456u] psnr 39.66  N 236669 577s (17.7 it/s) mem 1.68GiB res 1.85GiB
+[train] step  10400 loss 0.0159 | rgb 0.0074 ssim 0.0115 opa 0.0007 depth 0.0000 [raw 0.3975 w 0.0000 cov 4.5% sup 0.024 err 1.546u] psnr 38.65  N 238063 590s (17.6 it/s) mem 1.68GiB res 1.85GiB
+[train] step  10600 loss 0.0153 | rgb 0.0069 ssim 0.0099 opa 0.0007 depth 0.0000 [raw 0.3711 w 0.0000 cov 4.6% sup 0.024 err 1.394u] psnr 39.37  N 238327 604s (17.6 it/s) mem 1.68GiB res 1.85GiB
+[train] step  10800 loss 0.0149 | rgb 0.0068 ssim 0.0097 opa 0.0007 depth 0.0000 [raw 0.4024 w 0.0000 cov 4.4% sup 0.022 err 1.592u] psnr 38.95  N 239746 617s (17.5 it/s) mem 1.68GiB res 1.85GiB
+[train] step  11000 loss 0.0212 | rgb 0.0068 ssim 0.0095 opa 0.0007 depth 0.0000 [raw 0.3644 w 0.0000 cov 4.6% sup 0.024 err 1.377u] psnr 36.91  N 240901 631s (17.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step  11200 loss 0.0177 | rgb 0.0066 ssim 0.0091 opa 0.0007 depth 0.0000 [raw 0.3400 w 0.0000 cov 4.7% sup 0.024 err 1.24u] psnr 37.41  N 241337 644s (17.4 it/s) mem 1.68GiB res 1.85GiB
+[train] step  11400 loss 0.0138 | rgb 0.0063 ssim 0.0084 opa 0.0007 depth 0.0000 [raw 0.3545 w 0.0000 cov 4.6% sup 0.024 err 1.35u] psnr 39.31  N 241337 658s (17.3 it/s) mem 1.68GiB res 1.85GiB
+[train] step  11600 loss 0.0145 | rgb 0.0061 ssim 0.0079 opa 0.0007 depth 0.0000 [raw 0.3670 w 0.0000 cov 4.5% sup 0.022 err 1.394u] psnr 39.70  N 241337 671s (17.3 it/s) mem 1.68GiB res 1.85GiB
+[train] step  11800 loss 0.0147 | rgb 0.0060 ssim 0.0077 opa 0.0007 depth 0.0000 [raw 0.3816 w 0.0000 cov 4.3% sup 0.022 err 1.563u] psnr 38.91  N 241337 685s (17.2 it/s) mem 1.68GiB res 1.85GiB
+[train] step  12000 loss 0.0131 | rgb 0.0059 ssim 0.0074 opa 0.0006 depth 0.0000 [raw 0.3717 w 0.0000 cov 4.4% sup 0.022 err 1.463u] psnr 40.14  N 241337 698s (17.2 it/s) mem 1.68GiB res 1.85GiB
+[train] step  12200 loss 0.0108 | rgb 0.0058 ssim 0.0071 opa 0.0006 depth 0.0000 [raw 0.3345 w 0.0000 cov 4.6% sup 0.023 err 1.269u] psnr 41.66  N 241337 712s (17.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step  12400 loss 0.0101 | rgb 0.0057 ssim 0.0070 opa 0.0006 depth 0.0000 [raw 0.3250 w 0.0000 cov 4.6% sup 0.024 err 1.288u] psnr 42.05  N 241337 726s (17.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step  12600 loss 0.0102 | rgb 0.0056 ssim 0.0067 opa 0.0006 depth 0.0000 [raw 0.3207 w 0.0000 cov 4.6% sup 0.024 err 1.25u] psnr 42.09  N 241337 739s (17.1 it/s) mem 1.68GiB res 1.85GiB
+[train] step  12800 loss 0.0133 | rgb 0.0056 ssim 0.0066 opa 0.0006 depth 0.0000 [raw 0.3184 w 0.0000 cov 4.6% sup 0.023 err 1.244u] psnr 39.93  N 241337 752s (17.0 it/s) mem 1.68GiB res 1.85GiB
+[train] step  13000 loss 0.0105 | rgb 0.0055 ssim 0.0063 opa 0.0006 depth 0.0000 [raw 0.3081 w 0.0000 cov 4.6% sup 0.024 err 1.22u] psnr 41.17  N 241337 766s (17.0 it/s) mem 1.68GiB res 1.85GiB
+[train] step  13200 loss 0.0103 | rgb 0.0056 ssim 0.0065 opa 0.0006 depth 0.0000 [raw 0.3272 w 0.0000 cov 4.4% sup 0.022 err 1.332u] psnr 41.64  N 241337 779s (16.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step  13400 loss 0.0115 | rgb 0.0055 ssim 0.0063 opa 0.0006 depth 0.0000 [raw 0.2763 w 0.0000 cov 4.7% sup 0.025 err 1.053u] psnr 41.14  N 241337 792s (16.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step  13600 loss 0.0100 | rgb 0.0054 ssim 0.0061 opa 0.0006 depth 0.0000 [raw 0.3021 w 0.0000 cov 4.5% sup 0.024 err 1.261u] psnr 41.74  N 241337 806s (16.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step  13800 loss 0.0101 | rgb 0.0054 ssim 0.0061 opa 0.0006 depth 0.0000 [raw 0.2824 w 0.0000 cov 4.7% sup 0.024 err 1.106u] psnr 42.01  N 241337 819s (16.9 it/s) mem 1.68GiB res 1.85GiB
+[train] step  14000 loss 0.0117 | rgb 0.0054 ssim 0.0061 opa 0.0006 depth 0.0000 [raw 0.2870 w 0.0000 cov 4.6% sup 0.023 err 1.133u] psnr 40.95  N 241337 832s (16.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step  14200 loss 0.0095 | rgb 0.0055 ssim 0.0063 opa 0.0006 depth 0.0000 [raw 0.2832 w 0.0000 cov 4.6% sup 0.024 err 1.155u] psnr 42.59  N 241337 845s (16.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step  14400 loss 0.0105 | rgb 0.0052 ssim 0.0057 opa 0.0006 depth 0.0000 [raw 0.2999 w 0.0000 cov 4.5% sup 0.022 err 1.255u] psnr 41.65  N 241337 859s (16.8 it/s) mem 1.68GiB res 1.85GiB
+[train] step  14600 loss 0.0162 | rgb 0.0052 ssim 0.0056 opa 0.0006 depth 0.0000 [raw 0.2894 w 0.0000 cov 4.6% sup 0.024 err 1.213u] psnr 38.01  N 241337 872s (16.7 it/s) mem 1.68GiB res 1.85GiB
+[train] step  14800 loss 0.0107 | rgb 0.0053 ssim 0.0059 opa 0.0006 depth 0.0000 [raw 0.2538 w 0.0000 cov 4.7% sup 0.025 err 0.9949u] psnr 40.93  N 241337 885s (16.7 it/s) mem 1.68GiB res 1.85GiB
+[train] step  15000 loss 0.0101 | rgb 0.0052 ssim 0.0055 opa 0.0006 depth 0.0000 [raw 0.2751 w 0.0000 cov 4.6% sup 0.024 err 1.147u] psnr 42.09  N 241337 898s (16.7 it/s) mem 1.68GiB res 1.85GiB
+[train] DONE in 899s (16.7 it/s), final N=241337
+[train] every metric below is from the cloud as trained at step 15000
+[train] in-sample (12 trained views): psnr 40.44 ssim 0.9665 cross-view depth p50 p50 0.1604u p90 1.951u (mean 0.8187u, 1.4% of depth, 926436 px over 22 view pairs)
+[train] 63.9% of gaussian centres have a sparse point within 0.228 scene units (0.1268 units median nearest-point distance), no scale anchor
+[train] report written to C:\Users\krisg\Desktop\Drone to 3d mesh\work\boulder-field-0aa9375f\train_progress\train_report.json

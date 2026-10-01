@@ -71,10 +71,13 @@ export function readCommand(event, parent, origin) {
     case "camera-set": {
       const o = data.value;
       if (!o || !finitePoint(o.target) || !["distance", "yaw", "pitch"].every(k => Number.isFinite(o[k])) || !(o.distance > 0) ||
-          Math.abs(o.pitch) >= Math.PI / 2 || Object.keys(o).some(k => !["target", "distance", "yaw", "pitch"].includes(k))) {
-        throw new Error("camera-set value must be a finite orbit {target, distance, yaw, pitch}");
+          Math.abs(o.pitch) >= Math.PI / 2 || Object.keys(o).some(k => !["target", "distance", "yaw", "pitch", "fov"].includes(k)) ||
+          ("fov" in o && !(Number.isFinite(o.fov) && o.fov > 1 && o.fov < 179))) {
+        throw new Error("camera-set value must be a finite orbit {target, distance, yaw, pitch} with an optional fov (deg)");
       }
-      result.value = { target: [...o.target], distance: o.distance, yaw: o.yaw, pitch: o.pitch }; fields.push("value"); break;
+      result.value = { target: [...o.target], distance: o.distance, yaw: o.yaw, pitch: o.pitch };
+      if ("fov" in o) result.value.fov = o.fov;
+      fields.push("value"); break;
     }
     default: throw new Error("Unknown workspace command");
   }

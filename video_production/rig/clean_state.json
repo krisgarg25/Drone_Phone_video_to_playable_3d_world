@@ -1,0 +1,34 @@
+{
+ "rocks_quality": [
+  ".colmap_options.json",
+  ".pipeline",
+  "clips.json",
+  "colmap",
+  "database.db",
+  "eval_pairs.json",
+  "eval_renders",
+  "frame.json",
+  "frames_full",
+  "frames_train",
+  "frames_undist",
+  "keyframes.jsonl",
+  "keyframes_poses.jsonl",
+  "logs",
+  "pc",
+  "proposals",
+  "report.json",
+  "sparse",
+  "splat.ply",
+  "train_log.txt",
+  "train_progress",
+  "video_meta.json",
+  "viewer_assets",
+  "walktest"
+ ],
+ "flat_ground": [
+  "frame.json",
+  "pc",
+  "project.json",
+  "viewer_assets"
+ ]
+}

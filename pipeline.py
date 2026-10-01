@@ -875,7 +875,8 @@ def build_config(args, sources: dict, allow_auto_diag: bool = True) -> dict:
     # explicit CLI overrides win over everything
     for k in ("target", "width", "steps", "cap", "voxel", "grow_grad",
               "init_min_tri_angle", "overlap", "prior_std", "cross_clip",
-              "vocab_tree", "speed_anchor", "height_anchor"):
+              "vocab_tree", "speed_anchor", "height_anchor",
+              "train_preview", "train_preview_every"):
         v = getattr(args, k, None)
         if v is not None:
             if k in cfg_vals and cfg_vals[k] != v:
@@ -1111,6 +1112,9 @@ def build_steps(cfg: dict) -> list[dict]:
     # textureless/few-view scene it exists for - at +12-14% step time. It stays off
     # until it wins on a scene that actually has the problem.
     train_argv += ["--depth-weight", cfg.get("depth_weight", 0.0)]
+    if cfg.get("train_preview"):
+        train_argv += ["--preview-image", cfg["train_preview"],
+                       "--preview-every", cfg.get("train_preview_every") or 100]
     steps += [
         dict(name="poses", py=PY,
              argv=[PY, ROOT / "scripts/parse_colmap.py", "--work", work],
@@ -2081,6 +2085,15 @@ def main() -> None:
                             "247k with an 850k cap and 18k steps unused; 0.0002 is the "
                             "detail setting, at the cost of VRAM and browser sort time. "
                             "Default 0.0006")
+        # The env default lets a run started from the app carry it: the workspace
+        # API whitelists its fields and has no pass-through for trainer flags.
+        p.add_argument("--train-preview", dest="train_preview",
+                       default=os.environ.get("PIPELINE_TRAIN_PREVIEW") or None,
+                       help="training image whose camera the trainer renders every "
+                            "--train-preview-every steps (train_progress/preview/); "
+                            "default $PIPELINE_TRAIN_PREVIEW")
+        p.add_argument("--train-preview-every", dest="train_preview_every", type=int,
+                       default=None)
         p.add_argument("--voxel", default=None)
         p.add_argument("--variant", default="cluster_shell")
         p.add_argument("--init-min-tri-angle", dest="init_min_tri_angle",

@@ -881,3 +881,14 @@ test("pc.js focus-placement selects the item and fits an orbit without moving to
   assert.equal(h.sent.at(-1).type, "error"); assert.match(h.sent.at(-1).message, /unavailable/);
   assert.deepEqual(h.state().orbit.target, [4, 0.225, 7]);
 });
+
+// A "view from the photo" narrows the lens; a resumed orbit may carry the lens back.
+test("camera-set takes an optional field of view and rejects a bad one", () => {
+  const orbit = { target: [1, 2, 3], distance: 10, yaw: 0.1, pitch: 0.2 };
+  assert.deepEqual(W.readCommand(event(packet("camera-set", { value: orbit })), parent, origin).value, orbit);
+  assert.equal(W.readCommand(event(packet("camera-set", { value: { ...orbit, fov: 55 } })), parent, origin).value.fov, 55);
+  for (const fov of [0, 180, NaN, "70"]) {
+    assert.throws(() => W.readCommand(event(packet("camera-set", { value: { ...orbit, fov } })), parent, origin));
+  }
+  assert.throws(() => W.readCommand(event(packet("camera-set", { value: { ...orbit, zoom: 2 } })), parent, origin));
+});

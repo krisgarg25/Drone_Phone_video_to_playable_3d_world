@@ -48,21 +48,24 @@ def read_txt_model(txt_dir):
         xyz.append([float(v) for v in f[1:4]])
         rgb.append([int(v) for v in f[4:7]])
     images = []
-    # A registered image is a pose line (ten fields, the last a file name) followed by its
-    # 2D points, which is an EMPTY line when it observes none - so blank lines cannot be
-    # dropped and pairs cannot be counted; pose lines are recognised by their shape.
+    # A registered image is a pose line (nine numeric fields, then a file name) followed
+    # by its 2D points, which is an EMPTY line when it observes none - so blank lines
+    # cannot be dropped and pairs cannot be counted; pose lines are recognised by shape.
+    # The name may itself contain spaces, so it is read from a capped split rather than
+    # as the tenth whitespace token.
     for line in (txt_dir / "images.txt").read_text(encoding="utf-8").splitlines():
         f = line.split()
-        if line.startswith("#") or len(f) != 10:
+        if line.startswith("#") or len(f) < 10:
             continue
         try:
             float(f[9])
             continue                      # a points line that happens to have ten numbers
         except ValueError:
             pass
-        q = [float(v) for v in f[1:5]]
-        t = [float(v) for v in f[5:8]]
-        images.append({"name": f[9], "R": _quat_to_r(*q), "t": np.array(t)})
+        p = line.split(maxsplit=9)
+        q = [float(v) for v in p[1:5]]
+        t = [float(v) for v in p[5:8]]
+        images.append({"name": p[9].strip(), "R": _quat_to_r(*q), "t": np.array(t)})
     return np.asarray(xyz, float).reshape(-1, 3), np.asarray(rgb, np.uint8).reshape(-1, 3), images
 
 

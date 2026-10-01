@@ -13,8 +13,7 @@
 </p>
 
 <p align="center">
-  <b>▶ <a href="https://www.youtube.com/watch?v=xMRw3slJjIo">Watch the 4:30 demo on YouTube</a></b>
-  · <a href="docs/media/demo-4m30s.mp4">same cut, hosted in this repo (23&nbsp;MB)</a>
+  <b>▶ <a href="docs/media/demo.mp4">Watch the demo walkthrough in this repo (21&nbsp;MB)</a></b>
   · <a href="#proof-not-promises">skip to the measured results</a>
 </p>
 
@@ -34,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="#demo-video-430"><b>Watch</b></a> ·
+  <a href="#demo-video"><b>Watch</b></a> ·
   <a href="#real-footage-not-renders">Footage</a> ·
   <a href="#how-a-video-becomes-a-world">Pipeline</a> ·
   <a href="#record-on-your-phone">Capture</a> ·
@@ -58,16 +57,14 @@ is turning a reconstruction into something a person can stand in and walk across
 
 ---
 
-## Demo video (4:30)
+## Demo video
 
-The full walkthrough — capture on the phone, reconstruction, walkable result — is
-one 4 minute 30 second cut, available three ways (it is the same video everywhere):
+The full walkthrough — capture on the phone, reconstruction, walkable result:
 
 | where | link | notes |
 |---|---|---|
-| **YouTube (best way to watch)** | **[youtube.com/watch?v=xMRw3slJjIo](https://www.youtube.com/watch?v=xMRw3slJjIo)** | streams instantly, click the poster above |
-| **In this repo** | [`docs/media/demo-4m30s.mp4`](docs/media/demo-4m30s.mp4) | 540p, 23 MB — compressed under GitHub's 25 MB file limit; open the file page and it plays in the browser |
-| **Direct stream** | `https://cdn.jsdelivr.net/gh/krisgarg25/Drone_Phone_video_to_playable_3d_world@main/docs/media/demo-4m30s.mp4` | range-request friendly, paste into any player |
+| **In this repo** | [`docs/media/demo.mp4`](docs/media/demo.mp4) | 540p, 21 MB — compressed under GitHub's 25 MB file limit; open the file page and it plays in the browser |
+| **Direct stream** | `https://cdn.jsdelivr.net/gh/krisgarg25/Drone_Phone_video_to_playable_3d_world@main/docs/media/demo.mp4` | range-request friendly, faststart muxed |
 
 > GitHub strips `<video>` tags from READMEs, so no `.mp4` can play *inline* on
 > this page — that is why the moving pictures below are GIFs cut from real

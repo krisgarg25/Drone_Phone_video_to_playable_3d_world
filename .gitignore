@@ -31,18 +31,18 @@ tools/ffmpeg.zip
 *.key
 *.crt
 
-# --- One-off scripts from another project, parked in this folder ---
-# Each writes to a hard-coded C:\Users\...\vid razorpay\... path, so they are neither
-# runnable here nor part of this pipeline. Ignored, not deleted: the files stay.
-# A `git add -A` on the way to publishing would otherwise ship another project's
-# absolute paths inside this repository.
-/add_avatar_to_html.py
-/generate_ai_prompts.py
-/generate_blueprint.py
-/render_avatar_video.py
-/update_hyperframes.py
-/write_kinetic_subtitles.py
-/write_subtitles_hyperframes.py
+# --- Video production & media workspace ---
+video_production/film/renders/*.mp4
+video_production/rig/.chrome-profile/
+video_production/raw/
+video_production/film/assets/cut/
+video_production/film/assets/video/
+video_production/film/.thumbnails/
+.thumbnails/
+
+# --- Retained local final outcomes (never commit to git) ---
+se_lab/
+ppt/
 
 # --- Outputs / temp files ---
 *.log
@@ -61,6 +61,11 @@ node_modules/
 # curl -L -o data/geoid/us_nga_egm96_15.tif https://cdn.proj.org/us_nga_egm96_15.tif
 data/geoid/*.tif
 
-# --- Local scratch tests and git worktrees ---
+# --- Local scratch tests, intermediate decks, and git worktrees ---
 gputest/
+deck_render/
+deck_inspect/
+ref_crops/
 .wt/
+_archived_workspaces/
+data/textures/

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+
+#brk-inspect { position: absolute; inset: 0; overflow: hidden; background: transparent; color: var(--ink);
+  font-family: "Geist", sans-serif; 
+  --bg: hsl(225 12% 5%); --panel: hsl(222 12% 8%); --raised: hsl(222 11% 11%);
+  --line: hsl(222 9% 22%); --ink: hsl(220 25% 96%); --dim: hsl(218 12% 76%);
+  --muted: hsl(218 8% 62%); --accent: hsl(36 100% 57%); --green: hsl(156 62% 52%);
+  --soft: hsl(36 55% 11%);
+ }
+#brk-inspect * { box-sizing: border-box; }
+#brk-inspect .mono { font-family: "Geist Mono", monospace; }
+#brk-inspect .eyebrow { font-family: "Geist Mono", monospace; font-size: 24px; letter-spacing: 0.02em; color: var(--accent);
+  display: flex; align-items: center; gap: 16px; }
+#brk-inspect .eyebrow .rule { display: inline-block; width: 44px; height: 2px; background: var(--accent); transform-origin: 0 50%; }
+#brk-inspect .h1 { font-size: 84px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 8px; }
+#brk-inspect .h2 { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 4px; }
+#brk-inspect .body { font-size: 32px; font-weight: 350; color: var(--dim); line-height: 1.32; margin: 0; }
+#brk-inspect .acc { color: var(--accent); }
+#brk-inspect .grn { color: var(--green); }
+#brk-inspect .wm { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.05em 0.14em; margin: 0 -0.05em -0.14em; }
+#brk-inspect .w { display: inline-block; will-change: transform; }
+#brk-inspect .win { position: absolute; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 90px -30px hsl(0 0% 0% / .8), 0 0 0 1px hsl(0 0% 100% / .03); }
+#brk-inspect .bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 18px;
+  background: var(--raised); border-bottom: 2px solid var(--line); font-family: "Geist Mono", monospace; font-size: 19px; color: var(--dim); }
+#brk-inspect .bar i { width: 11px; height: 11px; border-radius: 50%; background: hsl(222 9% 28%); display: inline-block; }
+#brk-inspect .bar b { font-weight: 500; margin-left: 10px; color: var(--ink); }
+#brk-inspect .crop { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#brk-inspect .crop > video, #brk-inspect .crop > img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+#brk-inspect .stat { font-family: "Geist Mono", monospace; font-size: 76px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+#brk-inspect .stat-l { font-size: 26px; color: var(--dim); margin-top: 10px; line-height: 1.3; }
+#brk-inspect .pill { display: inline-flex; align-items: center; gap: 12px; padding: 10px 20px; border-radius: 999px; white-space: nowrap;
+  font-size: 26px; font-weight: 600; background: hsl(222 12% 8% / .92); border: 2px solid var(--line); }
+#brk-inspect .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+#brk-inspect .amb { position: absolute; inset: 0; overflow: hidden; }
+#brk-inspect .amb-grid { position: absolute; left: -88px; top: -88px; width: 2096px; height: 1256px;
+  background-image: radial-gradient(hsl(220 25% 85% / .13) 1.3px, hsl(220 25% 85% / 0) 1.9px); background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%);
+          mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%); }
+#brk-inspect .amb-a { position: absolute; left: -520px; top: -700px; width: 1600px; height: 1600px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(36 100% 57% / .13), hsl(36 100% 57% / 0) 62%); }
+#brk-inspect .amb-b { position: absolute; left: 1000px; top: 300px; width: 1500px; height: 1500px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(212 70% 55% / .10), hsl(212 70% 55% / 0) 62%); }
+#brk-inspect .vig { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 85% 80% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+
+#brk-inspect .rp { position: absolute; width: 0; height: 0; pointer-events: none; }
+#brk-inspect .rp i { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,.95); box-shadow: 0 0 0 1px rgba(0,0,0,.28), 0 0 14px rgba(255,255,255,.35); opacity: 0; }
+#brk-inspect .rp b { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.75), rgba(255,255,255,0) 70%); opacity: 0; }
+</style>
+      <div id="brk-inspect" data-composition-id="brk-inspect" data-width="1920" data-height="1080" data-duration="20.150">
+        <div id="brk-inspect-glass" style="position:absolute; inset:0; background:hsl(225 12% 5% / .55)"></div>
+        <div class="vig"></div>
+        <div id="brk-inspect-head" style="position:absolute; left:96px; top:70px; width:1728px">
+          <div class="eyebrow"><span class="rule"></span><span class="eb-t">03 · Inspect</span></div>
+          <p class="h1" style="margin-top:12px; font-size:68px"><span class="wm"><span class="w">More</span></span> <span class="wm"><span class="w">in</span></span> <span class="wm"><span class="w">Inspect</span></span></p>
+        </div>
+        <div id="brk-inspect-count" class="mono" style="position:absolute; left:96px; top:236px; font-size:24px; color:var(--dim)">2 more · each on a clean scene</div>
+        <div id="brk-inspect-slot0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-inspect-tile0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-cut-a-section-a48315a05c.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Cut a section</div>
+          <div id="brk-inspect-tick0" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-inspect-slot1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-inspect-tile1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-archive-record-a69a6a26b8.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Archive record</div>
+          <div id="brk-inspect-tick1" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-inspect-w0" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Cut a section</b><span style="margin-left:auto; color:var(--muted)">01 / 02</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-inspect-w0-v" class="" src="assets/cut/seg/mini-cut-a-section-a48315a05c.mp4" data-start="1.500" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-inspect-w0-rp0" class="rp" style="left:1620px; top:242px"><b></b><i></i></div><div id="brk-inspect-w0-rp1" class="rp" style="left:1621px; top:644px"><b></b><i></i></div><div id="brk-inspect-w0-rp2" class="rp" style="left:557px; top:521px"><b></b><i></i></div><div id="brk-inspect-w0-rp3" class="rp" style="left:1008px; top:468px"><b></b><i></i></div></div>
+            <div id="brk-inspect-w0-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-inspect-t0" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">01 / 02<span style="color:var(--muted)"> · shown at 2.1×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:50px"><span class="wm"><span class="w">Cut</span></span> <span class="wm"><span class="w">a</span></span> <span class="wm"><span class="w">section</span></span></p>
+          <p class="body" style="margin-top:14px">A true-scale profile through the site.</p>
+          
+        </div>
+        <div id="brk-inspect-w1" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Archive record</b><span style="margin-left:auto; color:var(--muted)">02 / 02</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-inspect-w1-v" class="" src="assets/cut/seg/mini-archive-record-a69a6a26b8.mp4" data-start="6.550" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"></div>
+            <div id="brk-inspect-w1-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-inspect-t1" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">02 / 02<span style="color:var(--muted)"> · shown at 1.6×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:50px"><span class="wm"><span class="w">Archive</span></span> <span class="wm"><span class="w">record</span></span></p>
+          <p class="body" style="margin-top:14px">How the model was made, with a checksum for every file.</p>
+          
+        </div>
+        <div id="brk-inspect-also" class="mono" style="position:absolute; left:96px; top:236px; font-size:24px; color:var(--dim); white-space:nowrap">
+          <span style="color:var(--accent)">Also in Inspect</span> · 5 more, not shown on these scans · These need poles, cables or an earlier flight of the same site.</div>
+        <div id="brk-inspect-c0" style="position:absolute; left:96px; top:523px; width:326px; height:290px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:294px; height:156px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="294" height="156" viewBox="0 0 320 170" style="position:absolute; inset:0"><line x1="16" y1="150" x2="304" y2="150" stroke="hsl(222 9% 32%)" stroke-width="2" stroke-linecap="round"/><line x1="160" y1="150" x2="160" y2="22" stroke="hsl(218 12% 62%)" stroke-width="1.5" stroke-dasharray="4 5"/><g id="brk-inspect-c0-il-pole"><line x1="160" y1="150" x2="160" y2="26" stroke="hsl(220 25% 96%)" stroke-width="6" stroke-linecap="round"/><line x1="144" y1="44" x2="176" y2="44" stroke="hsl(220 25% 96%)" stroke-width="4" stroke-linecap="round"/></g><path id="brk-inspect-c0-il-arc" d="M160 72 A78 78 0 0 1 172.2 73.0" fill="none" stroke="hsl(36 100% 57%)" stroke-width="3" stroke-linecap="round" stroke-dasharray="20" stroke-dashoffset="20"/><text id="brk-inspect-c0-il-th" x="182" y="66" fill="hsl(36 100% 57%)" font-family="Geist, sans-serif" font-size="22" font-weight="700" opacity="0">θ</text><text id="brk-inspect-c0-il-lb" x="204" y="66" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13" opacity="0">lean</text><circle id="brk-inspect-c0-il-rp" cx="160" cy="150" r="4" fill="none" stroke="hsl(36 100% 57%)" stroke-width="2" opacity="0"/></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21 L14 4"/><path d="M4 21h16"/><path d="M6 13a8 8 0 0 1 4-1" /></svg>
+            <span style="font-size:23px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Pole tilt</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">01</span>
+          </div>
+          <div style="font-size:17px; color:var(--dim); margin-top:6px; line-height:1.3">Click the foot of a pole or mast: how far it leans.</div>
+          <div id="brk-inspect-c0-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-inspect-c1" style="position:absolute; left:446px; top:523px; width:326px; height:290px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:294px; height:156px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="294" height="156" viewBox="0 0 320 170" style="position:absolute; inset:0"><line x1="16" y1="150" x2="304" y2="150" stroke="hsl(222 9% 32%)" stroke-width="2" stroke-linecap="round"/><line x1="52" y1="150" x2="52" y2="40" stroke="hsl(220 25% 96%)" stroke-width="5" stroke-linecap="round"/><line x1="268" y1="150" x2="268" y2="40" stroke="hsl(220 25% 96%)" stroke-width="5" stroke-linecap="round"/><path id="brk-inspect-c1-il-cb" d="M52 44 Q160 44 268 44" fill="none" stroke="hsl(36 100% 57%)" stroke-width="3" stroke-linecap="round"/><line id="brk-inspect-c1-il-sag" x1="160" y1="44" x2="160" y2="84" stroke="hsl(36 100% 57%)" stroke-width="2" stroke-dasharray="3 4" opacity="0"/><line id="brk-inspect-c1-il-clr" x1="160" y1="88" x2="160" y2="148" stroke="hsl(156 62% 52%)" stroke-width="2.5" opacity="0"/><text id="brk-inspect-c1-il-t1" x="168" y="70" fill="hsl(36 100% 57%)" font-family="Geist Mono, monospace" font-size="13" opacity="0">sag</text><text id="brk-inspect-c1-il-t2" x="168" y="124" fill="hsl(156 62% 52%)" font-family="Geist Mono, monospace" font-size="13" opacity="0">clearance</text><circle id="brk-inspect-c1-il-r1" cx="52" cy="44" r="4" fill="none" stroke="hsl(36 100% 57%)" stroke-width="2" opacity="0"/><circle id="brk-inspect-c1-il-r2" cx="268" cy="44" r="4" fill="none" stroke="hsl(36 100% 57%)" stroke-width="2" opacity="0"/></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v17M20 4v17"/><path d="M4 6 Q12 18 20 6"/></svg>
+            <span style="font-size:23px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Cable sag</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">02</span>
+          </div>
+          <div style="font-size:17px; color:var(--dim); margin-top:6px; line-height:1.3">Click both ends of a cable: sag and ground clearance.</div>
+          <div id="brk-inspect-c1-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-inspect-c2" style="position:absolute; left:797px; top:523px; width:326px; height:290px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:294px; height:156px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="294" height="156" viewBox="0 0 320 170" style="position:absolute; inset:0"><path d="M12 128 C 70 128, 104 92, 150 92 C 196 92, 226 118, 308 114" fill="none" stroke="hsl(218 12% 62%)" stroke-width="2.5" stroke-dasharray="5 5"/><path id="brk-inspect-c2-il-n" d="M12 128 C 70 128, 104 92, 150 92 C 196 92, 226 118, 308 114" fill="none" stroke="hsl(36 100% 57%)" stroke-width="3" stroke-linecap="round"/><ellipse id="brk-inspect-c2-il-hl" cx="150" cy="76" rx="54" ry="30" fill="hsl(36 100% 57%)" fill-opacity=".12" stroke="hsl(36 100% 57%)" stroke-width="1.5" opacity="0"/><path id="brk-inspect-c2-il-ar" d="M150 88 V64 M143 71 L150 64 L157 71" fill="none" stroke="hsl(220 25% 96%)" stroke-width="2" stroke-linecap="round" opacity="0"/><text x="16" y="160" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13">older scan</text><text x="120" y="160" fill="hsl(36 100% 57%)" font-family="Geist Mono, monospace" font-size="13">this scan</text><text id="brk-inspect-c2-il-mv" x="210" y="54" fill="hsl(36 100% 57%)" font-family="Geist, sans-serif" font-size="15" font-weight="650" opacity="0">moved</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="11" height="11" rx="1.5"/><rect x="10" y="9" width="11" height="11" rx="1.5"/></svg>
+            <span style="font-size:23px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">What moved</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">03</span>
+          </div>
+          <div style="font-size:17px; color:var(--dim); margin-top:6px; line-height:1.3">Against an older scan: the surfaces that moved.</div>
+          <div id="brk-inspect-c2-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-inspect-c3" style="position:absolute; left:1147px; top:523px; width:326px; height:290px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:294px; height:156px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="294" height="156" viewBox="0 0 320 170" style="position:absolute; inset:0"><path d="M12 150 L12 60 C 60 58, 110 52, 150 70 C 190 88, 240 110, 308 118 L308 150 Z" fill="none" stroke="hsl(218 12% 62%)" stroke-width="1.5" stroke-dasharray="4 5"/><path id="brk-inspect-c3-il-s" d="M12 150 L12 60 C 60 58, 110 52, 150 70 C 190 88, 240 110, 308 118 L308 150 Z" fill="hsl(36 100% 57%)" fill-opacity=".16" stroke="hsl(36 100% 57%)" stroke-width="2.5"/><text id="brk-inspect-c3-il-n0" x="228" y="40" fill="hsl(220 25% 96%)" font-family="Geist, sans-serif" font-size="16" font-weight="650" opacity="0">spring</text><text id="brk-inspect-c3-il-n1" x="228" y="40" fill="hsl(220 25% 96%)" font-family="Geist, sans-serif" font-size="16" font-weight="650" opacity="0">summer</text><text id="brk-inspect-c3-il-n2" x="228" y="40" fill="hsl(220 25% 96%)" font-family="Geist, sans-serif" font-size="16" font-weight="650" opacity="0">autumn</text><circle cx="206" cy="35" r="10" fill="none" stroke="hsl(218 12% 62%)" stroke-width="1.5"/><line id="brk-inspect-c3-il-hand" x1="206" y1="35" x2="206" y2="28" stroke="hsl(36 100% 57%)" stroke-width="2" stroke-linecap="round"/><text x="16" y="166" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13">the same slope, season by season</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>
+            <span style="font-size:23px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Seasonal change</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">04</span>
+          </div>
+          <div style="font-size:17px; color:var(--dim); margin-top:6px; line-height:1.3">Against an earlier season: erosion and movement.</div>
+          <div id="brk-inspect-c3-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-inspect-c4" style="position:absolute; left:1498px; top:523px; width:326px; height:290px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:294px; height:156px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="294" height="156" viewBox="0 0 320 170" style="position:absolute; inset:0"><line x1="16" y1="140" x2="304" y2="140" stroke="hsl(222 9% 32%)" stroke-width="2" stroke-linecap="round"/><path d="M40 140 V104 L58 96 L70 108 L92 92 V78 L112 70 L118 90 L128 84 V110 L150 118 L176 108 L196 118 V140 Z" fill="hsl(218 12% 62%)" fill-opacity=".4" stroke="hsl(218 12% 62%)" stroke-width="1.5"/><clipPath id="brk-inspect-c4-il-cp"><rect id="brk-inspect-c4-il-cr" x="0" y="0" width="0" height="170"/></clipPath><path d="M40 140 V78 H92 V36 H128 V78 H196 V96 H280 V140" fill="hsl(36 100% 57%)" fill-opacity=".06" stroke="hsl(36 100% 57%)" stroke-width="2.5" stroke-dasharray="7 6" clip-path="url(#brk-inspect-c4-il-cp)"/><g id="brk-inspect-c4-il-pen"><path d="M0 0 l-6 -16 l6 -4 l6 4 z" fill="hsl(36 100% 57%)"/></g><g id="brk-inspect-c4-il-tag" opacity="0"><rect x="206" y="26" width="92" height="28" rx="14" fill="hsl(222 12% 12%)" stroke="hsl(36 100% 57%)" stroke-width="1.5"/><text x="224" y="45" fill="hsl(36 100% 57%)" font-family="Geist, sans-serif" font-size="14" font-weight="650">a guess</text></g></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg>
+            <span style="font-size:23px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Restoration idea</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">05</span>
+          </div>
+          <div style="font-size:17px; color:var(--dim); margin-top:6px; line-height:1.3">Sketch a missing wall or tower, marked as a guess.</div>
+          <div id="brk-inspect-c4-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          const R = "#brk-inspect";
+          const $ = (s) => s.split(",").map((p) => R + " " + p.trim()).join(", ");
+          const WORDS = (s, at, o) => { o = o || {}; tl.fromTo($(s + " .w"), { yPercent: 118, rotate: o.r === undefined ? 5 : o.r, opacity: 0 },
+            { yPercent: 0, rotate: 0, opacity: 1, duration: o.d || 0.85, ease: o.e || "expo.out", stagger: o.s === undefined ? 0.055 : o.s }, at); };
+          const UP = (s, at, o) => { o = o || {}; tl.fromTo($(s), { y: o.y === undefined ? 30 : o.y, opacity: 0, filter: "blur(12px)" },
+            { y: 0, opacity: 1, filter: "blur(0px)", duration: o.d || 0.75, ease: o.e || "power3.out", stagger: o.s || 0 }, at); };
+          const OUT = (s, at, o) => { o = o || {}; tl.to($(s), { y: o.y === undefined ? -26 : o.y, opacity: 0, filter: "blur(12px)",
+            duration: o.d || 0.5, ease: "power2.in", stagger: o.s || 0 }, at); };
+          const RULE = (s, at, d) => tl.fromTo($(s), { scaleX: 0 }, { scaleX: 1, duration: d || 0.9, ease: "expo.inOut" }, at);
+          const COUNT = (s, to, at, d, fmt) => { const el = document.querySelector($(s)); const o = { v: 0 };
+            tl.fromTo(o, { v: 0 }, { v: to, duration: d, ease: "power2.out", onUpdate: () => { el.textContent = fmt(o.v); } }, at); };
+          // closed-form spring step response, normalised to the tween: a settle with a hair of overshoot
+          const SPRING = (w, z) => { const wd = w * Math.sqrt(1 - z * z);
+            const f = (p) => 1 - Math.exp(-z * w * p) * (Math.cos(wd * p) + (z * w / wd) * Math.sin(wd * p)); const e = f(1);
+            return (p) => (p >= 1 ? 1 : f(p) / e); };
+          const SPR = SPRING(10, 0.76), SOFT = SPRING(8.5, 0.97);
+          // ambient drift at a constant speed on a shared clock (t0), so scenes that cross
+          // over each other show the same background at the seam
+          const AMB = (dur, t0, k) => { t0 = t0 || 0; k = k || 1; const t1 = t0 + dur;
+            tl.fromTo($(".amb-a"), { x: 6 * k * t0, y: 3 * k * t0 }, { x: 6 * k * t1, y: 3 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-b"), { x: -5 * k * t0, y: -2.2 * k * t0 }, { x: -5 * k * t1, y: -2.2 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-grid"), { backgroundPosition: (-8 * k * t0) + "px 0px" }, { backgroundPosition: (-8 * k * t1) + "px 0px", duration: dur, ease: "none" }, 0); };
+
+          tl.fromTo($("#brk-inspect-glass"), { opacity: 0 }, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0);
+          tl.fromTo($(".vig"), { opacity: 0 }, { opacity: 1, duration: 0.8 }, 0);
+          RULE("#brk-inspect-head .rule", 0.30, 0.6);
+          tl.fromTo($("#brk-inspect-head .eb-t"), { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, 0.60);
+          WORDS("#brk-inspect-head .h1", 0.45, { s: 0.07 });
+          UP("#brk-inspect-count", 0.9);
+          tl.fromTo(["#brk-inspect-tile0", "#brk-inspect-tile1"].map((s) => R + " " + s), { opacity: 0, y: 50, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: SPR, stagger: 0.08 }, 0.8);
+          tl.fromTo(["#brk-inspect-slot0", "#brk-inspect-slot1"].map((s) => R + " " + s), { opacity: 0 }, { opacity: 1, duration: 0.3 }, 1.0);
+          tl.fromTo($("#brk-inspect-w0-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 1.934);
+          tl.fromTo($("#brk-inspect-w0-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 1.934);
+          tl.fromTo($("#brk-inspect-w0-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 2.557);
+          tl.fromTo($("#brk-inspect-w0-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 2.557);
+          tl.fromTo($("#brk-inspect-w0-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 3.231);
+          tl.fromTo($("#brk-inspect-w0-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 3.231);
+          tl.fromTo($("#brk-inspect-w0-rp3 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 3.863);
+          tl.fromTo($("#brk-inspect-w0-rp3 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 3.863);
+          tl.fromTo($("#brk-inspect-w0"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 1.500);
+          tl.fromTo($("#brk-inspect-w0"), { x: -608.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 1.500);
+          tl.fromTo($("#brk-inspect-w0-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 1.500);
+          tl.to($("#brk-inspect-tile0"), { opacity: 0, duration: 0.12 }, 1.540);
+          tl.to($("#brk-inspect-slot0"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 1.500);
+          WORDS("#brk-inspect-t0 .h2", 1.850, { s: 0.07 });
+          UP("#brk-inspect-t0 .mono, #brk-inspect-t0 .body", 2.000, { s: 0.1 });
+          OUT("#brk-inspect-t0", 6.150, { d: 0.45 });
+          tl.to($("#brk-inspect-w0"), { x: -608.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 6.250);
+          tl.to($("#brk-inspect-w0"), { opacity: 0, duration: 0.1, ease: "none" }, 6.930);
+          tl.to($("#brk-inspect-tile0"), { opacity: 1, duration: 0.1 }, 6.890);
+          tl.to($("#brk-inspect-slot0"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 6.950);
+          tl.fromTo($("#brk-inspect-tick0"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 7.000);
+          tl.fromTo($("#brk-inspect-w1"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 6.550);
+          tl.fromTo($("#brk-inspect-w1"), { x: -410.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 6.550);
+          tl.fromTo($("#brk-inspect-w1-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 6.550);
+          tl.to($("#brk-inspect-tile1"), { opacity: 0, duration: 0.12 }, 6.590);
+          tl.to($("#brk-inspect-slot1"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 6.550);
+          WORDS("#brk-inspect-t1 .h2", 6.900, { s: 0.07 });
+          UP("#brk-inspect-t1 .mono, #brk-inspect-t1 .body", 7.050, { s: 0.1 });
+          OUT("#brk-inspect-t1", 11.200, { d: 0.45 });
+          tl.to($("#brk-inspect-w1"), { x: -410.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 11.300);
+          tl.to($("#brk-inspect-w1"), { opacity: 0, duration: 0.1, ease: "none" }, 11.980);
+          tl.to($("#brk-inspect-tile1"), { opacity: 1, duration: 0.1 }, 11.940);
+          tl.to($("#brk-inspect-slot1"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 12.000);
+          tl.fromTo($("#brk-inspect-tick1"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 12.050);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-inspect-c0-il-rp"), { attr: { r: 3 }, opacity: 1 }, { attr: { r: 16 }, opacity: 0, duration: 0.55, ease: "power2.out" }, 0.1);
+            s.fromTo($("#brk-inspect-c0-il-pole"), { rotation: 0 }, { rotation: 9, svgOrigin: "160 150", duration: 1.1, ease: "back.out(1.4)" }, 0.35);
+            s.fromTo($("#brk-inspect-c0-il-arc"), { attr: { "stroke-dashoffset": 20 } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.9, ease: "power2.out" }, 0.55);
+            s.fromTo([$("#brk-inspect-c0-il-th"), $("#brk-inspect-c0-il-lb")], { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.1 }, 1.0);
+            s.to($("#brk-inspect-c0-il-pole"), { rotation: 0, svgOrigin: "160 150", duration: 0.7, ease: "power2.inOut" }, 2.9);
+            s.to($("#brk-inspect-c0-il-arc"), { attr: { "stroke-dashoffset": 20 }, duration: 0.5 }, 2.9);
+            s.to([$("#brk-inspect-c0-il-th"), $("#brk-inspect-c0-il-lb")], { opacity: 0, duration: 0.3 }, 2.9);
+            tl.add(s, 13.300); }
+          tl.fromTo($("#brk-inspect-c0-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 13.100);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-inspect-c1-il-r1"), { attr: { r: 3 }, opacity: 1 }, { attr: { r: 16 }, opacity: 0, duration: 0.55, ease: "power2.out" }, 0.1);
+            s.fromTo($("#brk-inspect-c1-il-r2"), { attr: { r: 3 }, opacity: 1 }, { attr: { r: 16 }, opacity: 0, duration: 0.55, ease: "power2.out" }, 0.5);
+            s.fromTo($("#brk-inspect-c1-il-cb"), { attr: { d: "M52 44 Q160 44 268 44" } }, { attr: { d: "M52 44 Q160 124 268 44" }, duration: 1.2, ease: "elastic.out(1, 0.55)" }, 0.75);
+            s.fromTo($("#brk-inspect-c1-il-sag"), { opacity: 0, scaleY: 0, svgOrigin: "160 44" }, { opacity: 1, scaleY: 1, duration: 0.5 }, 1.4);
+            s.fromTo($("#brk-inspect-c1-il-clr"), { opacity: 0, scaleY: 0, svgOrigin: "160 148" }, { opacity: 1, scaleY: 1, duration: 0.5 }, 1.7);
+            s.fromTo([$("#brk-inspect-c1-il-t1"), $("#brk-inspect-c1-il-t2")], { opacity: 0, x: -6 }, { opacity: 1, x: 0, duration: 0.4, stagger: 0.25 }, 1.6);
+            s.to([$("#brk-inspect-c1-il-sag"), $("#brk-inspect-c1-il-clr"), $("#brk-inspect-c1-il-t1"), $("#brk-inspect-c1-il-t2")], { opacity: 0, duration: 0.35 }, 3.3);
+            s.to($("#brk-inspect-c1-il-cb"), { attr: { d: "M52 44 Q160 44 268 44" }, duration: 0.5, ease: "power2.inOut" }, 3.3);
+            tl.add(s, 13.390); }
+          tl.fromTo($("#brk-inspect-c1-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 13.190);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-inspect-c2-il-n"), { attr: { d: "M12 128 C 70 128, 104 92, 150 92 C 196 92, 226 118, 308 114" } }, { attr: { d: "M12 128 C 70 128, 104 58, 150 60 C 196 62, 226 122, 308 114" }, duration: 1.1, ease: "power3.inOut" }, 0.2);
+            s.fromTo($("#brk-inspect-c2-il-hl"), { opacity: 0, scale: 0.6, svgOrigin: "150 76" }, { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(2)" }, 1.2);
+            s.fromTo([$("#brk-inspect-c2-il-ar"), $("#brk-inspect-c2-il-mv")], { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.45, stagger: 0.12 }, 1.4);
+            s.to([$("#brk-inspect-c2-il-hl"), $("#brk-inspect-c2-il-ar"), $("#brk-inspect-c2-il-mv")], { opacity: 0, duration: 0.35 }, 3.2);
+            s.to($("#brk-inspect-c2-il-n"), { attr: { d: "M12 128 C 70 128, 104 92, 150 92 C 196 92, 226 118, 308 114" }, duration: 0.6, ease: "power2.inOut" }, 3.2);
+            tl.add(s, 13.480); }
+          tl.fromTo($("#brk-inspect-c2-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 13.280);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-inspect-c3-il-hand"), { rotation: 0 }, { rotation: 360, svgOrigin: "206 35", duration: 3.6, ease: "none" }, 0);
+            s.fromTo($("#brk-inspect-c3-il-n0"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3 }, 0.10);
+            s.to($("#brk-inspect-c3-il-n0"), { opacity: 0, y: -8, duration: 0.25 }, 1.10);
+            s.fromTo($("#brk-inspect-c3-il-n1"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3 }, 1.30);
+            s.to($("#brk-inspect-c3-il-n1"), { opacity: 0, y: -8, duration: 0.25 }, 2.30);
+            s.to($("#brk-inspect-c3-il-s"), { attr: { d: "M12 150 L12 64 C 60 64, 104 66, 146 82 C 186 98, 238 114, 308 120 L308 150 Z" }, duration: 0.9, ease: "power2.inOut" }, 1.10);
+            s.fromTo($("#brk-inspect-c3-il-n2"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3 }, 2.50);
+            s.to($("#brk-inspect-c3-il-n2"), { opacity: 0, y: -8, duration: 0.25 }, 3.50);
+            s.to($("#brk-inspect-c3-il-s"), { attr: { d: "M12 150 L12 70 C 58 72, 100 84, 140 98 C 182 112, 236 120, 308 124 L308 150 Z" }, duration: 0.9, ease: "power2.inOut" }, 2.30);
+            s.to($("#brk-inspect-c3-il-s"), { attr: { d: "M12 150 L12 60 C 60 58, 110 52, 150 70 C 190 88, 240 110, 308 118 L308 150 Z" }, duration: 0.4, ease: "power2.inOut" }, 3.5);
+            tl.add(s, 13.570); }
+          tl.fromTo($("#brk-inspect-c3-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 13.370);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-inspect-c4-il-cr"), { attr: { width: 0 } }, { attr: { width: 300 }, duration: 2.0, ease: "power1.inOut" }, 0.1);
+            s.fromTo($("#brk-inspect-c4-il-pen"), { x: 40, y: 78, opacity: 1 }, { keyframes: [{ x: 92, y: 40, duration: 0.6 }, { x: 128, y: 40, duration: 0.3 }, { x: 196, y: 80, duration: 0.5 }, { x: 280, y: 98, duration: 0.6 }], ease: "none" }, 0.1);
+            s.to($("#brk-inspect-c4-il-pen"), { opacity: 0, duration: 0.2 }, 2.1);
+            s.fromTo($("#brk-inspect-c4-il-tag"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.45, ease: "back.out(2)" }, 2.0);
+            s.to([$("#brk-inspect-c4-il-tag")], { opacity: 0, duration: 0.3 }, 3.4);
+            s.to($("#brk-inspect-c4-il-cr"), { attr: { width: 0 }, duration: 0.4 }, 3.4);
+            tl.add(s, 13.660); }
+          tl.fromTo($("#brk-inspect-c4-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 13.460);
+          tl.to(["#brk-inspect-tile0", "#brk-inspect-tile1", "#brk-inspect-slot0", "#brk-inspect-slot1"].map((s) => R + " " + s), { opacity: 0, y: 70, duration: 0.55, ease: "power3.in", stagger: 0.04 }, 12.300);
+          OUT("#brk-inspect-count", 12.300, { d: 0.35 });
+          UP("#brk-inspect-also", 12.600);
+          tl.fromTo(["#brk-inspect-c0", "#brk-inspect-c1", "#brk-inspect-c2", "#brk-inspect-c3", "#brk-inspect-c4"].map((s) => R + " " + s), { opacity: 0, y: 80, scale: 0.86, rotationX: 28, transformPerspective: 1400, filter: "blur(14px)" }, { opacity: 1, y: 0, scale: 1, rotationX: 0, filter: "blur(0px)", duration: 1.0, ease: SPR, stagger: { each: 0.09, from: "start" } }, 12.700);
+          tl.to(R + " > *", { opacity: 0, filter: "blur(10px)", duration: 0.8, ease: "power2.inOut" }, 19.300);
+          window.__timelines["brk-inspect"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

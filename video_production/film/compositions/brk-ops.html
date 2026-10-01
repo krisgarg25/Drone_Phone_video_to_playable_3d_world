@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+
+#brk-ops { position: absolute; inset: 0; overflow: hidden; background: transparent; color: var(--ink);
+  font-family: "Geist", sans-serif; 
+  --bg: hsl(225 12% 5%); --panel: hsl(222 12% 8%); --raised: hsl(222 11% 11%);
+  --line: hsl(222 9% 22%); --ink: hsl(220 25% 96%); --dim: hsl(218 12% 76%);
+  --muted: hsl(218 8% 62%); --accent: hsl(36 100% 57%); --green: hsl(156 62% 52%);
+  --soft: hsl(36 55% 11%);
+ }
+#brk-ops * { box-sizing: border-box; }
+#brk-ops .mono { font-family: "Geist Mono", monospace; }
+#brk-ops .eyebrow { font-family: "Geist Mono", monospace; font-size: 24px; letter-spacing: 0.02em; color: var(--accent);
+  display: flex; align-items: center; gap: 16px; }
+#brk-ops .eyebrow .rule { display: inline-block; width: 44px; height: 2px; background: var(--accent); transform-origin: 0 50%; }
+#brk-ops .h1 { font-size: 84px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 8px; }
+#brk-ops .h2 { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 4px; }
+#brk-ops .body { font-size: 32px; font-weight: 350; color: var(--dim); line-height: 1.32; margin: 0; }
+#brk-ops .acc { color: var(--accent); }
+#brk-ops .grn { color: var(--green); }
+#brk-ops .wm { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.05em 0.14em; margin: 0 -0.05em -0.14em; }
+#brk-ops .w { display: inline-block; will-change: transform; }
+#brk-ops .win { position: absolute; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 90px -30px hsl(0 0% 0% / .8), 0 0 0 1px hsl(0 0% 100% / .03); }
+#brk-ops .bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 18px;
+  background: var(--raised); border-bottom: 2px solid var(--line); font-family: "Geist Mono", monospace; font-size: 19px; color: var(--dim); }
+#brk-ops .bar i { width: 11px; height: 11px; border-radius: 50%; background: hsl(222 9% 28%); display: inline-block; }
+#brk-ops .bar b { font-weight: 500; margin-left: 10px; color: var(--ink); }
+#brk-ops .crop { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#brk-ops .crop > video, #brk-ops .crop > img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+#brk-ops .stat { font-family: "Geist Mono", monospace; font-size: 76px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+#brk-ops .stat-l { font-size: 26px; color: var(--dim); margin-top: 10px; line-height: 1.3; }
+#brk-ops .pill { display: inline-flex; align-items: center; gap: 12px; padding: 10px 20px; border-radius: 999px; white-space: nowrap;
+  font-size: 26px; font-weight: 600; background: hsl(222 12% 8% / .92); border: 2px solid var(--line); }
+#brk-ops .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+#brk-ops .amb { position: absolute; inset: 0; overflow: hidden; }
+#brk-ops .amb-grid { position: absolute; left: -88px; top: -88px; width: 2096px; height: 1256px;
+  background-image: radial-gradient(hsl(220 25% 85% / .13) 1.3px, hsl(220 25% 85% / 0) 1.9px); background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%);
+          mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%); }
+#brk-ops .amb-a { position: absolute; left: -520px; top: -700px; width: 1600px; height: 1600px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(36 100% 57% / .13), hsl(36 100% 57% / 0) 62%); }
+#brk-ops .amb-b { position: absolute; left: 1000px; top: 300px; width: 1500px; height: 1500px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(212 70% 55% / .10), hsl(212 70% 55% / 0) 62%); }
+#brk-ops .vig { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 85% 80% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+
+#brk-ops .rp { position: absolute; width: 0; height: 0; pointer-events: none; }
+#brk-ops .rp i { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,.95); box-shadow: 0 0 0 1px rgba(0,0,0,.28), 0 0 14px rgba(255,255,255,.35); opacity: 0; }
+#brk-ops .rp b { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.75), rgba(255,255,255,0) 70%); opacity: 0; }
+</style>
+      <div id="brk-ops" data-composition-id="brk-ops" data-width="1920" data-height="1080" data-duration="34.250">
+        <div id="brk-ops-glass" style="position:absolute; inset:0; background:hsl(225 12% 5% / .55)"></div>
+        <div class="vig"></div>
+        <div id="brk-ops-head" style="position:absolute; left:96px; top:70px; width:1728px">
+          <div class="eyebrow"><span class="rule"></span><span class="eb-t">04 · Operations</span></div>
+          <p class="h1" style="margin-top:12px; font-size:68px"><span class="wm"><span class="w">More</span></span> <span class="wm"><span class="w">in</span></span> <span class="wm"><span class="w">Operations</span></span></p>
+        </div>
+        <div id="brk-ops-count" class="mono" style="position:absolute; left:96px; top:236px; font-size:24px; color:var(--dim)">4 more · each on a clean scene</div>
+        <div id="brk-ops-slot0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-ops-tile0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-road-access-251a39b0ab.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Road access</div>
+          <div id="brk-ops-tick0" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-ops-slot1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-ops-tile1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-map-tiles-553c4152a9.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Map tiles</div>
+          <div id="brk-ops-tick1" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-ops-slot2" style="position:absolute; left:492px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-ops-tile2" style="position:absolute; left:492px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-relief-camp-50852f34c1.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Relief camp</div>
+          <div id="brk-ops-tick2" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-ops-slot3" style="position:absolute; left:690px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-ops-tile3" style="position:absolute; left:690px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-site-logistics-cee35a59ae.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Site logistics</div>
+          <div id="brk-ops-tick3" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-ops-w0" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Road access</b><span style="margin-left:auto; color:var(--muted)">01 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-ops-w0-v" class="" src="assets/cut/seg/mini-road-access-251a39b0ab.mp4" data-start="1.500" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-ops-w0-rp0" class="rp" style="left:1507px; top:175px"><b></b><i></i></div><div id="brk-ops-w0-rp1" class="rp" style="left:1620px; top:380px"><b></b><i></i></div><div id="brk-ops-w0-rp2" class="rp" style="left:1621px; top:796px"><b></b><i></i></div><div id="brk-ops-w0-rp3" class="rp" style="left:560px; top:636px"><b></b><i></i></div><div id="brk-ops-w0-rp4" class="rp" style="left:1080px; top:449px"><b></b><i></i></div></div>
+            <div id="brk-ops-w0-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-ops-t0" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">01 / 04<span style="color:var(--muted)"> · shown at 2.8×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Road</span></span> <span class="wm"><span class="w">access</span></span></p>
+          <p class="body" style="margin-top:14px">A route a vehicle can still drive.</p>
+          
+        </div>
+        <div id="brk-ops-w1" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Map tiles</b><span style="margin-left:auto; color:var(--muted)">02 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-ops-w1-v" class="" src="assets/cut/seg/mini-map-tiles-553c4152a9.mp4" data-start="6.550" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"></div>
+            <div id="brk-ops-w1-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-ops-t1" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">02 / 04<span style="color:var(--muted)"> · shown at 2.0×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Map</span></span> <span class="wm"><span class="w">tiles</span></span></p>
+          <p class="body" style="margin-top:14px">Height-map and point-cloud tiles for GIS.</p>
+          
+        </div>
+        <div id="brk-ops-w2" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Relief camp</b><span style="margin-left:auto; color:var(--muted)">03 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-ops-w2-v" class="" src="assets/cut/seg/mini-relief-camp-50852f34c1.mp4" data-start="11.600" data-duration="8.667" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-ops-w2-rp0" class="rp" style="left:1489px; top:331px"><b></b><i></i></div><div id="brk-ops-w2-rp1" class="rp" style="left:1503px; top:669px"><b></b><i></i></div><div id="brk-ops-w2-rp2" class="rp" style="left:784px; top:452px"><b></b><i></i></div><div id="brk-ops-w2-rp3" class="rp" style="left:1487px; top:331px"><b></b><i></i></div><div id="brk-ops-w2-rp4" class="rp" style="left:874px; top:468px"><b></b><i></i></div><div id="brk-ops-w2-rp5" class="rp" style="left:1487px; top:331px"><b></b><i></i></div><div id="brk-ops-w2-rp6" class="rp" style="left:970px; top:485px"><b></b><i></i></div><div id="brk-ops-w2-rp7" class="rp" style="left:1487px; top:331px"><b></b><i></i></div><div id="brk-ops-w2-rp8" class="rp" style="left:729px; top:527px"><b></b><i></i></div><div id="brk-ops-w2-rp9" class="rp" style="left:1487px; top:331px"><b></b><i></i></div><div id="brk-ops-w2-rp10" class="rp" style="left:964px; top:633px"><b></b><i></i></div><div id="brk-ops-w2-rp11" class="rp" style="left:664px; top:506px"><b></b><i></i></div><div id="brk-ops-w2-rp12" class="rp" style="left:647px; top:506px"><b></b><i></i></div><div id="brk-ops-w2-rp13" class="rp" style="left:552px; top:506px"><b></b><i></i></div></div>
+            <div id="brk-ops-w2-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-ops-t2" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">03 / 04<span style="color:var(--muted)"> · shown at 3.2×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Relief</span></span> <span class="wm"><span class="w">camp</span></span></p>
+          <p class="body" style="margin-top:14px">Tents, a medical tent and a helipad, at real size.</p>
+          <span class="pill" style="font-size:20px; padding:6px 14px; margin-top:26px"><span class="dot" style="background:var(--muted)"></span>Open ground</span>
+        </div>
+        <div id="brk-ops-w3" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Site logistics</b><span style="margin-left:auto; color:var(--muted)">04 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-ops-w3-v" class="" src="assets/cut/seg/mini-site-logistics-cee35a59ae.mp4" data-start="19.667" data-duration="5.767" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-ops-w3-rp0" class="rp" style="left:1489px; top:331px"><b></b><i></i></div><div id="brk-ops-w3-rp1" class="rp" style="left:1503px; top:669px"><b></b><i></i></div><div id="brk-ops-w3-rp2" class="rp" style="left:877px; top:489px"><b></b><i></i></div><div id="brk-ops-w3-rp3" class="rp" style="left:1487px; top:331px"><b></b><i></i></div><div id="brk-ops-w3-rp4" class="rp" style="left:853px; top:437px"><b></b><i></i></div><div id="brk-ops-w3-rp5" class="rp" style="left:665px; top:505px"><b></b><i></i></div><div id="brk-ops-w3-rp6" class="rp" style="left:553px; top:506px"><b></b><i></i></div></div>
+            <div id="brk-ops-w3-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-ops-t3" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">04 / 04<span style="color:var(--muted)"> · shown at 3.2×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:50px"><span class="wm"><span class="w">Site</span></span> <span class="wm"><span class="w">logistics</span></span></p>
+          <p class="body" style="margin-top:14px">A tower crane and its jib circle.</p>
+          <span class="pill" style="font-size:20px; padding:6px 14px; margin-top:26px"><span class="dot" style="background:var(--muted)"></span>Open ground</span>
+        </div>
+        <div id="brk-ops-also" class="mono" style="position:absolute; left:96px; top:236px; font-size:24px; color:var(--dim); white-space:nowrap">
+          <span style="color:var(--accent)">Also in Operations</span> · 8 more, not shown on these scans · These need buildings, a second flight or a design model.</div>
+        <div id="brk-ops-c0" style="position:absolute; left:96px; top:319px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><rect x="10" y="20" width="300" height="130" rx="8" fill="hsl(222 12% 11%)"/><g><path d="M34 132 v-26 l20 -16 l20 16 v26 z" fill="hsl(220 25% 96%)" fill-opacity=".85"/><path d="M104 132 v-26 l20 -16 l20 16 v26 z" fill="hsl(220 25% 96%)" fill-opacity=".85"/><path d="M196 132 v-26 l20 -16 l20 16 v26 z" fill="hsl(220 25% 96%)" fill-opacity=".85"/><path d="M250 132 v-26 l20 -16 l20 16 v26 z" fill="hsl(220 25% 96%)" fill-opacity=".85"/></g><clipPath id="brk-ops-c0-il-cp"><rect id="brk-ops-c0-il-cr" x="10" y="20" width="0" height="130"/></clipPath><g clip-path="url(#brk-ops-c0-il-cp)"><rect x="10" y="20" width="300" height="130" rx="8" fill="hsl(222 12% 13%)"/><path d="M34 132 v-26 l20 -16 l20 16 v26 z" fill="hsl(220 25% 96%)" fill-opacity=".85"/><path d="M104 132 v-26 l20 -16 l20 16 v26 z" fill="hsl(220 25% 96%)" fill-opacity=".85"/><path d="M196 132 l8 -10 l7 6 l9 -12 l6 9 l10 -4 v11 z" fill="hsl(4 82% 62%)" fill-opacity=".55"/><path d="M250 132 v-26 l20 -16 l20 16 v26 z" fill="hsl(220 25% 96%)" fill-opacity=".85"/></g><line id="brk-ops-c0-il-wl" x1="10" y1="16" x2="10" y2="154" stroke="hsl(36 100% 57%)" stroke-width="3"/><circle id="brk-ops-c0-il-ring" cx="216" cy="122" r="22" fill="none" stroke="hsl(36 100% 57%)" stroke-width="2.5" opacity="0"/><text x="14" y="168" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13">before the event</text><text x="222" y="168" fill="hsl(36 100% 57%)" font-family="Geist Mono, monospace" font-size="13">after</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="11" height="11" rx="1.5"/><rect x="10" y="9" width="11" height="11" rx="1.5"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">What changed</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">01</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">Against the flight before the event.</div>
+          <div id="brk-ops-c0-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-ops-c1" style="position:absolute; left:534px; top:319px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><line x1="16" y1="132" x2="304" y2="132" stroke="hsl(222 9% 32%)" stroke-width="2" stroke-linecap="round"/><path id="brk-ops-c1-il-b0" d="M34 132 V64 H94 V132 Z" fill="hsl(156 62% 52%)" fill-opacity="0" stroke="hsl(220 25% 96%)" stroke-width="2" stroke-linejoin="round"/><text id="brk-ops-c1-il-l0" x="34" y="156" fill="hsl(156 62% 52%)" font-family="Geist Mono, monospace" font-size="13" opacity="0">intact</text><path id="brk-ops-c1-il-b1" d="M130 132 V64 H190 V132 Z" fill="hsl(36 100% 57%)" fill-opacity="0" stroke="hsl(220 25% 96%)" stroke-width="2" stroke-linejoin="round"/><text id="brk-ops-c1-il-l1" x="130" y="156" fill="hsl(36 100% 57%)" font-family="Geist Mono, monospace" font-size="13" opacity="0">damaged</text><path id="brk-ops-c1-il-b2" d="M226 132 V64 L238 64 L248 64 L260 64 L270 64 L286 64 V132 Z" fill="hsl(4 82% 62%)" fill-opacity="0" stroke="hsl(220 25% 96%)" stroke-width="2" stroke-linejoin="round"/><text id="brk-ops-c1-il-l2" x="226" y="156" fill="hsl(4 82% 62%)" font-family="Geist Mono, monospace" font-size="13" opacity="0">collapsed</text><line id="brk-ops-c1-il-scan" x1="20" y1="44" x2="20" y2="136" stroke="hsl(36 100% 57%)" stroke-width="2" opacity=".9"/></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V5l7-2v18M12 8l7 2v11"/><path d="M3 21h18M8 8v1M8 12v1M8 16v1M15 13v1M15 17v1"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Building damage</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">02</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">Every building graded: intact, damaged, collapsed.</div>
+          <div id="brk-ops-c1-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-ops-c2" style="position:absolute; left:972px; top:319px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><line x1="16" y1="140" x2="304" y2="140" stroke="hsl(222 9% 32%)" stroke-width="2" stroke-linecap="round"/><clipPath id="brk-ops-c2-il-mc"><path d="M40 140 C 70 140, 90 70, 150 66 C 208 62, 236 132, 280 140 Z"/></clipPath><path d="M40 140 C 70 140, 90 70, 150 66 C 208 62, 236 132, 280 140 Z" fill="hsl(218 12% 62%)" fill-opacity=".3" stroke="hsl(218 12% 62%)" stroke-width="1.5"/><rect id="brk-ops-c2-il-lv" x="30" y="140" width="260" height="90" fill="hsl(36 100% 57%)" fill-opacity=".55" clip-path="url(#brk-ops-c2-il-mc)"/><path id="brk-ops-c2-il-ls" d="M28 144 C 40 90, 110 44, 160 50 C 222 56, 266 108, 292 146 Z" fill="none" stroke="hsl(36 100% 57%)" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="620" stroke-dashoffset="620"/><text id="brk-ops-c2-il-m3" x="226" y="40" fill="hsl(36 100% 57%)" font-family="Geist, sans-serif" font-size="18" font-weight="700" opacity="0">m³</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20 Q7 8 12 11 Q16 6 22 20z"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Debris volume</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">03</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">Outline a debris pile or landslide: its volume.</div>
+          <div id="brk-ops-c2-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-ops-c3" style="position:absolute; left:1410px; top:319px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><rect x="10" y="14" width="300" height="136" rx="8" fill="hsl(222 12% 11%)"/><line x1="40" y1="14" x2="40" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="70" y1="14" x2="70" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="100" y1="14" x2="100" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="130" y1="14" x2="130" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="160" y1="14" x2="160" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="190" y1="14" x2="190" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="220" y1="14" x2="220" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="250" y1="14" x2="250" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="280" y1="14" x2="280" y2="150" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="10" y1="34" x2="310" y2="34" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="10" y1="64" x2="310" y2="64" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="10" y1="94" x2="310" y2="94" stroke="hsl(222 9% 22%)" stroke-width="1"/><line x1="10" y1="124" x2="310" y2="124" stroke="hsl(222 9% 22%)" stroke-width="1"/><path d="M10 104 C 90 100, 150 70, 310 64" fill="none" stroke="hsl(222 9% 32%)" stroke-width="10" stroke-linecap="round"/><circle id="brk-ops-c3-il-w0" cx="60" cy="60" r="6" fill="hsl(220 25% 96%)" opacity="0"/><circle id="brk-ops-c3-il-rw0" cx="60" cy="60" r="6" fill="none" stroke="hsl(220 25% 96%)" stroke-width="1.5" opacity="0"/><circle id="brk-ops-c3-il-w1" cx="96" cy="128" r="6" fill="hsl(220 25% 96%)" opacity="0"/><circle id="brk-ops-c3-il-rw1" cx="96" cy="128" r="6" fill="none" stroke="hsl(220 25% 96%)" stroke-width="1.5" opacity="0"/><circle id="brk-ops-c3-il-w2" cx="232" cy="110" r="6" fill="hsl(220 25% 96%)" opacity="0"/><circle id="brk-ops-c3-il-rw2" cx="232" cy="110" r="6" fill="none" stroke="hsl(220 25% 96%)" stroke-width="1.5" opacity="0"/><circle id="brk-ops-c3-il-w3" cx="270" cy="32" r="6" fill="hsl(220 25% 96%)" opacity="0"/><circle id="brk-ops-c3-il-rw3" cx="270" cy="32" r="6" fill="none" stroke="hsl(220 25% 96%)" stroke-width="1.5" opacity="0"/><rect id="brk-ops-c3-il-w4" x="62" y="96" width="16" height="10" rx="2" fill="hsl(36 100% 57%)" opacity="0"/><circle id="brk-ops-c3-il-rw4" cx="70" cy="101" r="6" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.5" opacity="0"/><rect id="brk-ops-c3-il-w5" x="192" y="73" width="16" height="10" rx="2" fill="hsl(36 100% 57%)" opacity="0"/><circle id="brk-ops-c3-il-rw5" cx="200" cy="78" r="6" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.5" opacity="0"/><circle cx="22" cy="164" r="4" fill="hsl(220 25% 96%)"/><text x="32" y="168" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13">person</text><rect x="100" y="159" width="12" height="9" rx="2" fill="hsl(36 100% 57%)"/><text x="118" y="168" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13">vehicle</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-4 2.5-6 5-6s5 2 5 6M14 20c0-3 1.5-5 3-5s4 2 4 5"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">People &amp; vehicles</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">04</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">What the video saw, put onto the map.</div>
+          <div id="brk-ops-c3-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-ops-c4" style="position:absolute; left:96px; top:680px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><rect id="brk-ops-c4-il-t00" x="21" y="25" width="38" height="34" rx="3" fill="hsl(90 30% 30%)" opacity="0"/><rect x="21" y="25" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t01" x="61" y="25" width="38" height="34" rx="3" fill="hsl(97 30% 36%)" opacity="0"/><rect x="61" y="25" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t02" x="101" y="25" width="38" height="34" rx="3" fill="hsl(104 30% 42%)" opacity="0"/><rect x="101" y="25" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t03" x="141" y="25" width="38" height="34" rx="3" fill="hsl(111 30% 30%)" opacity="0"/><rect x="141" y="25" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t04" x="181" y="25" width="38" height="34" rx="3" fill="hsl(118 30% 36%)" opacity="0"/><rect x="181" y="25" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t05" x="221" y="25" width="38" height="34" rx="3" fill="hsl(125 30% 42%)" opacity="0"/><rect x="221" y="25" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t06" x="261" y="25" width="38" height="34" rx="3" fill="hsl(92 30% 30%)" opacity="0"/><rect x="261" y="25" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t10" x="21" y="61" width="38" height="34" rx="3" fill="hsl(101 30% 36%)" opacity="0"/><rect x="21" y="61" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t11" x="61" y="61" width="38" height="34" rx="3" fill="hsl(108 30% 42%)" opacity="0"/><rect x="61" y="61" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t12" x="101" y="61" width="38" height="34" rx="3" fill="hsl(115 30% 30%)" opacity="0"/><rect x="101" y="61" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t13" x="141" y="61" width="38" height="34" rx="3" fill="hsl(122 30% 36%)" opacity="0"/><rect x="141" y="61" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t14" x="181" y="61" width="38" height="34" rx="3" fill="hsl(129 30% 42%)" opacity="0"/><rect x="181" y="61" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t15" x="221" y="61" width="38" height="34" rx="3" fill="hsl(96 30% 30%)" opacity="0"/><rect x="221" y="61" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t16" x="261" y="61" width="38" height="34" rx="3" fill="hsl(103 30% 36%)" opacity="0"/><rect x="261" y="61" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t20" x="21" y="97" width="38" height="34" rx="3" fill="hsl(112 30% 42%)" opacity="0"/><rect x="21" y="97" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t21" x="61" y="97" width="38" height="34" rx="3" fill="hsl(119 30% 30%)" opacity="0"/><rect x="61" y="97" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t22" x="101" y="97" width="38" height="34" rx="3" fill="hsl(126 30% 36%)" opacity="0"/><rect x="101" y="97" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t23" x="141" y="97" width="38" height="34" rx="3" fill="hsl(93 30% 42%)" opacity="0"/><rect x="141" y="97" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t24" x="181" y="97" width="38" height="34" rx="3" fill="hsl(100 30% 30%)" opacity="0"/><rect x="181" y="97" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t25" x="221" y="97" width="38" height="34" rx="3" fill="hsl(107 30% 36%)" opacity="0"/><rect x="221" y="97" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><rect id="brk-ops-c4-il-t26" x="261" y="97" width="38" height="34" rx="3" fill="hsl(114 30% 42%)" opacity="0"/><rect x="261" y="97" width="38" height="34" rx="3" fill="none" stroke="hsl(222 9% 22%)"/><path id="brk-ops-c4-il-path" d="M40 42 L80 42 L120 42 L160 42 L200 42 L240 42 L280 42 L280 78 L240 78 L200 78 L160 78 L120 78 L80 78 L40 78 L40 114 L80 114 L120 114 L160 114 L200 114 L240 114 L280 114" fill="none" stroke="hsl(36 100% 57%)" stroke-width="2" stroke-dasharray="1400" stroke-dashoffset="1400" opacity=".8"/><circle id="brk-ops-c4-il-dr" cx="0" cy="0" r="6" fill="hsl(220 25% 96%)"/><text x="20" y="160" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13">the map fills in while the drone flies</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">First map</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">05</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">A quick map while the drone is still flying.</div>
+          <div id="brk-ops-c4-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-ops-c5" style="position:absolute; left:534px; top:680px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><line x1="16" y1="140" x2="304" y2="140" stroke="hsl(222 9% 32%)" stroke-width="2" stroke-linecap="round"/><path id="brk-ops-c5-il-now" d="M50 140 C 80 140, 110 96, 160 94 C 210 92, 240 140, 270 140 Z" fill="hsl(36 100% 57%)" fill-opacity=".28" stroke="hsl(36 100% 57%)" stroke-width="2.5"/><path d="M50 140 C 80 140, 110 96, 160 94 C 210 92, 240 140, 270 140 Z" fill="none" stroke="hsl(220 25% 96%)" stroke-width="1.8" stroke-dasharray="5 5"/><text x="16" y="164" fill="hsl(218 12% 62%)" font-family="Geist Mono, monospace" font-size="13">last flight</text><text x="110" y="164" fill="hsl(36 100% 57%)" font-family="Geist Mono, monospace" font-size="13">this flight</text><g id="brk-ops-c5-il-d" opacity="0"><rect x="208" y="20" width="96" height="30" rx="15" fill="hsl(222 12% 12%)" stroke="hsl(36 100% 57%)" stroke-width="1.5"/><text x="222" y="40" fill="hsl(36 100% 57%)" font-family="Geist, sans-serif" font-size="14" font-weight="650">Δ volume</text></g></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20 Q7 8 12 11 Q16 6 22 20z"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Stockpile volume</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">06</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">A stockpile's volume against the last flight.</div>
+          <div id="brk-ops-c5-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-ops-c6" style="position:absolute; left:972px; top:680px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><path id="brk-ops-c6-il-c" d="M20 96 C 50 96, 70 52, 110 52 C 140 52, 150 96, 164 96 Z" fill="hsl(36 100% 57%)" fill-opacity=".45"/><path id="brk-ops-c6-il-f" d="M164 96 C 184 96, 200 136, 240 136 C 270 136, 290 96, 304 96 Z" fill="hsl(205 85% 62%)" fill-opacity=".4"/><path d="M20 96 C 50 96, 70 52, 110 52 C 140 52, 150 96, 164 96 C 184 96, 200 136, 240 136 C 270 136, 290 96, 304 96" fill="none" stroke="hsl(220 25% 96%)" stroke-width="2.5"/><line id="brk-ops-c6-il-dl" x1="20" y1="96" x2="304" y2="96" stroke="hsl(36 100% 57%)" stroke-width="2" stroke-dasharray="7 5"/><text id="brk-ops-c6-il-tc" x="90" y="44" fill="hsl(36 100% 57%)" font-family="Geist, sans-serif" font-size="15" font-weight="650" opacity="0">cut</text><text id="brk-ops-c6-il-tf" x="226" y="158" fill="hsl(205 85% 62%)" font-family="Geist, sans-serif" font-size="15" font-weight="650" opacity="0">fill</text><text x="250" y="88" fill="hsl(36 100% 57%)" font-family="Geist Mono, monospace" font-size="13">design</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Cut &amp; fill</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">07</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">Earth still to dig or fill to reach the design.</div>
+          <div id="brk-ops-c6-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+        <div id="brk-ops-c7" style="position:absolute; left:1410px; top:680px; width:414px; height:337px; padding:16px; border-radius:18px; overflow:hidden;
+          background:hsl(222 12% 8% / .9); border:1.5px solid hsl(0 0% 100% / .1); box-shadow:0 30px 60px -28px #000">
+          <div style="position:relative; width:382px; height:203px; border-radius:10px; background:hsl(222 12% 6%); overflow:hidden">
+            <svg width="382" height="203" viewBox="0 0 320 170" style="position:absolute; inset:0"><path d="M84 56 h110 v96 h-110 Z M84 56 l26 -26 h110 l-26 26 M194 56 l26 -26 v96 l-26 26" fill="none" stroke="hsl(36 100% 57%)" stroke-width="2" stroke-dasharray="6 5" stroke-linejoin="round"/><path id="brk-ops-c7-il-b" d="M96 64 h110 v96 h-110 Z M96 64 l26 -26 h110 l-26 26 M206 64 l26 -26 v96 l-26 26" fill="hsl(220 25% 96%)" fill-opacity=".1" stroke="hsl(220 25% 96%)" stroke-width="2" stroke-linejoin="round"/><line id="brk-ops-c7-il-sc" x1="60" y1="20" x2="60" y2="150" stroke="hsl(156 62% 52%)" stroke-width="2" opacity="0"/><path id="brk-ops-c7-il-dv" d="M194 88 H206 M200 82 L206 88 L200 94" fill="none" stroke="hsl(4 82% 62%)" stroke-width="2.5" stroke-linecap="round" opacity="0"/><rect id="brk-ops-c7-il-hl" x="190" y="60" width="22" height="84" rx="4" fill="hsl(4 82% 62%)" fill-opacity=".18" stroke="hsl(4 82% 62%)" stroke-width="1.5" opacity="0"/><text x="16" y="164" fill="hsl(36 100% 57%)" font-family="Geist Mono, monospace" font-size="13">design</text><text x="80" y="164" fill="hsl(220 25% 96%)" font-family="Geist Mono, monospace" font-size="13">as built</text><text id="brk-ops-c7-il-off" x="232" y="94" fill="hsl(4 82% 62%)" font-family="Geist, sans-serif" font-size="14" font-weight="650" opacity="0">off design</text></svg>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(36 100% 57%)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V5l7-2v18M12 8l7 2v11"/><path d="M3 21h18M8 8v1M8 12v1M8 16v1M15 13v1M15 17v1"/></svg>
+            <span style="font-size:26px; font-weight:680; letter-spacing:-0.01em; white-space:nowrap">Built vs design</span>
+            <span class="mono" style="margin-left:auto; font-size:16px; color:var(--muted)">08</span>
+          </div>
+          <div style="font-size:19px; color:var(--dim); margin-top:6px; line-height:1.3">What was built, against the BIM or CAD model.</div>
+          <div id="brk-ops-c7-sheen" style="position:absolute; inset:0; pointer-events:none;
+            background:linear-gradient(105deg, hsl(0 0% 100% / 0) 35%, hsl(0 0% 100% / .09) 50%, hsl(0 0% 100% / 0) 65%)"></div>
+        </div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          const R = "#brk-ops";
+          const $ = (s) => s.split(",").map((p) => R + " " + p.trim()).join(", ");
+          const WORDS = (s, at, o) => { o = o || {}; tl.fromTo($(s + " .w"), { yPercent: 118, rotate: o.r === undefined ? 5 : o.r, opacity: 0 },
+            { yPercent: 0, rotate: 0, opacity: 1, duration: o.d || 0.85, ease: o.e || "expo.out", stagger: o.s === undefined ? 0.055 : o.s }, at); };
+          const UP = (s, at, o) => { o = o || {}; tl.fromTo($(s), { y: o.y === undefined ? 30 : o.y, opacity: 0, filter: "blur(12px)" },
+            { y: 0, opacity: 1, filter: "blur(0px)", duration: o.d || 0.75, ease: o.e || "power3.out", stagger: o.s || 0 }, at); };
+          const OUT = (s, at, o) => { o = o || {}; tl.to($(s), { y: o.y === undefined ? -26 : o.y, opacity: 0, filter: "blur(12px)",
+            duration: o.d || 0.5, ease: "power2.in", stagger: o.s || 0 }, at); };
+          const RULE = (s, at, d) => tl.fromTo($(s), { scaleX: 0 }, { scaleX: 1, duration: d || 0.9, ease: "expo.inOut" }, at);
+          const COUNT = (s, to, at, d, fmt) => { const el = document.querySelector($(s)); const o = { v: 0 };
+            tl.fromTo(o, { v: 0 }, { v: to, duration: d, ease: "power2.out", onUpdate: () => { el.textContent = fmt(o.v); } }, at); };
+          // closed-form spring step response, normalised to the tween: a settle with a hair of overshoot
+          const SPRING = (w, z) => { const wd = w * Math.sqrt(1 - z * z);
+            const f = (p) => 1 - Math.exp(-z * w * p) * (Math.cos(wd * p) + (z * w / wd) * Math.sin(wd * p)); const e = f(1);
+            return (p) => (p >= 1 ? 1 : f(p) / e); };
+          const SPR = SPRING(10, 0.76), SOFT = SPRING(8.5, 0.97);
+          // ambient drift at a constant speed on a shared clock (t0), so scenes that cross
+          // over each other show the same background at the seam
+          const AMB = (dur, t0, k) => { t0 = t0 || 0; k = k || 1; const t1 = t0 + dur;
+            tl.fromTo($(".amb-a"), { x: 6 * k * t0, y: 3 * k * t0 }, { x: 6 * k * t1, y: 3 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-b"), { x: -5 * k * t0, y: -2.2 * k * t0 }, { x: -5 * k * t1, y: -2.2 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-grid"), { backgroundPosition: (-8 * k * t0) + "px 0px" }, { backgroundPosition: (-8 * k * t1) + "px 0px", duration: dur, ease: "none" }, 0); };
+
+          tl.fromTo($("#brk-ops-glass"), { opacity: 0 }, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0);
+          tl.fromTo($(".vig"), { opacity: 0 }, { opacity: 1, duration: 0.8 }, 0);
+          RULE("#brk-ops-head .rule", 0.30, 0.6);
+          tl.fromTo($("#brk-ops-head .eb-t"), { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, 0.60);
+          WORDS("#brk-ops-head .h1", 0.45, { s: 0.07 });
+          UP("#brk-ops-count", 0.9);
+          tl.fromTo(["#brk-ops-tile0", "#brk-ops-tile1", "#brk-ops-tile2", "#brk-ops-tile3"].map((s) => R + " " + s), { opacity: 0, y: 50, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: SPR, stagger: 0.08 }, 0.8);
+          tl.fromTo(["#brk-ops-slot0", "#brk-ops-slot1", "#brk-ops-slot2", "#brk-ops-slot3"].map((s) => R + " " + s), { opacity: 0 }, { opacity: 1, duration: 0.3 }, 1.0);
+          tl.fromTo($("#brk-ops-w0-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 1.935);
+          tl.fromTo($("#brk-ops-w0-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 1.935);
+          tl.fromTo($("#brk-ops-w0-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 2.357);
+          tl.fromTo($("#brk-ops-w0-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 2.357);
+          tl.fromTo($("#brk-ops-w0-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 2.996);
+          tl.fromTo($("#brk-ops-w0-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 2.996);
+          tl.fromTo($("#brk-ops-w0-rp3 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 3.529);
+          tl.fromTo($("#brk-ops-w0-rp3 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 3.529);
+          tl.fromTo($("#brk-ops-w0-rp4 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 4.035);
+          tl.fromTo($("#brk-ops-w0-rp4 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 4.035);
+          tl.fromTo($("#brk-ops-w0"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 1.500);
+          tl.fromTo($("#brk-ops-w0"), { x: -608.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 1.500);
+          tl.fromTo($("#brk-ops-w0-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 1.500);
+          tl.to($("#brk-ops-tile0"), { opacity: 0, duration: 0.12 }, 1.540);
+          tl.to($("#brk-ops-slot0"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 1.500);
+          WORDS("#brk-ops-t0 .h2", 1.850, { s: 0.07 });
+          UP("#brk-ops-t0 .mono, #brk-ops-t0 .body", 2.000, { s: 0.1 });
+          OUT("#brk-ops-t0", 6.150, { d: 0.45 });
+          tl.to($("#brk-ops-w0"), { x: -608.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 6.250);
+          tl.to($("#brk-ops-w0"), { opacity: 0, duration: 0.1, ease: "none" }, 6.930);
+          tl.to($("#brk-ops-tile0"), { opacity: 1, duration: 0.1 }, 6.890);
+          tl.to($("#brk-ops-slot0"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 6.950);
+          tl.fromTo($("#brk-ops-tick0"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 7.000);
+          tl.fromTo($("#brk-ops-w1"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 6.550);
+          tl.fromTo($("#brk-ops-w1"), { x: -410.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 6.550);
+          tl.fromTo($("#brk-ops-w1-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 6.550);
+          tl.to($("#brk-ops-tile1"), { opacity: 0, duration: 0.12 }, 6.590);
+          tl.to($("#brk-ops-slot1"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 6.550);
+          WORDS("#brk-ops-t1 .h2", 6.900, { s: 0.07 });
+          UP("#brk-ops-t1 .mono, #brk-ops-t1 .body", 7.050, { s: 0.1 });
+          OUT("#brk-ops-t1", 11.200, { d: 0.45 });
+          tl.to($("#brk-ops-w1"), { x: -410.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 11.300);
+          tl.to($("#brk-ops-w1"), { opacity: 0, duration: 0.1, ease: "none" }, 11.980);
+          tl.to($("#brk-ops-tile1"), { opacity: 1, duration: 0.1 }, 11.940);
+          tl.to($("#brk-ops-slot1"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 12.000);
+          tl.fromTo($("#brk-ops-tick1"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 12.050);
+          tl.fromTo($("#brk-ops-w2-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 11.907);
+          tl.fromTo($("#brk-ops-w2-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 11.907);
+          tl.fromTo($("#brk-ops-w2-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 12.246);
+          tl.fromTo($("#brk-ops-w2-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 12.246);
+          tl.fromTo($("#brk-ops-w2-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 12.769);
+          tl.fromTo($("#brk-ops-w2-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 12.769);
+          tl.fromTo($("#brk-ops-w2-rp3 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 13.360);
+          tl.fromTo($("#brk-ops-w2-rp3 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 13.360);
+          tl.fromTo($("#brk-ops-w2-rp4 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 13.831);
+          tl.fromTo($("#brk-ops-w2-rp4 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 13.831);
+          tl.fromTo($("#brk-ops-w2-rp5 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.392);
+          tl.fromTo($("#brk-ops-w2-rp5 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.392);
+          tl.fromTo($("#brk-ops-w2-rp6 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.878);
+          tl.fromTo($("#brk-ops-w2-rp6 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.878);
+          tl.fromTo($("#brk-ops-w2-rp7 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 15.423);
+          tl.fromTo($("#brk-ops-w2-rp7 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 15.423);
+          tl.fromTo($("#brk-ops-w2-rp8 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 15.925);
+          tl.fromTo($("#brk-ops-w2-rp8 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 15.925);
+          tl.fromTo($("#brk-ops-w2-rp9 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 16.517);
+          tl.fromTo($("#brk-ops-w2-rp9 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 16.517);
+          tl.fromTo($("#brk-ops-w2-rp10 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 16.988);
+          tl.fromTo($("#brk-ops-w2-rp10 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 16.988);
+          tl.fromTo($("#brk-ops-w2-rp11 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 17.519);
+          tl.fromTo($("#brk-ops-w2-rp11 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 17.519);
+          tl.fromTo($("#brk-ops-w2-rp12 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 17.816);
+          tl.fromTo($("#brk-ops-w2-rp12 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 17.816);
+          tl.fromTo($("#brk-ops-w2-rp13 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 18.097);
+          tl.fromTo($("#brk-ops-w2-rp13 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 18.097);
+          tl.fromTo($("#brk-ops-w2"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 11.600);
+          tl.fromTo($("#brk-ops-w2"), { x: -212.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 11.600);
+          tl.fromTo($("#brk-ops-w2-pg"), { scaleX: 0 }, { scaleX: 1, duration: 7.017, ease: "none" }, 11.600);
+          tl.to($("#brk-ops-tile2"), { opacity: 0, duration: 0.12 }, 11.640);
+          tl.to($("#brk-ops-slot2"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 11.600);
+          WORDS("#brk-ops-t2 .h2", 11.950, { s: 0.07 });
+          UP("#brk-ops-t2 .mono, #brk-ops-t2 .body, #brk-ops-t2 .pill", 12.100, { s: 0.1 });
+          OUT("#brk-ops-t2", 19.267, { d: 0.45 });
+          tl.to($("#brk-ops-w2"), { x: -212.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 19.367);
+          tl.to($("#brk-ops-w2"), { opacity: 0, duration: 0.1, ease: "none" }, 20.047);
+          tl.to($("#brk-ops-tile2"), { opacity: 1, duration: 0.1 }, 20.007);
+          tl.to($("#brk-ops-slot2"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 20.067);
+          tl.fromTo($("#brk-ops-tick2"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 20.117);
+          tl.fromTo($("#brk-ops-w3-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 19.964);
+          tl.fromTo($("#brk-ops-w3-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 19.964);
+          tl.fromTo($("#brk-ops-w3-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 20.302);
+          tl.fromTo($("#brk-ops-w3-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 20.302);
+          tl.fromTo($("#brk-ops-w3-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 20.820);
+          tl.fromTo($("#brk-ops-w3-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 20.820);
+          tl.fromTo($("#brk-ops-w3-rp3 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 21.396);
+          tl.fromTo($("#brk-ops-w3-rp3 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 21.396);
+          tl.fromTo($("#brk-ops-w3-rp4 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 21.867);
+          tl.fromTo($("#brk-ops-w3-rp4 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 21.867);
+          tl.fromTo($("#brk-ops-w3-rp5 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 22.617);
+          tl.fromTo($("#brk-ops-w3-rp5 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 22.617);
+          tl.fromTo($("#brk-ops-w3-rp6 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 23.242);
+          tl.fromTo($("#brk-ops-w3-rp6 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 23.242);
+          tl.fromTo($("#brk-ops-w3"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 19.667);
+          tl.fromTo($("#brk-ops-w3"), { x: -14.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 19.667);
+          tl.fromTo($("#brk-ops-w3-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.117, ease: "none" }, 19.667);
+          tl.to($("#brk-ops-tile3"), { opacity: 0, duration: 0.12 }, 19.707);
+          tl.to($("#brk-ops-slot3"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 19.667);
+          WORDS("#brk-ops-t3 .h2", 20.017, { s: 0.07 });
+          UP("#brk-ops-t3 .mono, #brk-ops-t3 .body, #brk-ops-t3 .pill", 20.167, { s: 0.1 });
+          OUT("#brk-ops-t3", 24.433, { d: 0.45 });
+          tl.to($("#brk-ops-w3"), { x: -14.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 24.533);
+          tl.to($("#brk-ops-w3"), { opacity: 0, duration: 0.1, ease: "none" }, 25.213);
+          tl.to($("#brk-ops-tile3"), { opacity: 1, duration: 0.1 }, 25.173);
+          tl.to($("#brk-ops-slot3"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 25.233);
+          tl.fromTo($("#brk-ops-tick3"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 25.283);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c0-il-cr"), { attr: { width: 0 } }, { attr: { width: 300 }, duration: 1.6, ease: "power2.inOut" }, 0.2);
+            s.fromTo($("#brk-ops-c0-il-wl"), { x: 0 }, { x: 300, duration: 1.6, ease: "power2.inOut" }, 0.2);
+            s.fromTo($("#brk-ops-c0-il-ring"), { opacity: 0, scale: 1.8, svgOrigin: "216 122" }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" }, 1.5);
+            s.to($("#brk-ops-c0-il-ring"), { scale: 1.15, svgOrigin: "216 122", duration: 0.4, yoyo: true, repeat: 3, ease: "sine.inOut" }, 2.0);
+            s.to($("#brk-ops-c0-il-ring"), { opacity: 0, duration: 0.3 }, 3.6);
+            s.to($("#brk-ops-c0-il-cr"), { attr: { width: 0 }, duration: 0.01 }, 3.9);
+            s.to($("#brk-ops-c0-il-wl"), { x: 0, duration: 0.01 }, 3.9);
+            tl.add(s, 26.533); }
+          tl.fromTo($("#brk-ops-c0-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.333);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c1-il-scan"), { x: 0 }, { x: 280, duration: 2.2, ease: "none" }, 0);
+            s.fromTo($("#brk-ops-c1-il-b0"), { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": 0.6 }, duration: 0.35 }, 0.35);
+            s.fromTo($("#brk-ops-c1-il-l0"), { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.3 }, 0.45);
+            s.fromTo($("#brk-ops-c1-il-b1"), { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": 0.6 }, duration: 0.35 }, 0.97);
+            s.fromTo($("#brk-ops-c1-il-l1"), { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.3 }, 1.07);
+            s.fromTo($("#brk-ops-c1-il-b2"), { attr: { "fill-opacity": 0 } }, { attr: { "fill-opacity": 0.6 }, duration: 0.35 }, 1.59);
+            s.fromTo($("#brk-ops-c1-il-l2"), { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.3 }, 1.69);
+            s.to($("#brk-ops-c1-il-b1"), { rotation: -4, svgOrigin: "130 132", duration: 0.4, ease: "back.out(3)" }, 1.05);
+            s.fromTo($("#brk-ops-c1-il-b2"), { attr: { d: "M226 132 V64 L238 64 L248 64 L260 64 L270 64 L286 64 V132 Z" } }, { attr: { d: "M226 132 V116 L238 104 L248 114 L260 96 L270 110 L286 104 V132 Z" }, duration: 0.5, ease: "bounce.out" }, 1.6);
+            s.to([$("#brk-ops-c1-il-b0"), $("#brk-ops-c1-il-b1"), $("#brk-ops-c1-il-b2")], { attr: { "fill-opacity": 0 }, duration: 0.4 }, 3.3);
+            s.to($("#brk-ops-c1-il-b1"), { rotation: 0, svgOrigin: "130 132", duration: 0.4 }, 3.3);
+            s.to($("[id^=brk-ops-c1-il-l]"), { opacity: 0, duration: 0.3 }, 3.3);
+            tl.add(s, 26.623); }
+          tl.fromTo($("#brk-ops-c1-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.423);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c2-il-ls"), { attr: { "stroke-dashoffset": 620 } }, { attr: { "stroke-dashoffset": 0 }, duration: 1.2, ease: "power2.inOut" }, 0.1);
+            s.fromTo($("#brk-ops-c2-il-lv"), { attr: { y: 140 } }, { attr: { y: 60 }, duration: 1.3, ease: "power2.out" }, 1.2);
+            s.fromTo($("#brk-ops-c2-il-m3"), { opacity: 0, scale: 0.5, svgOrigin: "236 34" }, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(2.5)" }, 2.0);
+            s.to([$("#brk-ops-c2-il-m3")], { opacity: 0, duration: 0.3 }, 3.4);
+            s.to($("#brk-ops-c2-il-lv"), { attr: { y: 140 }, duration: 0.4 }, 3.4);
+            s.to($("#brk-ops-c2-il-ls"), { attr: { "stroke-dashoffset": 620 }, duration: 0.4 }, 3.4);
+            tl.add(s, 26.713); }
+          tl.fromTo($("#brk-ops-c2-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.513);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c3-il-w0"), { opacity: 0, scale: 0, svgOrigin: "60 60" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, 0.20);
+            s.fromTo($("#brk-ops-c3-il-rw0"), { opacity: 1, attr: { r: 6 } }, { opacity: 0, attr: { r: 20 }, duration: 0.6 }, 0.20);
+            s.fromTo($("#brk-ops-c3-il-w1"), { opacity: 0, scale: 0, svgOrigin: "96 128" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, 0.50);
+            s.fromTo($("#brk-ops-c3-il-rw1"), { opacity: 1, attr: { r: 6 } }, { opacity: 0, attr: { r: 20 }, duration: 0.6 }, 0.50);
+            s.fromTo($("#brk-ops-c3-il-w2"), { opacity: 0, scale: 0, svgOrigin: "232 110" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, 0.80);
+            s.fromTo($("#brk-ops-c3-il-rw2"), { opacity: 1, attr: { r: 6 } }, { opacity: 0, attr: { r: 20 }, duration: 0.6 }, 0.80);
+            s.fromTo($("#brk-ops-c3-il-w3"), { opacity: 0, scale: 0, svgOrigin: "270 32" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, 1.10);
+            s.fromTo($("#brk-ops-c3-il-rw3"), { opacity: 1, attr: { r: 6 } }, { opacity: 0, attr: { r: 20 }, duration: 0.6 }, 1.10);
+            s.fromTo($("#brk-ops-c3-il-w4"), { opacity: 0, scale: 0, svgOrigin: "70 101" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, 1.40);
+            s.fromTo($("#brk-ops-c3-il-rw4"), { opacity: 1, attr: { r: 6 } }, { opacity: 0, attr: { r: 20 }, duration: 0.6 }, 1.40);
+            s.fromTo($("#brk-ops-c3-il-w5"), { opacity: 0, scale: 0, svgOrigin: "200 78" }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(3)" }, 1.70);
+            s.fromTo($("#brk-ops-c3-il-rw5"), { opacity: 1, attr: { r: 6 } }, { opacity: 0, attr: { r: 20 }, duration: 0.6 }, 1.70);
+            s.to($("#brk-ops-c3-il-w4"), { x: 110, y: -24, duration: 1.8, ease: "power1.inOut" }, 1.4);
+            s.to($("#brk-ops-c3-il-w5"), { x: 70, y: -10, duration: 1.8, ease: "power1.inOut" }, 1.6);
+            s.to($("[id^=brk-ops-c3-il-w]"), { opacity: 0, duration: 0.3 }, 3.5);
+            s.to([$("#brk-ops-c3-il-w4"), $("#brk-ops-c3-il-w5")], { x: 0, y: 0, duration: 0.01 }, 3.85);
+            tl.add(s, 26.803); }
+          tl.fromTo($("#brk-ops-c3-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.603);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c4-il-dr"), { x: 40, y: 42 }, { keyframes: [{ x: 80, y: 42, duration: 0.138 }, { x: 120, y: 42, duration: 0.138 }, { x: 160, y: 42, duration: 0.138 }, { x: 200, y: 42, duration: 0.138 }, { x: 240, y: 42, duration: 0.138 }, { x: 280, y: 42, duration: 0.138 }, { x: 280, y: 78, duration: 0.138 }, { x: 240, y: 78, duration: 0.138 }, { x: 200, y: 78, duration: 0.138 }, { x: 160, y: 78, duration: 0.138 }, { x: 120, y: 78, duration: 0.138 }, { x: 80, y: 78, duration: 0.138 }, { x: 40, y: 78, duration: 0.138 }, { x: 40, y: 114, duration: 0.138 }, { x: 80, y: 114, duration: 0.138 }, { x: 120, y: 114, duration: 0.138 }, { x: 160, y: 114, duration: 0.138 }, { x: 200, y: 114, duration: 0.138 }, { x: 240, y: 114, duration: 0.138 }, { x: 280, y: 114, duration: 0.138 }], ease: "none" }, 0);
+            s.fromTo($("#brk-ops-c4-il-path"), { attr: { "stroke-dashoffset": 1400 } }, { attr: { "stroke-dashoffset": 608 }, duration: 2.9, ease: "none" }, 0);
+            s.fromTo($("#brk-ops-c4-il-t00"), { opacity: 0 }, { opacity: 0.35, duration: 0.3 }, 0.000);
+            s.fromTo($("#brk-ops-c4-il-t01"), { opacity: 0 }, { opacity: 0.55, duration: 0.3 }, 0.138);
+            s.fromTo($("#brk-ops-c4-il-t02"), { opacity: 0 }, { opacity: 0.45, duration: 0.3 }, 0.276);
+            s.fromTo($("#brk-ops-c4-il-t03"), { opacity: 0 }, { opacity: 0.70, duration: 0.3 }, 0.414);
+            s.fromTo($("#brk-ops-c4-il-t04"), { opacity: 0 }, { opacity: 0.40, duration: 0.3 }, 0.552);
+            s.fromTo($("#brk-ops-c4-il-t05"), { opacity: 0 }, { opacity: 0.60, duration: 0.3 }, 0.690);
+            s.fromTo($("#brk-ops-c4-il-t06"), { opacity: 0 }, { opacity: 0.50, duration: 0.3 }, 0.829);
+            s.fromTo($("#brk-ops-c4-il-t16"), { opacity: 0 }, { opacity: 0.50, duration: 0.3 }, 0.967);
+            s.fromTo($("#brk-ops-c4-il-t15"), { opacity: 0 }, { opacity: 0.60, duration: 0.3 }, 1.105);
+            s.fromTo($("#brk-ops-c4-il-t14"), { opacity: 0 }, { opacity: 0.40, duration: 0.3 }, 1.243);
+            s.fromTo($("#brk-ops-c4-il-t13"), { opacity: 0 }, { opacity: 0.70, duration: 0.3 }, 1.381);
+            s.fromTo($("#brk-ops-c4-il-t12"), { opacity: 0 }, { opacity: 0.45, duration: 0.3 }, 1.519);
+            s.fromTo($("#brk-ops-c4-il-t11"), { opacity: 0 }, { opacity: 0.55, duration: 0.3 }, 1.657);
+            s.fromTo($("#brk-ops-c4-il-t10"), { opacity: 0 }, { opacity: 0.35, duration: 0.3 }, 1.795);
+            s.fromTo($("#brk-ops-c4-il-t20"), { opacity: 0 }, { opacity: 0.35, duration: 0.3 }, 1.933);
+            s.fromTo($("#brk-ops-c4-il-t21"), { opacity: 0 }, { opacity: 0.55, duration: 0.3 }, 2.071);
+            s.fromTo($("#brk-ops-c4-il-t22"), { opacity: 0 }, { opacity: 0.45, duration: 0.3 }, 2.210);
+            s.fromTo($("#brk-ops-c4-il-t23"), { opacity: 0 }, { opacity: 0.70, duration: 0.3 }, 2.348);
+            s.fromTo($("#brk-ops-c4-il-t24"), { opacity: 0 }, { opacity: 0.40, duration: 0.3 }, 2.486);
+            s.fromTo($("#brk-ops-c4-il-t25"), { opacity: 0 }, { opacity: 0.60, duration: 0.3 }, 2.624);
+            s.fromTo($("#brk-ops-c4-il-t26"), { opacity: 0 }, { opacity: 0.50, duration: 0.3 }, 2.762);
+            s.to($("[id^=brk-ops-c4-il-t]"), { opacity: 0, duration: 0.4 }, 3.4);
+            tl.add(s, 26.893); }
+          tl.fromTo($("#brk-ops-c4-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.693);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c5-il-now"), { attr: { d: "M50 140 C 80 140, 110 96, 160 94 C 210 92, 240 140, 270 140 Z" } }, { attr: { d: "M36 140 C 70 140, 100 58, 160 54 C 220 50, 252 140, 284 140 Z" }, duration: 1.4, ease: "power3.inOut" }, 0.2);
+            s.fromTo($("#brk-ops-c5-il-d"), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.45, ease: "back.out(2)" }, 1.4);
+            s.to($("#brk-ops-c5-il-now"), { attr: { "fill-opacity": 0.5 }, duration: 0.4, yoyo: true, repeat: 2 }, 1.7);
+            s.to($("#brk-ops-c5-il-d"), { opacity: 0, duration: 0.3 }, 3.3);
+            s.to($("#brk-ops-c5-il-now"), { attr: { d: "M50 140 C 80 140, 110 96, 160 94 C 210 92, 240 140, 270 140 Z" }, duration: 0.5, ease: "power2.inOut" }, 3.3);
+            tl.add(s, 26.983); }
+          tl.fromTo($("#brk-ops-c5-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.783);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c6-il-dl"), { scaleX: 0, svgOrigin: "20 96" }, { scaleX: 1, duration: 0.8, ease: "power2.inOut" }, 0.1);
+            s.fromTo($("#brk-ops-c6-il-c"), { scaleY: 0, svgOrigin: "0 96" }, { scaleY: 1, duration: 0.7, ease: "back.out(1.6)" }, 0.8);
+            s.fromTo($("#brk-ops-c6-il-f"), { scaleY: 0, svgOrigin: "0 96" }, { scaleY: 1, duration: 0.7, ease: "back.out(1.6)" }, 1.2);
+            s.fromTo([$("#brk-ops-c6-il-tc"), $("#brk-ops-c6-il-tf")], { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.4 }, 1.1);
+            s.to([$("#brk-ops-c6-il-c"), $("#brk-ops-c6-il-f")], { scaleY: 0, svgOrigin: "0 96", duration: 0.4 }, 3.3);
+            s.to([$("#brk-ops-c6-il-tc"), $("#brk-ops-c6-il-tf")], { opacity: 0, duration: 0.3 }, 3.3);
+            tl.add(s, 27.073); }
+          tl.fromTo($("#brk-ops-c6-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.873);
+          { const s = gsap.timeline({ repeat: 1, repeatDelay: 0.35 });
+            s.fromTo($("#brk-ops-c7-il-b"), { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.1);
+            s.fromTo($("#brk-ops-c7-il-sc"), { opacity: 1, x: 0 }, { opacity: 1, x: 200, duration: 1.4, ease: "power1.inOut" }, 0.6);
+            s.to($("#brk-ops-c7-il-sc"), { opacity: 0, duration: 0.2 }, 2.0);
+            s.fromTo([$("#brk-ops-c7-il-hl"), $("#brk-ops-c7-il-dv"), $("#brk-ops-c7-il-off")], { opacity: 0 }, { opacity: 1, duration: 0.35, stagger: 0.12 }, 1.6);
+            s.to($("#brk-ops-c7-il-hl"), { attr: { "fill-opacity": 0.4 }, duration: 0.35, yoyo: true, repeat: 3 }, 2.0);
+            s.to([$("#brk-ops-c7-il-hl"), $("#brk-ops-c7-il-dv"), $("#brk-ops-c7-il-off"), $("#brk-ops-c7-il-b")], { opacity: 0, duration: 0.35 }, 3.4);
+            tl.add(s, 27.163); }
+          tl.fromTo($("#brk-ops-c7-sheen"), { xPercent: -120 }, { xPercent: 120, duration: 1.1, ease: "power2.inOut" }, 26.963);
+          tl.to(["#brk-ops-tile0", "#brk-ops-tile1", "#brk-ops-tile2", "#brk-ops-tile3", "#brk-ops-slot0", "#brk-ops-slot1", "#brk-ops-slot2", "#brk-ops-slot3"].map((s) => R + " " + s), { opacity: 0, y: 70, duration: 0.55, ease: "power3.in", stagger: 0.04 }, 25.533);
+          OUT("#brk-ops-count", 25.533, { d: 0.35 });
+          UP("#brk-ops-also", 25.833);
+          tl.fromTo(["#brk-ops-c0", "#brk-ops-c1", "#brk-ops-c2", "#brk-ops-c3", "#brk-ops-c4", "#brk-ops-c5", "#brk-ops-c6", "#brk-ops-c7"].map((s) => R + " " + s), { opacity: 0, y: 80, scale: 0.86, rotationX: 28, transformPerspective: 1400, filter: "blur(14px)" }, { opacity: 1, y: 0, scale: 1, rotationX: 0, filter: "blur(0px)", duration: 1.0, ease: SPR, stagger: { each: 0.09, from: "start" } }, 25.933);
+          tl.to(R + " > *", { opacity: 0, filter: "blur(10px)", duration: 0.8, ease: "power2.inOut" }, 33.400);
+          window.__timelines["brk-ops"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

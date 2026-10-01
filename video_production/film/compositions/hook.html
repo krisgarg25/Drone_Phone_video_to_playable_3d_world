@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+
+#hook { position: absolute; inset: 0; overflow: hidden; background: var(--bg); color: var(--ink);
+  font-family: "Geist", sans-serif; 
+  --bg: hsl(225 12% 5%); --panel: hsl(222 12% 8%); --raised: hsl(222 11% 11%);
+  --line: hsl(222 9% 22%); --ink: hsl(220 25% 96%); --dim: hsl(218 12% 76%);
+  --muted: hsl(218 8% 62%); --accent: hsl(36 100% 57%); --green: hsl(156 62% 52%);
+  --soft: hsl(36 55% 11%);
+ }
+#hook * { box-sizing: border-box; }
+#hook .mono { font-family: "Geist Mono", monospace; }
+#hook .eyebrow { font-family: "Geist Mono", monospace; font-size: 24px; letter-spacing: 0.02em; color: var(--accent);
+  display: flex; align-items: center; gap: 16px; }
+#hook .eyebrow .rule { display: inline-block; width: 44px; height: 2px; background: var(--accent); transform-origin: 0 50%; }
+#hook .h1 { font-size: 84px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 8px; }
+#hook .h2 { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 4px; }
+#hook .body { font-size: 32px; font-weight: 350; color: var(--dim); line-height: 1.32; margin: 0; }
+#hook .acc { color: var(--accent); }
+#hook .grn { color: var(--green); }
+#hook .wm { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.05em 0.14em; margin: 0 -0.05em -0.14em; }
+#hook .w { display: inline-block; will-change: transform; }
+#hook .win { position: absolute; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 90px -30px hsl(0 0% 0% / .8), 0 0 0 1px hsl(0 0% 100% / .03); }
+#hook .bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 18px;
+  background: var(--raised); border-bottom: 2px solid var(--line); font-family: "Geist Mono", monospace; font-size: 19px; color: var(--dim); }
+#hook .bar i { width: 11px; height: 11px; border-radius: 50%; background: hsl(222 9% 28%); display: inline-block; }
+#hook .bar b { font-weight: 500; margin-left: 10px; color: var(--ink); }
+#hook .crop { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#hook .crop > video, #hook .crop > img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+#hook .stat { font-family: "Geist Mono", monospace; font-size: 76px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+#hook .stat-l { font-size: 26px; color: var(--dim); margin-top: 10px; line-height: 1.3; }
+#hook .pill { display: inline-flex; align-items: center; gap: 12px; padding: 10px 20px; border-radius: 999px; white-space: nowrap;
+  font-size: 26px; font-weight: 600; background: hsl(222 12% 8% / .92); border: 2px solid var(--line); }
+#hook .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+#hook .amb { position: absolute; inset: 0; overflow: hidden; }
+#hook .amb-grid { position: absolute; left: -88px; top: -88px; width: 2096px; height: 1256px;
+  background-image: radial-gradient(hsl(220 25% 85% / .13) 1.3px, hsl(220 25% 85% / 0) 1.9px); background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%);
+          mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%); }
+#hook .amb-a { position: absolute; left: -520px; top: -700px; width: 1600px; height: 1600px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(36 100% 57% / .13), hsl(36 100% 57% / 0) 62%); }
+#hook .amb-b { position: absolute; left: 1000px; top: 300px; width: 1500px; height: 1500px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(212 70% 55% / .10), hsl(212 70% 55% / 0) 62%); }
+#hook .vig { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 85% 80% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+
+#hook #hook-ta, #hook #hook-tb, #hook #hook-wlab-a, #hook #hook-wlab-b, #hook #hook-same, #hook #hook-wl, #hook #hook-ring { opacity: 0; }
+#hook #hook-n2, #hook #hook-n1 { opacity: 0; }
+</style>
+      <div id="hook" data-composition-id="hook" data-width="1920" data-height="1080" data-duration="17.800">
+
+        <div class="amb" data-layout-allow-overflow><div class="amb-grid"></div><div class="amb-a"></div><div class="amb-b"></div></div>
+        <div id="hook-top" style="position:absolute; left:96px; top:84px; width:1728px;">
+          <div class="eyebrow" id="hook-eye"><span class="rule"></span><span class="eb-t">A quick test</span></div>
+          <p id="hook-l1" class="h2" style="margin-top:20px"><span class="wm"><span class="w">One</span></span> <span class="wm"><span class="w">of</span></span> <span class="wm"><span class="w">these</span></span> <span class="wm"><span class="w">is</span></span> <span class="wm"><span class="w">a</span></span> <span class="wm"><span class="w">frame</span></span> <span class="wm"><span class="w">from</span></span> <span class="wm"><span class="w">a</span></span> <span class="wm"><span class="w">drone</span></span> <span class="wm"><span class="w">video.</span></span></p>
+          <p id="hook-l2" class="h2" style="color:var(--dim)"><span class="wm"><span class="w">The</span></span> <span class="wm"><span class="w">other</span></span> <span class="wm"><span class="w">was</span></span> <span class="wm"><span class="w acc">rendered</span></span> <span class="wm"><span class="w">from</span></span> <span class="wm"><span class="w">a</span></span> <span class="wm"><span class="w">3D</span></span> <span class="wm"><span class="w">model.</span></span></p>
+        </div>
+        <div id="hook-bridge" style="position:absolute; left:96px; top:250px; width:1728px">
+          <p id="hook-b1" class="h1" style="font-size:96px"><span class="wm"><span class="w">Before</span></span> <span class="wm"><span class="w">we</span></span> <span class="wm"><span class="w">show</span></span> <span class="wm"><span class="w">how</span></span> <span class="wm"><span class="w">it's</span></span> <span class="wm"><span class="w">made,</span></span></p>
+          <p id="hook-b2" class="h1" style="font-size:96px"><span class="wm"><span class="w">here's</span></span> <span class="wm"><span class="w">what</span></span> <span class="wm"><span class="w">you</span></span> <span class="wm"><span class="w">can</span></span> <span class="wm"><span class="w acc">do</span></span> <span class="wm"><span class="w">with</span></span> <span class="wm"><span class="w">it.</span></span></p>
+        </div>
+        <div id="hook-persp" style="position:absolute; inset:0; perspective:1600px">
+          <div id="hook-a" class="win" style="z-index:2; left:96px; top:318px; width:844px; height:475px; transform-origin:0 0">
+            <img id="hook-a-img" src="assets/quiz/render.png" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover" />
+            <div id="hook-a-ring" style="position:absolute; inset:0; border-radius:14px; box-shadow: inset 0 0 0 5px hsl(36 100% 57%); opacity:0"></div>
+          </div>
+          <div id="hook-b" class="win" style="z-index:1; left:980px; top:318px; width:844px; height:475px; transform-origin:0 0">
+            <img id="hook-b-img" src="assets/quiz/real.png" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover" />
+            <div id="hook-b-ring" style="position:absolute; inset:0; border-radius:14px; box-shadow: inset 0 0 0 5px hsl(156 62% 52%); opacity:0"></div>
+          </div>
+        </div>
+        <div id="hook-la" class="mono" style="position:absolute; left:118px; top:338px; width:76px; height:76px; border-radius:50%;
+          display:grid; place-items:center; font-size:40px; font-weight:700; background:hsl(225 12% 5% / .82); border:2px solid hsl(0 0% 100% / .2)">A</div>
+        <div id="hook-lb" class="mono" style="position:absolute; left:1002px; top:338px; width:76px; height:76px; border-radius:50%;
+          display:grid; place-items:center; font-size:40px; font-weight:700; background:hsl(225 12% 5% / .82); border:2px solid hsl(0 0% 100% / .2)">B</div>
+        <div id="hook-ta" class="pill" style="position:absolute; left:96px; top:819px">
+          <span class="dot" style="background:var(--accent)"></span>A · Rendered from the 3D model</div>
+        <div id="hook-tb" class="pill" style="position:absolute; left:980px; top:819px">
+          <span class="dot" style="background:var(--green)"></span>B · Real: frame 41 of the drone video</div>
+        <p id="hook-q" class="h1" style="position:absolute; left:96px; top:880px"><span class="wm"><span class="w">Which</span></span> <span class="wm"><span class="w">one</span></span> <span class="wm"><span class="w">is</span></span> <span class="wm"><span class="w">real?</span></span></p>
+        <div id="hook-f" style="position:absolute; left:96px; top:888px; width:1728px">
+          <p class="h1" style="font-size:80px"><span class="wm"><span class="w">If</span></span> <span class="wm"><span class="w">you</span></span> <span class="wm"><span class="w">picked</span></span> <span class="wm"><span class="w">A,</span></span> <span class="wm"><span class="w acc">you</span></span> <span class="wm"><span class="w acc">were</span></span> <span class="wm"><span class="w acc">wrong.</span></span></p>
+        </div>
+        <div id="hook-ring" style="position:absolute; left:1690px; top:866px; width:134px; height:134px">
+          <svg width="134" height="134" viewBox="0 0 134 134"><circle cx="67" cy="67" r="58" fill="none" stroke="hsl(222 9% 22%)" stroke-width="6"/>
+          <circle id="hook-ring-arc" cx="67" cy="67" r="58" fill="none" stroke="hsl(36 100% 57%)" stroke-width="6" stroke-linecap="round"
+            stroke-dasharray="364.4" stroke-dashoffset="0" transform="rotate(-90 67 67)"/></svg>
+          <div id="hook-n3" class="mono" style="position:absolute; inset:0; display:grid; place-items:center; font-size:60px; font-weight:600">3</div>
+          <div id="hook-n2" class="mono" style="position:absolute; inset:0; display:grid; place-items:center; font-size:60px; font-weight:600">2</div>
+          <div id="hook-n1" class="mono" style="position:absolute; inset:0; display:grid; place-items:center; font-size:60px; font-weight:600">1</div>
+        </div>
+        <p id="hook-same" class="mono" style="position:absolute; left:320px; top:156px; font-size:26px; color:var(--dim)">Same camera. Same frame. Slide between them.</p>
+        <div id="hook-wl" style="position:absolute; left:318px; top:206px; width:4px; height:748px; background:var(--accent); border-radius:2px;
+          box-shadow: 0 0 24px 2px hsl(36 100% 57% / .55)">
+          <div style="position:absolute; left:-24px; top:348px; width:52px; height:52px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:26px; font-weight:800">‹›</div>
+        </div>
+        <div id="hook-wlab-a" class="pill" style="position:absolute; left:344px; top:862px"><span class="dot" style="background:var(--accent)"></span>Rendered</div>
+        <div id="hook-wlab-b" class="pill" style="position:absolute; left:1430px; top:862px"><span class="dot" style="background:var(--green)"></span>Real</div>
+        <div id="hook-flash" style="position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none"></div>
+        <div class="vig"></div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          const R = "#hook";
+          const $ = (s) => s.split(",").map((p) => R + " " + p.trim()).join(", ");
+          const WORDS = (s, at, o) => { o = o || {}; tl.fromTo($(s + " .w"), { yPercent: 118, rotate: o.r === undefined ? 5 : o.r, opacity: 0 },
+            { yPercent: 0, rotate: 0, opacity: 1, duration: o.d || 0.85, ease: o.e || "expo.out", stagger: o.s === undefined ? 0.055 : o.s }, at); };
+          const UP = (s, at, o) => { o = o || {}; tl.fromTo($(s), { y: o.y === undefined ? 30 : o.y, opacity: 0, filter: "blur(12px)" },
+            { y: 0, opacity: 1, filter: "blur(0px)", duration: o.d || 0.75, ease: o.e || "power3.out", stagger: o.s || 0 }, at); };
+          const OUT = (s, at, o) => { o = o || {}; tl.to($(s), { y: o.y === undefined ? -26 : o.y, opacity: 0, filter: "blur(12px)",
+            duration: o.d || 0.5, ease: "power2.in", stagger: o.s || 0 }, at); };
+          const RULE = (s, at, d) => tl.fromTo($(s), { scaleX: 0 }, { scaleX: 1, duration: d || 0.9, ease: "expo.inOut" }, at);
+          const COUNT = (s, to, at, d, fmt) => { const el = document.querySelector($(s)); const o = { v: 0 };
+            tl.fromTo(o, { v: 0 }, { v: to, duration: d, ease: "power2.out", onUpdate: () => { el.textContent = fmt(o.v); } }, at); };
+          // closed-form spring step response, normalised to the tween: a settle with a hair of overshoot
+          const SPRING = (w, z) => { const wd = w * Math.sqrt(1 - z * z);
+            const f = (p) => 1 - Math.exp(-z * w * p) * (Math.cos(wd * p) + (z * w / wd) * Math.sin(wd * p)); const e = f(1);
+            return (p) => (p >= 1 ? 1 : f(p) / e); };
+          const SPR = SPRING(10, 0.76), SOFT = SPRING(8.5, 0.97);
+          // ambient drift at a constant speed on a shared clock (t0), so scenes that cross
+          // over each other show the same background at the seam
+          const AMB = (dur, t0, k) => { t0 = t0 || 0; k = k || 1; const t1 = t0 + dur;
+            tl.fromTo($(".amb-a"), { x: 6 * k * t0, y: 3 * k * t0 }, { x: 6 * k * t1, y: 3 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-b"), { x: -5 * k * t0, y: -2.2 * k * t0 }, { x: -5 * k * t1, y: -2.2 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-grid"), { backgroundPosition: (-8 * k * t0) + "px 0px" }, { backgroundPosition: (-8 * k * t1) + "px 0px", duration: dur, ease: "none" }, 0); };
+
+
+          AMB(17.8);
+          RULE("#hook-eye .rule", 0.25, 0.6);
+          tl.fromTo($("#hook-eye .eb-t"), { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, 0.55);
+
+          WORDS("#hook-l1", 0.55);
+          WORDS("#hook-l2", 1.55);
+          // the two frames swing in on a shared perspective
+          tl.fromTo($("#hook-a"), { opacity: 0, rotationY: 24, x: -120, z: -200, filter: "blur(14px) brightness(1)" },
+            { opacity: 1, rotationY: 0, x: 0, z: 0, filter: "blur(0px) brightness(1)", duration: 1.2, ease: "expo.out" }, 2.5);
+          tl.fromTo($("#hook-b"), { opacity: 0, rotationY: -24, x: 120, z: -200, filter: "blur(14px) brightness(1)" },
+            { opacity: 1, rotationY: 0, x: 0, z: 0, filter: "blur(0px) brightness(1)", duration: 1.2, ease: "expo.out" }, 2.65);
+          tl.fromTo([$("#hook-a-img"), $("#hook-b-img")], { scale: 1.0 }, { scale: 1.06, duration: 9.5, ease: "none" }, 2.5);
+          tl.fromTo([$("#hook-la"), $("#hook-lb")], { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(2.2)", stagger: 0.14 }, 3.2);
+          WORDS("#hook-q", 4.2, { s: 0.07 });
+          tl.fromTo($("#hook-ring"), { opacity: 0, scale: 0.6, rotate: -60 }, { opacity: 1, scale: 1, rotate: 0, duration: 0.6, ease: "back.out(1.8)" }, 4.6);
+          tl.fromTo($("#hook-ring-arc"), { attr: { "stroke-dashoffset": 0 } }, { attr: { "stroke-dashoffset": 364.4 }, duration: 3.0, ease: "none" }, 5.0);
+          tl.fromTo($("#hook-n3"), { opacity: 0, scale: 1.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: "expo.out" }, 5.0);
+          tl.to($("#hook-n3"), { opacity: 0, scale: 0.5, duration: 0.2 }, 5.85);
+          tl.fromTo($("#hook-n2"), { opacity: 0, scale: 1.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: "expo.out" }, 6.0);
+          tl.to($("#hook-n2"), { opacity: 0, scale: 0.5, duration: 0.2 }, 6.85);
+          tl.fromTo($("#hook-n1"), { opacity: 0, scale: 1.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: "expo.out" }, 7.0);
+          tl.to($("#hook-n1"), { opacity: 0, scale: 0.5, duration: 0.2 }, 7.85);
+          tl.fromTo([$("#hook-a"), $("#hook-b")], { scale: 1 }, { scale: 0.985, duration: 0.5, ease: "sine.inOut", yoyo: true, repeat: 5 }, 5.0);
+          // the reveal: a flash, B is real, A was the render
+          tl.to($("#hook-ring"), { opacity: 0, scale: 1.4, duration: 0.35, ease: "power2.in" }, 7.95);
+          OUT("#hook-q .w", 7.95, { s: 0.03, d: 0.35 });
+          tl.fromTo($("#hook-flash"), { opacity: 0 }, { opacity: 0.32, duration: 0.08, ease: "none" }, 8.1);
+          tl.to($("#hook-flash"), { opacity: 0, duration: 0.7, ease: "power2.out" }, 8.18);
+          tl.fromTo($("#hook-b-ring"), { opacity: 0 }, { opacity: 1, duration: 0.3 }, 8.15);
+          tl.fromTo($("#hook-a-ring"), { opacity: 0 }, { opacity: 1, duration: 0.3 }, 8.15);
+          tl.to($("#hook-b"), { scale: 1.035, duration: 0.8, ease: "expo.out" }, 8.15);
+          tl.to($("#hook-a"), { scale: 0.965, duration: 0.8, ease: "expo.out" }, 8.15);
+          tl.to($("#hook-lb"), { backgroundColor: "hsl(156 62% 52%)", color: "hsl(225 12% 5%)", borderColor: "hsl(156 62% 52%)", duration: 0.3 }, 8.15);
+          tl.to($("#hook-la"), { backgroundColor: "hsl(36 100% 57%)", color: "hsl(225 12% 5%)", borderColor: "hsl(36 100% 57%)", duration: 0.3 }, 8.15);
+          tl.fromTo($("#hook-tb"), { opacity: 0, y: 24, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.6, ease: "expo.out" }, 8.3);
+          tl.fromTo($("#hook-ta"), { opacity: 0, y: 24, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.6, ease: "expo.out" }, 8.45);
+          WORDS("#hook-f", 9.0, { s: 0.07 });
+          // bridge: B steps back, A becomes the backdrop for the line into the app
+          OUT("#hook-top, #hook-f, #hook-ta, #hook-tb, #hook-la, #hook-lb", 11.9, { s: 0.04 });
+          tl.to([$("#hook-a-ring"), $("#hook-b-ring")], { opacity: 0, duration: 0.4 }, 12.0);
+          tl.to($("#hook-b"), { opacity: 0, scale: 0.9, x: "+=90", filter: "blur(8px) brightness(0.55)", duration: 0.8, ease: "power3.inOut" }, 12.1);
+          tl.to($("#hook-a"), { x: 526, y: 282, scale: 0.8, filter: "blur(6px) brightness(0.55)", duration: 1.0, ease: "expo.inOut" }, 12.1);
+          WORDS("#hook-b1", 12.4);
+          WORDS("#hook-b2", 13.2);
+          OUT("#hook-bridge .w", 15.2, { s: 0.025, d: 0.4 });
+          // hand-off: the render glides into the app's frame, and the app fades up inside it
+          tl.to($("#hook-a"), { x: 48, y: -288.0, scale: 1.93365, filter: "blur(0px) brightness(1)", borderWidth: 0.8, borderRadius: 8.27, boxShadow: "0 40px 100px -30px #000, 0 0 0 0.8px hsl(0 0% 100% / .09)",
+            duration: 1.3, ease: SPR }, 15.2);
+          tl.to($("#hook-a-img"), { scale: 1, duration: 1.3, ease: SPR }, 15.2);
+
+          window.__timelines["hook"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

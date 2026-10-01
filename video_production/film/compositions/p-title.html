@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+
+#p-title { position: absolute; inset: 0; overflow: hidden; background: var(--bg); color: var(--ink);
+  font-family: "Geist", sans-serif; 
+  --bg: hsl(225 12% 5%); --panel: hsl(222 12% 8%); --raised: hsl(222 11% 11%);
+  --line: hsl(222 9% 22%); --ink: hsl(220 25% 96%); --dim: hsl(218 12% 76%);
+  --muted: hsl(218 8% 62%); --accent: hsl(36 100% 57%); --green: hsl(156 62% 52%);
+  --soft: hsl(36 55% 11%);
+ }
+#p-title * { box-sizing: border-box; }
+#p-title .mono { font-family: "Geist Mono", monospace; }
+#p-title .eyebrow { font-family: "Geist Mono", monospace; font-size: 24px; letter-spacing: 0.02em; color: var(--accent);
+  display: flex; align-items: center; gap: 16px; }
+#p-title .eyebrow .rule { display: inline-block; width: 44px; height: 2px; background: var(--accent); transform-origin: 0 50%; }
+#p-title .h1 { font-size: 84px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 8px; }
+#p-title .h2 { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 4px; }
+#p-title .body { font-size: 32px; font-weight: 350; color: var(--dim); line-height: 1.32; margin: 0; }
+#p-title .acc { color: var(--accent); }
+#p-title .grn { color: var(--green); }
+#p-title .wm { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.05em 0.14em; margin: 0 -0.05em -0.14em; }
+#p-title .w { display: inline-block; will-change: transform; }
+#p-title .win { position: absolute; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 90px -30px hsl(0 0% 0% / .8), 0 0 0 1px hsl(0 0% 100% / .03); }
+#p-title .bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 18px;
+  background: var(--raised); border-bottom: 2px solid var(--line); font-family: "Geist Mono", monospace; font-size: 19px; color: var(--dim); }
+#p-title .bar i { width: 11px; height: 11px; border-radius: 50%; background: hsl(222 9% 28%); display: inline-block; }
+#p-title .bar b { font-weight: 500; margin-left: 10px; color: var(--ink); }
+#p-title .crop { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#p-title .crop > video, #p-title .crop > img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+#p-title .stat { font-family: "Geist Mono", monospace; font-size: 76px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+#p-title .stat-l { font-size: 26px; color: var(--dim); margin-top: 10px; line-height: 1.3; }
+#p-title .pill { display: inline-flex; align-items: center; gap: 12px; padding: 10px 20px; border-radius: 999px; white-space: nowrap;
+  font-size: 26px; font-weight: 600; background: hsl(222 12% 8% / .92); border: 2px solid var(--line); }
+#p-title .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+#p-title .amb { position: absolute; inset: 0; overflow: hidden; }
+#p-title .amb-grid { position: absolute; left: -88px; top: -88px; width: 2096px; height: 1256px;
+  background-image: radial-gradient(hsl(220 25% 85% / .13) 1.3px, hsl(220 25% 85% / 0) 1.9px); background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%);
+          mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%); }
+#p-title .amb-a { position: absolute; left: -520px; top: -700px; width: 1600px; height: 1600px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(36 100% 57% / .13), hsl(36 100% 57% / 0) 62%); }
+#p-title .amb-b { position: absolute; left: 1000px; top: 300px; width: 1500px; height: 1500px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(212 70% 55% / .10), hsl(212 70% 55% / 0) 62%); }
+#p-title .vig { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 85% 80% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+</style>
+      <div id="p-title" data-composition-id="p-title" data-width="1920" data-height="1080" data-duration="8.500">
+<div class="amb" data-layout-allow-overflow><div class="amb-grid"></div><div class="amb-a"></div><div class="amb-b"></div></div><div id="p-title-rail" style="position:absolute; left:0; top:62px; width:1920px; height:50px"><div style="position:absolute; left:96px; top:-1px; width:1632px; height:2px; background:hsl(222 9% 20%)"></div><div id="p-title-fill" style="position:absolute; left:96px; top:-1px; width:1px; height:2px; background:var(--accent); transform-origin:0 50%" data-f0="0.0000"></div><div style="position:absolute; left:89px; top:-7px; width:14px; height:14px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 6px hsl(36 100% 57% / .2);"></div><div class="mono" style="position:absolute; left:89px; top:18px; font-size:21px; color:var(--accent); white-space:nowrap">Inputs</div><div style="position:absolute; left:361px; top:-7px; width:14px; height:14px; border-radius:50%; background:hsl(222 9% 26%); "></div><div class="mono" style="position:absolute; left:361px; top:18px; font-size:21px; color:var(--muted); white-space:nowrap">Plan</div><div style="position:absolute; left:633px; top:-7px; width:14px; height:14px; border-radius:50%; background:hsl(222 9% 26%); "></div><div class="mono" style="position:absolute; left:633px; top:18px; font-size:21px; color:var(--muted); white-space:nowrap">Keyframes</div><div style="position:absolute; left:905px; top:-7px; width:14px; height:14px; border-radius:50%; background:hsl(222 9% 26%); "></div><div class="mono" style="position:absolute; left:905px; top:18px; font-size:21px; color:var(--muted); white-space:nowrap">Camera solve</div><div style="position:absolute; left:1177px; top:-7px; width:14px; height:14px; border-radius:50%; background:hsl(222 9% 26%); "></div><div class="mono" style="position:absolute; left:1177px; top:18px; font-size:21px; color:var(--muted); white-space:nowrap">Training</div><div style="position:absolute; left:1449px; top:-7px; width:14px; height:14px; border-radius:50%; background:hsl(222 9% 26%); "></div><div class="mono" style="position:absolute; left:1449px; top:18px; font-size:21px; color:var(--muted); white-space:nowrap">Physics</div><div style="position:absolute; left:1721px; top:-7px; width:14px; height:14px; border-radius:50%; background:hsl(222 9% 26%); "></div><div class="mono" style="position:absolute; left:1721px; top:18px; font-size:21px; color:var(--muted); white-space:nowrap">Checks</div></div>
+        <div id="p-title-left" style="position:absolute; left:96px; top:190px; width:520px">
+          <div class="eyebrow"><span class="rule"></span><span class="eb-t">Part two</span></div>
+          <p class="h1" style="margin-top:14px; font-size:100px; letter-spacing:-0.045em"><span class="wm"><span class="w">How</span></span> <span class="wm"><span class="w">it's</span></span> <span class="wm"><span class="w acc">made.</span></span></p>
+          <p class="body" style="margin-top:18px">It starts with one pass of drone video. No ground markers, no survey team.</p>
+          <div style="margin-top:34px"><div class="stat">12.05 s</div><div class="stat-l">1280×720 at 24 fps · no GPS log</div></div></div>
+        <div id="p-title-win" class="win" style="left:640px; top:190px; width:1184px; height:666px"><div class="crop" style="width:1280px; height:720px; transform: scale(0.92500)"><video id="p-title-v" class="" src="assets/video/rocks.mp4" data-start="0.250" data-duration="8.300" data-media-start="0.000" muted playsinline style="width:1280px; height:720px"></video></div></div>
+        <div class="vig"></div>
+        <div id="p-title-edge" style="position:absolute; left:0; top:0; width:260px; height:1080px; pointer-events:none;
+          background:linear-gradient(90deg, hsl(36 100% 57% / 0), hsl(36 100% 57% / .16) 88%, hsl(36 100% 70% / .95) 99%, hsl(36 100% 57% / 0) 100%)"></div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          const R = "#p-title";
+          const $ = (s) => s.split(",").map((p) => R + " " + p.trim()).join(", ");
+          const WORDS = (s, at, o) => { o = o || {}; tl.fromTo($(s + " .w"), { yPercent: 118, rotate: o.r === undefined ? 5 : o.r, opacity: 0 },
+            { yPercent: 0, rotate: 0, opacity: 1, duration: o.d || 0.85, ease: o.e || "expo.out", stagger: o.s === undefined ? 0.055 : o.s }, at); };
+          const UP = (s, at, o) => { o = o || {}; tl.fromTo($(s), { y: o.y === undefined ? 30 : o.y, opacity: 0, filter: "blur(12px)" },
+            { y: 0, opacity: 1, filter: "blur(0px)", duration: o.d || 0.75, ease: o.e || "power3.out", stagger: o.s || 0 }, at); };
+          const OUT = (s, at, o) => { o = o || {}; tl.to($(s), { y: o.y === undefined ? -26 : o.y, opacity: 0, filter: "blur(12px)",
+            duration: o.d || 0.5, ease: "power2.in", stagger: o.s || 0 }, at); };
+          const RULE = (s, at, d) => tl.fromTo($(s), { scaleX: 0 }, { scaleX: 1, duration: d || 0.9, ease: "expo.inOut" }, at);
+          const COUNT = (s, to, at, d, fmt) => { const el = document.querySelector($(s)); const o = { v: 0 };
+            tl.fromTo(o, { v: 0 }, { v: to, duration: d, ease: "power2.out", onUpdate: () => { el.textContent = fmt(o.v); } }, at); };
+          // closed-form spring step response, normalised to the tween: a settle with a hair of overshoot
+          const SPRING = (w, z) => { const wd = w * Math.sqrt(1 - z * z);
+            const f = (p) => 1 - Math.exp(-z * w * p) * (Math.cos(wd * p) + (z * w / wd) * Math.sin(wd * p)); const e = f(1);
+            return (p) => (p >= 1 ? 1 : f(p) / e); };
+          const SPR = SPRING(10, 0.76), SOFT = SPRING(8.5, 0.97);
+          // ambient drift at a constant speed on a shared clock (t0), so scenes that cross
+          // over each other show the same background at the seam
+          const AMB = (dur, t0, k) => { t0 = t0 || 0; k = k || 1; const t1 = t0 + dur;
+            tl.fromTo($(".amb-a"), { x: 6 * k * t0, y: 3 * k * t0 }, { x: 6 * k * t1, y: 3 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-b"), { x: -5 * k * t0, y: -2.2 * k * t0 }, { x: -5 * k * t1, y: -2.2 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-grid"), { backgroundPosition: (-8 * k * t0) + "px 0px" }, { backgroundPosition: (-8 * k * t1) + "px 0px", duration: dur, ease: "none" }, 0); };
+
+          AMB(8.50, 0.000);
+          tl.fromTo(R, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.85, ease: "expo.inOut" }, 0);
+          tl.fromTo($("#p-title-edge"), { x: -260, opacity: 1 }, { x: 1920 - 250, duration: 0.85, ease: "expo.inOut" }, 0);
+          tl.to($("#p-title-edge"), { opacity: 0, duration: 0.3 }, 0.80);
+          { const f = document.querySelector($("#p-title-fill")); const f0 = +f.dataset.f0;
+            tl.fromTo(f, { scaleX: f0 }, { scaleX: 1, duration: 1.1, ease: "expo.inOut" }, 0.35); }
+          tl.fromTo($("#p-title-left > :not(.late)"), { opacity: 0, y: 34, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.8, ease: "expo.out", stagger: 0.12 }, 0.4);
+          if (document.querySelector($("#p-title-left .h2 .w"))) WORDS("#p-title-left .h2", 0.45);
+          tl.fromTo($("#p-title-win"), { opacity: 0, scale: 0.9, rotationX: 10, y: 60, filter: "blur(14px)", transformPerspective: 1600 }, { opacity: 1, scale: 1, rotationX: 0, y: 0, filter: "blur(0px)", duration: 1.1, ease: "expo.out" }, 0.25);
+          WORDS("#p-title-left .h1", 0.45, { s: 0.1, d: 1.0 });
+
+          window.__timelines["p-title"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

@@ -42,11 +42,11 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
   }
   return <dialog ref={dialog} className="studio-dialog import-dialog" onCancel={(event) => { if (busy) event.preventDefault(); else onClose(); }}>
     <form onSubmit={(event) => void create(event)}>
-      <div className="dialog-heading"><div><span className="eyebrow">NEW RECONSTRUCTION</span><h2>Start with a video.</h2><p>Turn a capture into a workspace you can explore.</p></div><button type="button" className="icon-button" aria-label="Close import" disabled={busy} onClick={onClose}><Icon name="close" /></button></div>
+      <div className="dialog-heading"><div><span className="eyebrow">New project</span><h2>Start with a video.</h2><p>One pass of video in. A measurable 3D workspace out.</p></div><button type="button" className="icon-button" aria-label="Close import" disabled={busy} onClick={onClose}><Icon name="close" /></button></div>
       <div className="dialog-body">
         <label className="field">Project name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={120} placeholder="e.g. North bridge inspection" disabled={busy} /></label>
         <div className={`dropzone ${dragging ? "is-dragging" : ""}`} onDragOver={(event) => { event.preventDefault(); if (!busy) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); if (!busy) addFiles(Array.from(event.dataTransfer.files)); }}>
-          <span className="upload-symbol"><Icon name="upload" size={26} /></span><strong>Drop your video here</strong><span>or <button type="button" className="text-button" onClick={() => input.current?.click()} disabled={busy}>browse files</button></span><small>MP4, MOV, MKV, WebM, M4V, AVI · Up to 2 GB</small>
+          <span className="upload-symbol"><Icon name="upload" size={26} /></span><strong>Drop the flight video here</strong><span>or <button type="button" className="text-button" onClick={() => input.current?.click()} disabled={busy}>browse files</button></span><small>MP4 · MOV · MKV · WebM — plus SRT / GPX / CSV telemetry · up to 2 GB</small>
           <input ref={input} type="file" multiple accept=".mp4,.mov,.mkv,.webm,.m4v,.avi,.gpx,.srt,.csv,.jsonl,.json" aria-label="Video and optional sensor files" onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} className="visually-hidden" disabled={busy} />
         </div>
         {files.length > 0 && <ul className="upload-files">{files.map((file) => <li key={file.name}><Icon name={/\.(mp4|mov|mkv|webm|m4v|avi)$/i.test(file.name) ? "video" : "file"} /><span>{file.name}<small>{bytes(file.size)}</small></span><button type="button" className="icon-button" aria-label={`Remove ${file.name}`} disabled={busy} onClick={() => setFiles(files.filter((entry) => entry !== file))}><Icon name="close" size={14} /></button></li>)}</ul>}
@@ -55,7 +55,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
         {error && <p role="alert" className="form-error">{error}</p>}
         {busy && <div className="upload-progress"><progress max={100} value={progress} /><span>{progress < 100 ? `Uploading · ${progress}%` : "Saving capture…"}</span></div>}
       </div>
-      <div className="dialog-footer"><span>Private · stored on your machine</span><button className="button primary" type="submit" disabled={!name.trim() || !hasVideo || busy}>{busy ? "Creating project…" : "Create project"}<Icon name="arrow" size={16} /></button></div>
+      <div className="dialog-footer"><span><Icon name="shield" size={14} />Private · stays on this machine</span><button className="button primary" type="submit" disabled={!name.trim() || !hasVideo || busy}>{busy ? "Creating project…" : "Create project"}<Icon name="arrow" size={16} /></button></div>
     </form>
   </dialog>;
 }

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+
+#brk-plan { position: absolute; inset: 0; overflow: hidden; background: transparent; color: var(--ink);
+  font-family: "Geist", sans-serif; 
+  --bg: hsl(225 12% 5%); --panel: hsl(222 12% 8%); --raised: hsl(222 11% 11%);
+  --line: hsl(222 9% 22%); --ink: hsl(220 25% 96%); --dim: hsl(218 12% 76%);
+  --muted: hsl(218 8% 62%); --accent: hsl(36 100% 57%); --green: hsl(156 62% 52%);
+  --soft: hsl(36 55% 11%);
+ }
+#brk-plan * { box-sizing: border-box; }
+#brk-plan .mono { font-family: "Geist Mono", monospace; }
+#brk-plan .eyebrow { font-family: "Geist Mono", monospace; font-size: 24px; letter-spacing: 0.02em; color: var(--accent);
+  display: flex; align-items: center; gap: 16px; }
+#brk-plan .eyebrow .rule { display: inline-block; width: 44px; height: 2px; background: var(--accent); transform-origin: 0 50%; }
+#brk-plan .h1 { font-size: 84px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 8px; }
+#brk-plan .h2 { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 4px; }
+#brk-plan .body { font-size: 32px; font-weight: 350; color: var(--dim); line-height: 1.32; margin: 0; }
+#brk-plan .acc { color: var(--accent); }
+#brk-plan .grn { color: var(--green); }
+#brk-plan .wm { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.05em 0.14em; margin: 0 -0.05em -0.14em; }
+#brk-plan .w { display: inline-block; will-change: transform; }
+#brk-plan .win { position: absolute; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 90px -30px hsl(0 0% 0% / .8), 0 0 0 1px hsl(0 0% 100% / .03); }
+#brk-plan .bar { position: absolute; left: 0; top: 0; right: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 18px;
+  background: var(--raised); border-bottom: 2px solid var(--line); font-family: "Geist Mono", monospace; font-size: 19px; color: var(--dim); }
+#brk-plan .bar i { width: 11px; height: 11px; border-radius: 50%; background: hsl(222 9% 28%); display: inline-block; }
+#brk-plan .bar b { font-weight: 500; margin-left: 10px; color: var(--ink); }
+#brk-plan .crop { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#brk-plan .crop > video, #brk-plan .crop > img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+#brk-plan .stat { font-family: "Geist Mono", monospace; font-size: 76px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+#brk-plan .stat-l { font-size: 26px; color: var(--dim); margin-top: 10px; line-height: 1.3; }
+#brk-plan .pill { display: inline-flex; align-items: center; gap: 12px; padding: 10px 20px; border-radius: 999px; white-space: nowrap;
+  font-size: 26px; font-weight: 600; background: hsl(222 12% 8% / .92); border: 2px solid var(--line); }
+#brk-plan .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; }
+#brk-plan .amb { position: absolute; inset: 0; overflow: hidden; }
+#brk-plan .amb-grid { position: absolute; left: -88px; top: -88px; width: 2096px; height: 1256px;
+  background-image: radial-gradient(hsl(220 25% 85% / .13) 1.3px, hsl(220 25% 85% / 0) 1.9px); background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%);
+          mask-image: radial-gradient(ellipse 70% 65% at 55% 45%, #000 20%, rgba(0,0,0,0) 80%); }
+#brk-plan .amb-a { position: absolute; left: -520px; top: -700px; width: 1600px; height: 1600px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(36 100% 57% / .13), hsl(36 100% 57% / 0) 62%); }
+#brk-plan .amb-b { position: absolute; left: 1000px; top: 300px; width: 1500px; height: 1500px; border-radius: 50%;
+  background: radial-gradient(circle, hsl(212 70% 55% / .10), hsl(212 70% 55% / 0) 62%); }
+#brk-plan .vig { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 85% 80% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+
+#brk-plan .rp { position: absolute; width: 0; height: 0; pointer-events: none; }
+#brk-plan .rp i { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,.95); box-shadow: 0 0 0 1px rgba(0,0,0,.28), 0 0 14px rgba(255,255,255,.35); opacity: 0; }
+#brk-plan .rp b { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.75), rgba(255,255,255,0) 70%); opacity: 0; }
+</style>
+      <div id="brk-plan" data-composition-id="brk-plan" data-width="1920" data-height="1080" data-duration="23.400">
+        <div id="brk-plan-glass" style="position:absolute; inset:0; background:hsl(225 12% 5% / .55)"></div>
+        <div class="vig"></div>
+        <div id="brk-plan-head" style="position:absolute; left:96px; top:70px; width:1728px">
+          <div class="eyebrow"><span class="rule"></span><span class="eb-t">09 · Plan</span></div>
+          <p class="h1" style="margin-top:12px; font-size:68px"><span class="wm"><span class="w">More</span></span> <span class="wm"><span class="w">in</span></span> <span class="wm"><span class="w">Plan</span></span></p>
+        </div>
+        <div id="brk-plan-count" class="mono" style="position:absolute; left:96px; top:236px; font-size:24px; color:var(--dim)">4 more · each on a clean scene</div>
+        <div id="brk-plan-slot0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-plan-tile0" style="position:absolute; left:96px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-rules-082b15800d.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Rules</div>
+          <div id="brk-plan-tick0" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-plan-slot1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-plan-tile1" style="position:absolute; left:294px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-impact-dfb372fab3.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Impact</div>
+          <div id="brk-plan-tick1" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-plan-slot2" style="position:absolute; left:492px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-plan-tile2" style="position:absolute; left:492px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-split-6ac468b24d.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Split</div>
+          <div id="brk-plan-tick2" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-plan-slot3" style="position:absolute; left:690px; top:912px; width:176px; height:106px; border-radius:10px; border:2px dashed hsl(0 0% 100% / .22)"></div>
+        <div id="brk-plan-tile3" style="position:absolute; left:690px; top:912px; width:176px; height:106px; border-radius:10px; overflow:hidden; border:2px solid var(--line); background:var(--panel)">
+          <img src="assets/cut/posters/mini-share-97ed8b53c7.jpg" style="position:absolute; left:0; top:6.9px; width:100%; height:99.0px; object-fit:cover" />
+          <div style="position:absolute; left:0; right:0; bottom:0; padding:18px 8px 5px; background:linear-gradient(0deg, hsl(225 12% 5% / .92), hsl(225 12% 5% / 0));
+            font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Share</div>
+          <div id="brk-plan-tick3" style="position:absolute; right:6px; top:6px; width:24px; height:24px; border-radius:50%; background:var(--accent);
+            display:grid; place-items:center; color:hsl(225 12% 5%); font-size:15px; font-weight:800; opacity:0">✓</div>
+        </div>
+        <div id="brk-plan-w0" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Rules</b><span style="margin-left:auto; color:var(--muted)">01 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-plan-w0-v" class="" src="assets/cut/seg/mini-rules-082b15800d.mp4" data-start="1.500" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-plan-w0-rp0" class="rp" style="left:1658px; top:294px"><b></b><i></i></div><div id="brk-plan-w0-rp1" class="rp" style="left:666px; top:505px"><b></b><i></i></div><div id="brk-plan-w0-rp2" class="rp" style="left:589px; top:506px"><b></b><i></i></div></div>
+            <div id="brk-plan-w0-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-plan-t0" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">01 / 04<span style="color:var(--muted)"> · shown at 2.7×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Rules</span></span></p>
+          <p class="body" style="margin-top:14px">A plot's height limit, and the building that breaks it.</p>
+          <span class="pill" style="font-size:20px; padding:6px 14px; margin-top:26px"><span class="dot" style="background:var(--muted)"></span>Open ground</span>
+        </div>
+        <div id="brk-plan-w1" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Impact</b><span style="margin-left:auto; color:var(--muted)">02 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-plan-w1-v" class="" src="assets/cut/seg/mini-impact-dfb372fab3.mp4" data-start="6.550" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"></div>
+            <div id="brk-plan-w1-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-plan-t1" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">02 / 04<span style="color:var(--muted)"> · shown at 1.4×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Impact</span></span></p>
+          <p class="body" style="margin-top:14px">What the scheme changes against the scan.</p>
+          <span class="pill" style="font-size:20px; padding:6px 14px; margin-top:26px"><span class="dot" style="background:var(--muted)"></span>Open ground</span>
+        </div>
+        <div id="brk-plan-w2" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Split</b><span style="margin-left:auto; color:var(--muted)">03 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-plan-w2-v" class="" src="assets/cut/seg/mini-split-6ac468b24d.mp4" data-start="11.600" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-plan-w2-rp0" class="rp" style="left:803px; top:448px"><b></b><i></i></div><div id="brk-plan-w2-rp1" class="rp" style="left:664px; top:506px"><b></b><i></i></div><div id="brk-plan-w2-rp2" class="rp" style="left:655px; top:506px"><b></b><i></i></div><div id="brk-plan-w2-rp3" class="rp" style="left:577px; top:506px"><b></b><i></i></div></div>
+            <div id="brk-plan-w2-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-plan-t2" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">03 / 04<span style="color:var(--muted)"> · shown at 2.0×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Split</span></span></p>
+          <p class="body" style="margin-top:14px">Existing and proposed, side by side.</p>
+          <span class="pill" style="font-size:20px; padding:6px 14px; margin-top:26px"><span class="dot" style="background:var(--muted)"></span>Open ground</span>
+        </div>
+        <div id="brk-plan-w3" class="win" style="left:704px; top:196px; width:1120px; height:674px; transform-origin:0 0; opacity:0">
+          <div class="bar"><i></i><i></i><i></i><b>Share</b><span style="margin-left:auto; color:var(--muted)">04 / 04</span></div>
+          <div style="position:absolute; left:0; top:44px; width:1116px; height:630px; overflow:hidden"><video id="brk-plan-w3-v" class="" src="assets/cut/seg/mini-share-97ed8b53c7.mp4" data-start="16.650" data-duration="5.650" data-media-start="0.000" muted playsinline style="position:absolute; left:0; top:0; width:1116px; height:630px; object-fit:cover"></video>
+            <div style="position:absolute; left:0; top:0; width:1728px; height:972px; transform-origin:0 0; transform:scale(0.64583)"><div id="brk-plan-w3-rp0" class="rp" style="left:1658px; top:399px"><b></b><i></i></div><div id="brk-plan-w3-rp1" class="rp" style="left:1530px; top:584px"><b></b><i></i></div><div id="brk-plan-w3-rp2" class="rp" style="left:1530px; top:650px"><b></b><i></i></div><div id="brk-plan-w3-rp3" class="rp" style="left:1701px; top:650px"><b></b><i></i></div><div id="brk-plan-w3-rp4" class="rp" style="left:1701px; top:584px"><b></b><i></i></div></div>
+            <div id="brk-plan-w3-pg" style="position:absolute; left:0; bottom:0; width:100%; height:4px; background:var(--accent); transform-origin:0 50%"></div></div>
+        </div>
+        <div id="brk-plan-t3" style="position:absolute; left:96px; top:330px; width:560px">
+          <div class="mono" style="font-size:22px; color:var(--accent)">04 / 04<span style="color:var(--muted)"> · shown at 2.8×</span></div>
+          <p class="h2" style="margin-top:14px; font-size:60px"><span class="wm"><span class="w">Share</span></span></p>
+          <p class="body" style="margin-top:14px">GeoJSON, CityJSON, DXF or 3D Tiles.</p>
+          <span class="pill" style="font-size:20px; padding:6px 14px; margin-top:26px"><span class="dot" style="background:var(--muted)"></span>Open ground</span>
+        </div>
+      </div>
+      <script>
+        (function () {
+          const tl = gsap.timeline({ paused: true });
+
+          const R = "#brk-plan";
+          const $ = (s) => s.split(",").map((p) => R + " " + p.trim()).join(", ");
+          const WORDS = (s, at, o) => { o = o || {}; tl.fromTo($(s + " .w"), { yPercent: 118, rotate: o.r === undefined ? 5 : o.r, opacity: 0 },
+            { yPercent: 0, rotate: 0, opacity: 1, duration: o.d || 0.85, ease: o.e || "expo.out", stagger: o.s === undefined ? 0.055 : o.s }, at); };
+          const UP = (s, at, o) => { o = o || {}; tl.fromTo($(s), { y: o.y === undefined ? 30 : o.y, opacity: 0, filter: "blur(12px)" },
+            { y: 0, opacity: 1, filter: "blur(0px)", duration: o.d || 0.75, ease: o.e || "power3.out", stagger: o.s || 0 }, at); };
+          const OUT = (s, at, o) => { o = o || {}; tl.to($(s), { y: o.y === undefined ? -26 : o.y, opacity: 0, filter: "blur(12px)",
+            duration: o.d || 0.5, ease: "power2.in", stagger: o.s || 0 }, at); };
+          const RULE = (s, at, d) => tl.fromTo($(s), { scaleX: 0 }, { scaleX: 1, duration: d || 0.9, ease: "expo.inOut" }, at);
+          const COUNT = (s, to, at, d, fmt) => { const el = document.querySelector($(s)); const o = { v: 0 };
+            tl.fromTo(o, { v: 0 }, { v: to, duration: d, ease: "power2.out", onUpdate: () => { el.textContent = fmt(o.v); } }, at); };
+          // closed-form spring step response, normalised to the tween: a settle with a hair of overshoot
+          const SPRING = (w, z) => { const wd = w * Math.sqrt(1 - z * z);
+            const f = (p) => 1 - Math.exp(-z * w * p) * (Math.cos(wd * p) + (z * w / wd) * Math.sin(wd * p)); const e = f(1);
+            return (p) => (p >= 1 ? 1 : f(p) / e); };
+          const SPR = SPRING(10, 0.76), SOFT = SPRING(8.5, 0.97);
+          // ambient drift at a constant speed on a shared clock (t0), so scenes that cross
+          // over each other show the same background at the seam
+          const AMB = (dur, t0, k) => { t0 = t0 || 0; k = k || 1; const t1 = t0 + dur;
+            tl.fromTo($(".amb-a"), { x: 6 * k * t0, y: 3 * k * t0 }, { x: 6 * k * t1, y: 3 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-b"), { x: -5 * k * t0, y: -2.2 * k * t0 }, { x: -5 * k * t1, y: -2.2 * k * t1, duration: dur, ease: "none" }, 0);
+            tl.fromTo($(".amb-grid"), { backgroundPosition: (-8 * k * t0) + "px 0px" }, { backgroundPosition: (-8 * k * t1) + "px 0px", duration: dur, ease: "none" }, 0); };
+
+          tl.fromTo($("#brk-plan-glass"), { opacity: 0 }, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0);
+          tl.fromTo($(".vig"), { opacity: 0 }, { opacity: 1, duration: 0.8 }, 0);
+          RULE("#brk-plan-head .rule", 0.30, 0.6);
+          tl.fromTo($("#brk-plan-head .eb-t"), { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" }, 0.60);
+          WORDS("#brk-plan-head .h1", 0.45, { s: 0.07 });
+          UP("#brk-plan-count", 0.9);
+          tl.fromTo(["#brk-plan-tile0", "#brk-plan-tile1", "#brk-plan-tile2", "#brk-plan-tile3"].map((s) => R + " " + s), { opacity: 0, y: 50, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: SPR, stagger: 0.08 }, 0.8);
+          tl.fromTo(["#brk-plan-slot0", "#brk-plan-slot1", "#brk-plan-slot2", "#brk-plan-slot3"].map((s) => R + " " + s), { opacity: 0 }, { opacity: 1, duration: 0.3 }, 1.0);
+          tl.fromTo($("#brk-plan-w0-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 3.343);
+          tl.fromTo($("#brk-plan-w0-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 3.343);
+          tl.fromTo($("#brk-plan-w0-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 4.340);
+          tl.fromTo($("#brk-plan-w0-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 4.340);
+          tl.fromTo($("#brk-plan-w0-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 4.925);
+          tl.fromTo($("#brk-plan-w0-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 4.925);
+          tl.fromTo($("#brk-plan-w0"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 1.500);
+          tl.fromTo($("#brk-plan-w0"), { x: -608.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 1.500);
+          tl.fromTo($("#brk-plan-w0-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 1.500);
+          tl.to($("#brk-plan-tile0"), { opacity: 0, duration: 0.12 }, 1.540);
+          tl.to($("#brk-plan-slot0"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 1.500);
+          WORDS("#brk-plan-t0 .h2", 1.850, { s: 0.07 });
+          UP("#brk-plan-t0 .mono, #brk-plan-t0 .body, #brk-plan-t0 .pill", 2.000, { s: 0.1 });
+          OUT("#brk-plan-t0", 6.150, { d: 0.45 });
+          tl.to($("#brk-plan-w0"), { x: -608.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 6.250);
+          tl.to($("#brk-plan-w0"), { opacity: 0, duration: 0.1, ease: "none" }, 6.930);
+          tl.to($("#brk-plan-tile0"), { opacity: 1, duration: 0.1 }, 6.890);
+          tl.to($("#brk-plan-slot0"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 6.950);
+          tl.fromTo($("#brk-plan-tick0"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 7.000);
+          tl.fromTo($("#brk-plan-w1"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 6.550);
+          tl.fromTo($("#brk-plan-w1"), { x: -410.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 6.550);
+          tl.fromTo($("#brk-plan-w1-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 6.550);
+          tl.to($("#brk-plan-tile1"), { opacity: 0, duration: 0.12 }, 6.590);
+          tl.to($("#brk-plan-slot1"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 6.550);
+          WORDS("#brk-plan-t1 .h2", 6.900, { s: 0.07 });
+          UP("#brk-plan-t1 .mono, #brk-plan-t1 .body, #brk-plan-t1 .pill", 7.050, { s: 0.1 });
+          OUT("#brk-plan-t1", 11.200, { d: 0.45 });
+          tl.to($("#brk-plan-w1"), { x: -410.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 11.300);
+          tl.to($("#brk-plan-w1"), { opacity: 0, duration: 0.1, ease: "none" }, 11.980);
+          tl.to($("#brk-plan-tile1"), { opacity: 1, duration: 0.1 }, 11.940);
+          tl.to($("#brk-plan-slot1"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 12.000);
+          tl.fromTo($("#brk-plan-tick1"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 12.050);
+          tl.fromTo($("#brk-plan-w2-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.022);
+          tl.fromTo($("#brk-plan-w2-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.022);
+          tl.fromTo($("#brk-plan-w2-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.441);
+          tl.fromTo($("#brk-plan-w2-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.441);
+          tl.fromTo($("#brk-plan-w2-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 14.860);
+          tl.fromTo($("#brk-plan-w2-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 14.860);
+          tl.fromTo($("#brk-plan-w2-rp3 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 15.227);
+          tl.fromTo($("#brk-plan-w2-rp3 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 15.227);
+          tl.fromTo($("#brk-plan-w2"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 11.600);
+          tl.fromTo($("#brk-plan-w2"), { x: -212.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 11.600);
+          tl.fromTo($("#brk-plan-w2-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 11.600);
+          tl.to($("#brk-plan-tile2"), { opacity: 0, duration: 0.12 }, 11.640);
+          tl.to($("#brk-plan-slot2"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 11.600);
+          WORDS("#brk-plan-t2 .h2", 11.950, { s: 0.07 });
+          UP("#brk-plan-t2 .mono, #brk-plan-t2 .body, #brk-plan-t2 .pill", 12.100, { s: 0.1 });
+          OUT("#brk-plan-t2", 16.250, { d: 0.45 });
+          tl.to($("#brk-plan-w2"), { x: -212.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 16.350);
+          tl.to($("#brk-plan-w2"), { opacity: 0, duration: 0.1, ease: "none" }, 17.030);
+          tl.to($("#brk-plan-tile2"), { opacity: 1, duration: 0.1 }, 16.990);
+          tl.to($("#brk-plan-slot2"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 17.050);
+          tl.fromTo($("#brk-plan-tick2"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 17.100);
+          tl.fromTo($("#brk-plan-w3-rp0 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 17.138);
+          tl.fromTo($("#brk-plan-w3-rp0 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 17.138);
+          tl.fromTo($("#brk-plan-w3-rp1 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 17.617);
+          tl.fromTo($("#brk-plan-w3-rp1 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 17.617);
+          tl.fromTo($("#brk-plan-w3-rp2 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 18.025);
+          tl.fromTo($("#brk-plan-w3-rp2 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 18.025);
+          tl.fromTo($("#brk-plan-w3-rp3 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 18.421);
+          tl.fromTo($("#brk-plan-w3-rp3 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 18.421);
+          tl.fromTo($("#brk-plan-w3-rp4 i"), { scale: 0.3, opacity: 0.95 }, { scale: 1.3, opacity: 0, duration: 0.55, ease: "power2.out", immediateRender: false }, 18.817);
+          tl.fromTo($("#brk-plan-w3-rp4 b"), { scale: 0.5, opacity: 1 }, { scale: 1.4, opacity: 0, duration: 0.3, ease: "power1.out", immediateRender: false }, 18.817);
+          tl.fromTo($("#brk-plan-w3"), { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 16.650);
+          tl.fromTo($("#brk-plan-w3"), { x: -14.0, y: 716.0, scale: 0.15714 }, { x: 0, y: 0, scale: 1, duration: 0.9500000000000001, ease: SPR, immediateRender: false }, 16.650);
+          tl.fromTo($("#brk-plan-w3-pg"), { scaleX: 0 }, { scaleX: 1, duration: 4.000, ease: "none" }, 16.650);
+          tl.to($("#brk-plan-tile3"), { opacity: 0, duration: 0.12 }, 16.690);
+          tl.to($("#brk-plan-slot3"), { borderColor: "hsl(36 100% 57% / .8)", duration: 0.3 }, 16.650);
+          WORDS("#brk-plan-t3 .h2", 17.000, { s: 0.07 });
+          UP("#brk-plan-t3 .mono, #brk-plan-t3 .body, #brk-plan-t3 .pill", 17.150, { s: 0.1 });
+          OUT("#brk-plan-t3", 21.300, { d: 0.45 });
+          tl.to($("#brk-plan-w3"), { x: -14.0, y: 716.0, scale: 0.15714, duration: 0.8, ease: SOFT }, 21.400);
+          tl.to($("#brk-plan-w3"), { opacity: 0, duration: 0.1, ease: "none" }, 22.080);
+          tl.to($("#brk-plan-tile3"), { opacity: 1, duration: 0.1 }, 22.040);
+          tl.to($("#brk-plan-slot3"), { borderColor: "hsl(0 0% 100% / .22)", duration: 0.3 }, 22.100);
+          tl.fromTo($("#brk-plan-tick3"), { opacity: 0, scale: 0.3 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2.5)" }, 22.150);
+          tl.to(R + " > *", { opacity: 0, filter: "blur(10px)", duration: 0.8, ease: "power2.inOut" }, 22.550);
+          window.__timelines["brk-plan"] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

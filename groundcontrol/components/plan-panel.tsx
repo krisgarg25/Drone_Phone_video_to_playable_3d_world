@@ -8,7 +8,10 @@ import {
   type ZoneParams, type ZoneRules,
 } from "@/lib/plan";
 import { Icon, type IconName } from "./studio-icons";
+import { OnViewer } from "./on-viewer";
 import "./plan-panel.css";
+import "./inspect.css";
+import "./ops-panel.css";
 
 export type PlanView = "proposal" | "existing" | "flicker" | "swipe" | "side";
 export type ShadowPanelState = { on: boolean; settings: ShadowSettings; result: ShadowResult | null; busy: boolean; error: string; stale: boolean };
@@ -51,9 +54,8 @@ function ShadowStudy({ shadow, georeferenced, disabled, onToggle, onSettings, on
   const s = shadow.settings;
   const set = (patch: Partial<ShadowSettings>) => onSettings({ ...s, ...patch });
   const r = shadow.result;
-  return <section className="inspector-section">
-    <div className="plan-shadow-head"><div className="section-label"><span>SHADOW STUDY</span></div>
-      <label className="plan-switch"><input type="checkbox" checked={shadow.on} disabled={disabled} onChange={(e) => onToggle(e.target.checked)} />Show</label></div>
+  return <div className="plan-sun-study">
+    <label className="insp-pick plan-sun-toggle"><input type="checkbox" checked={shadow.on} disabled={disabled} onChange={(e) => onToggle(e.target.checked)} /><span>{shadow.on ? "Shadows are shown on the model" : "Show shadows on the model"}<small>{shadow.on ? "Untick to hide them" : "Uses the sun position for the date and time below"}</small></span></label>
     {shadow.on && <>
       <div className="plan-view" role="group" aria-label="Shadow study mode">
         {(["instant", "day"] as const).map((m) => <button key={m} className={s.mode === m ? "active" : ""} aria-pressed={s.mode === m} onClick={() => set({ mode: m })}>{m === "instant" ? "One moment" : "Sun hours over a day"}</button>)}
@@ -71,29 +73,29 @@ function ShadowStudy({ shadow, georeferenced, disabled, onToggle, onSettings, on
         {!georeferenced && <>
           <NumberField label="Site latitude" unit="°" value={s.lat} min={-90} max={90} step={0.0001} onCommit={(v) => set({ lat: v })} />
           <NumberField label="Site longitude" unit="°" value={s.lon} min={-180} max={180} step={0.0001} onCommit={(v) => set({ lon: v })} />
-          <NumberField label="North from −Z" unit="°" value={s.north_deg} min={-180} max={180} step={1} onCommit={(v) => set({ north_deg: v ?? 0 })} />
+          <NumberField label="North offset" unit="°" value={s.north_deg} min={-180} max={180} step={1} onCommit={(v) => set({ north_deg: v ?? 0 })} />
         </>}
       </div>
       {s.mode === "day" && <button className="button primary small full plan-run" disabled={disabled || shadow.busy} onClick={onRun}><Icon name="play" size={13} />{shadow.busy ? "Counting sun hours…" : shadow.stale ? "Re-run for the current scheme" : "Run day study"}</button>}
       {shadow.busy && s.mode === "instant" && <p className="plan-note">Casting shadows…</p>}
       {shadow.error && <p className="plan-message" role="alert">{shadow.error}</p>}
       {r && <>
-        {r.mode === "instant" && typeof r.sun.elevation_deg === "number" && <div className="plan-sun"><span>SUN {r.sun.elevation_deg.toFixed(1)}° UP</span><span>AZ {r.sun.azimuth_deg?.toFixed(0)}°</span></div>}
+        {r.mode === "instant" && typeof r.sun.elevation_deg === "number" && <div className="plan-sun"><span>Sun {r.sun.elevation_deg.toFixed(1)}° above the horizon</span><span>from {r.sun.azimuth_deg?.toFixed(0)}° (compass)</span></div>}
         <div className="plan-legend">{SHADOW_KEY.filter(([, , m]) => m === r.mode).map(([label, c]) => <span key={label}><i style={{ background: `rgb(${c.join(",")})` }} />{label}</span>)}</div>
-        {r.metrics.length > 0 && <table className="plan-table"><thead><tr><th>Metric</th><th>Existing</th><th>Proposed</th><th>Change</th></tr></thead>
+        {r.metrics.length > 0 && <table className="plan-table"><thead><tr><th>Measure</th><th>Now</th><th>Proposed</th><th>Change</th></tr></thead>
           <tbody>{r.metrics.map((row) => <tr key={row.metric}><td>{row.metric}<small>{row.unit}</small></td><td>{fmt(row.existing)}</td><td>{fmt(row.proposal)}</td><td className={row.change > 0 ? "up" : row.change < 0 ? "down" : ""}>{row.change > 0 ? "+" : ""}{fmt(row.change)}</td></tr>)}</tbody></table>}
-        {r.notes.map((note) => <p className="plan-note" key={note}>{note}</p>)}
+        {r.notes.length > 0 && <details className="ops-notes"><summary>How this was worked out</summary>{r.notes.map((note) => <p className="plan-note" key={note}>{note}</p>)}</details>}
       </>}
     </>}
-  </section>;
+  </div>;
 }
 
 const TOOLS: { tool: PlanTool; icon: IconName }[] = [
-  { tool: "road", icon: "arrow" }, { tool: "building", icon: "cube" }, { tool: "zone", icon: "grid" },
-  { tool: "clip", icon: "trash" }, { tool: "object", icon: "pin" }, { tool: "array", icon: "layers" },
+  { tool: "building", icon: "building" }, { tool: "road", icon: "route" }, { tool: "zone", icon: "grid" },
+  { tool: "object", icon: "pin" }, { tool: "array", icon: "layers" }, { tool: "clip", icon: "trash" },
 ];
 const TYPE_LABEL: Record<string, string> = { road: "Roads", building: "Buildings", zone: "Plots", object: "Objects", clip: "Demolitions" };
-const RULE_LABEL: Record<string, string> = { max_height_m: "Height limit", max_fsi: "FSI / FAR", max_coverage_pct: "Ground coverage", setback_m: "Setback", max_floors: "Floor limit", crane_swing_clearance: "Crane jib clearance (highest structure vs jib minus clearance)" };
+const RULE_LABEL: Record<string, string> = { max_height_m: "Too tall", max_fsi: "Too much floor area (FSI)", max_coverage_pct: "Covers too much of the plot", setback_m: "Too close to the plot edge", max_floors: "Too many floors", crane_swing_clearance: "Crane jib would hit a structure" };
 const fmt = (value: number | null | undefined, digits = 1) =>
   value === null || value === undefined || !Number.isFinite(value) ? "—" : value.toLocaleString(undefined, { maximumFractionDigits: digits });
 
@@ -140,12 +142,12 @@ function FeatureForm({ feature, onUpdate, disabled, metrics }: { feature: PlanFe
   if (feature.type === "road") {
     const p = feature.params as RoadParams;
     return <div className="plan-form">
-      <NumberField label="Carriageway width" unit="m" value={p.width_m} min={2.5} max={60} step={0.5} disabled={disabled} onCommit={(v) => set({ width_m: v ?? 7 })} />
+      <NumberField label="Road width" unit="m" value={p.width_m} min={2.5} max={60} step={0.5} disabled={disabled} onCommit={(v) => set({ width_m: v ?? 7 })} />
       <NumberField label="Lanes" value={p.lanes} min={1} max={12} disabled={disabled} onCommit={(v) => set({ lanes: v ?? 2 })} />
-      <NumberField label="Footpath each side" unit="m" value={p.footpath_m} min={0} max={8} step={0.25} disabled={disabled} onCommit={(v) => set({ footpath_m: v ?? 0 })} />
+      <NumberField label="Pavement each side" unit="m" value={p.footpath_m} min={0} max={8} step={0.25} disabled={disabled} onCommit={(v) => set({ footpath_m: v ?? 0 })} />
       <NumberField label="Median" unit="m" value={p.median_m} min={0} max={20} step={0.5} disabled={disabled} onCommit={(v) => set({ median_m: v ?? 0 })} />
-      <Select label="Vertical alignment" value={p.mode} disabled={disabled} options={[["drape", "Follow ground"], ["graded", "Graded profile"]]} onChange={(mode) => set({ mode })} />
-      {p.mode === "graded" && <NumberField label="Max grade" unit="%" value={p.max_grade_pct} min={0.5} max={20} step={0.5} disabled={disabled} onCommit={(v) => set({ max_grade_pct: v ?? 6 })} />}
+      <Select label="Road height" value={p.mode} disabled={disabled} options={[["drape", "Follow the ground"], ["graded", "Smooth slope"]]} onChange={(mode) => set({ mode })} />
+      {p.mode === "graded" && <NumberField label="Steepest slope" unit="%" value={p.max_grade_pct} min={0.5} max={20} step={0.5} disabled={disabled} onCommit={(v) => set({ max_grade_pct: v ?? 6 })} />}
       <Select label="Surface" value={p.surface} disabled={disabled} options={[["asphalt", "Asphalt"], ["concrete", "Concrete"], ["gravel", "Gravel"]]} onChange={(surface) => set({ surface })} />
     </div>;
   }
@@ -173,18 +175,18 @@ function FeatureForm({ feature, onUpdate, disabled, metrics }: { feature: PlanFe
       set({ rules });
     };
     return <div className="plan-form">
-      <p className="plan-note">Leave a rule empty to not check it. Values come from the local development-control regulations.</p>
-      <NumberField label="Max building height" unit="m" value={p.rules.max_height_m} min={1} max={1000} step={0.5} disabled={disabled} onCommit={rule("max_height_m")} />
-      <NumberField label="Max floors" value={p.rules.max_floors} min={1} max={200} disabled={disabled} onCommit={rule("max_floors")} />
-      <NumberField label="Max FSI / FAR" value={p.rules.max_fsi} min={0.05} max={30} step={0.05} disabled={disabled} onCommit={rule("max_fsi")} />
-      <NumberField label="Max ground coverage" unit="%" value={p.rules.max_coverage_pct} min={1} max={100} disabled={disabled} onCommit={rule("max_coverage_pct")} />
-      <NumberField label="Min setback" unit="m" value={p.rules.setback_m} min={0} max={100} step={0.5} disabled={disabled} onCommit={rule("setback_m")} />
+      <p className="plan-note">Leave a box empty to skip that rule. Take the limits from your local building regulations.</p>
+      <NumberField label="Tallest building" unit="m" value={p.rules.max_height_m} min={1} max={1000} step={0.5} disabled={disabled} onCommit={rule("max_height_m")} />
+      <NumberField label="Most floors" value={p.rules.max_floors} min={1} max={200} disabled={disabled} onCommit={rule("max_floors")} />
+      <NumberField label="Floor area ratio (FSI)" value={p.rules.max_fsi} min={0.05} max={30} step={0.05} disabled={disabled} onCommit={rule("max_fsi")} />
+      <NumberField label="Share of plot built on" unit="%" value={p.rules.max_coverage_pct} min={1} max={100} disabled={disabled} onCommit={rule("max_coverage_pct")} />
+      <NumberField label="Gap from plot edge" unit="m" value={p.rules.setback_m} min={0} max={100} step={0.5} disabled={disabled} onCommit={rule("setback_m")} />
     </div>;
   }
   if (feature.type === "object") {
     const p = feature.params as ObjectParams;
     return <div className="plan-form">
-      <NumberField label="Heading" unit="°" value={p.yaw_deg} min={-360} max={360} step={5} disabled={disabled} onCommit={(v) => set({ yaw_deg: v ?? 0 })} />
+      <NumberField label="Facing" unit="°" value={p.yaw_deg} min={-360} max={360} step={5} disabled={disabled} onCommit={(v) => set({ yaw_deg: v ?? 0 })} />
       <NumberField label="Scale" unit="×" value={p.scale} min={0.1} max={10} step={0.1} disabled={disabled} onCommit={(v) => set({ scale: v ?? 1 })} />
       {p.item === "tower_crane" && <>
         <NumberField label="Jib radius" unit="m" value={p.jib_radius_m ?? 40} min={5} max={90} step={1} disabled={disabled} onCommit={(v) => set({ jib_radius_m: v ?? 40 })} />
@@ -245,7 +247,7 @@ function Metrics({ feature, state }: { feature: PlanFeature; state: PlanState })
   else add("Height", m.height_m, "m");
   if (typeof m.ground_supported_fraction === "number" && m.ground_supported_fraction < 0.9)
     rows.push(["Ground under it", `${Math.round(m.ground_supported_fraction * 100)}% measured`]);
-  return <div className="plan-metrics">{rows.map(([k, v]) => <div className="datum-row" key={k}><span>{k}</span><span>{v}</span></div>)}</div>;
+  return rows.length ? <div className="insp-kpis plan-kpis">{rows.map(([k, v]) => <div key={k}><b>{v}</b><small>{k}</small></div>)}</div> : null;
 }
 
 function Location({ scene, feature, state }: { scene: string; feature: PlanFeature; state: PlanState }) {
@@ -271,25 +273,46 @@ function Location({ scene, feature, state }: { scene: string; feature: PlanFeatu
   </>;
 }
 
-function ExchangeSection({ busy, locked, georeferenced, onExport, onImport }: {
+function ExchangeSection({ busy, locked, georeferenced, onExport, onImport, inferred, basis, proposalId, onInferred }: {
   busy: boolean; locked: boolean; georeferenced: boolean; onExport: (format: ExportFormat) => void; onImport: (file: File, epsg?: number) => void;
+  inferred: boolean; basis: string; proposalId: string; onInferred: (inferred: boolean, basis: string) => void;
 }) {
   const [epsg, setEpsg] = useState<number | undefined>(undefined);
   const [format, setFormat] = useState<ExportFormat>("cityjson");
   const file = useRef<HTMLInputElement>(null);
-  return <section className="inspector-section">
-    <div className="section-label"><span>EXCHANGE</span></div>
-    <div className="plan-export">
-      <select aria-label="Export format" value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)}>{EXPORTS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>
-      <button className="button secondary small" disabled={busy} onClick={() => onExport(format)}><Icon name="download" size={14} />Export</button>
+  return <>
+    <div className="twin-block"><h4>Export this scheme</h4>
+      <div className="plan-formats" role="radiogroup" aria-label="Export format">{EXPORTS.map(([v, label]) => { const [name, what] = label.split(" · "); return <button key={v} role="radio" aria-checked={format === v} className={format === v ? "on" : ""} onClick={() => setFormat(v)}><b>{name}</b><small>{what}</small></button>; })}</div>
+      <button className="button primary full" disabled={busy} onClick={() => onExport(format)}><Icon name="download" size={15} />Download {EXPORTS.find(([v]) => v === format)?.[1].split(" · ")[0]}</button>
+      <p className="plan-note">{georeferenced ? "Written in the scene's UTM zone; heights are ellipsoidal." : "No GPS fit: files are in local metres and say so."} More formats on the Export page.</p>
     </div>
-    <p className="plan-note">{georeferenced ? "Written in the scene's UTM zone (3D Tiles on the globe); heights are ellipsoidal." : "No GPS fit: files are in LOCAL metres and say so."}</p>
-    <input ref={file} type="file" accept=".geojson,.json,.kml,.dxf,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f, epsg); e.target.value = ""; }} />
-    <div className="plan-export"><NumberField label="Source CRS (EPSG, optional)" value={epsg} min={1024} max={999999} disabled={locked} onCommit={setEpsg} />
-      <button className="button secondary small plan-import" disabled={locked} onClick={() => file.current?.click()}><Icon name="upload" size={14} />Import parcels…</button></div>
-    <p className="plan-note">GeoJSON, KML, DXF or a zipped shapefile (.shp + .dbf + .prj) become plots; FSI, height, coverage and setback in their attributes become plot rules. A .prj or GeoJSON CRS is read automatically; give an EPSG code for a DXF in a projected system other than the scene&apos;s UTM zone.</p>
-  </section>;
+    <div className="twin-block"><h4>Bring in land parcels</h4>
+      <input ref={file} type="file" accept=".geojson,.json,.kml,.dxf,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f, epsg); e.target.value = ""; }} />
+      <button className="button secondary full" disabled={locked} onClick={() => file.current?.click()}><Icon name="upload" size={15} />Choose a GeoJSON, KML, DXF or zipped shapefile</button>
+      <div className="insp-setting"><NumberField label="Coordinate system (EPSG), if not in the file" value={epsg} min={1024} max={999999} disabled={locked} onCommit={setEpsg} /></div>
+      <p className="plan-note">Each parcel becomes a plot. Height, FSI, coverage and setback in its attributes become that plot&apos;s rules.</p>
+    </div>
+    <div className="twin-block"><h4>Mark as a guess</h4>
+      <label className="insp-show plan-guess"><input type="checkbox" checked={inferred} disabled={busy} onChange={(e) => onInferred(e.target.checked, basis)} />This scheme is a hypothesis (for example a restoration), not a proposal</label>
+      {inferred && <input className="insp-guess-basis" aria-label="What the guess is based on" key={proposalId + basis} defaultValue={basis}
+        placeholder="Based on: 1910 photograph, the sister temple…" maxLength={1000} disabled={busy}
+        onBlur={(e) => { if (e.target.value !== basis) onInferred(true, e.target.value); }} />}
+    </div>
+  </>;
 }
+
+type Task = "draw" | "shapes" | "rules" | "impact" | "existing" | "sun" | "share";
+const TASKS: { id: Task; label: string; icon: IconName; what: string }[] = [
+  { id: "draw", label: "Draw", icon: "plus", what: "Pick what to add, then click on the ground in the 3D view." },
+  { id: "shapes", label: "Shapes", icon: "list", what: "Everything in this scheme. Click one here or on the model to edit it." },
+  { id: "rules", label: "Rules", icon: "seal", what: "Plots carry planning rules; anything that breaks one is listed here." },
+  { id: "impact", label: "Impact", icon: "activity", what: "What the scheme changes compared with the site as scanned." },
+  { id: "existing", label: "Existing", icon: "building", what: "Buildings already on the site. Mark any for demolition, or check how much of their walls the drone saw." },
+  { id: "sun", label: "Sunlight", icon: "sparkle", what: "Shadows at one moment, or hours of sun lost over a day." },
+  { id: "share", label: "Share", icon: "download", what: "Export the scheme for GIS or CAD, or bring in land parcels." },
+];
+const TYPE_ICON: Record<string, IconName> = { road: "route", building: "building", zone: "grid", clip: "trash", object: "pin" };
+const TYPE_ONE: Record<string, string> = { road: "Road", building: "Building", zone: "Plot", clip: "Demolition", object: "Object" };
 
 export function PlanPanel(props: Props) {
   const { scene, state, index, catalogue, selected, tool, points, view, busy, message, ready } = props;
@@ -298,6 +321,10 @@ export function PlanPanel(props: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [spacing, setSpacing] = useState(props.arraySpacing);
   const [offset, setOffset] = useState(props.arrayOffset);
+  const [task, setTask] = useState<Task>("draw");
+  // Picking a shape on the model opens it: adjust state during render instead of an effect.
+  const [seen, setSeen] = useState(selected);
+  if (seen !== selected) { setSeen(selected); if (selected) setTask("shapes"); }
   const proposal = state?.proposal ?? null;
   const feature = proposal?.features.find((f) => f.id === selected) ?? null;
   const violations = state?.evaluation.violations ?? [];
@@ -305,6 +332,8 @@ export function PlanPanel(props: Props) {
   const demolished = new Set(state?.evaluation.demolished ?? []);
   const locked = busy || !ready;
   const scale = state?.frame.scale_status;
+  const plots = proposal?.features.filter((f) => f.type === "zone").length ?? 0;
+  const active = TASKS.find((t) => t.id === task)!;
 
   const submitName = () => {
     const value = name.trim();
@@ -313,136 +342,136 @@ export function PlanPanel(props: Props) {
     setNaming(null); setName("");
   };
 
-  return <div className="plan-panel">
-    <section className="inspector-section plan-head">
-      <div className="section-label"><span>PLANNING SCHEME</span>
-        <span className="plan-history">
-          <button className="icon-button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!props.canUndo || busy} onClick={props.onUndo}><Icon name="reset" size={14} /></button>
-          <button className="icon-button plan-redo" title="Redo (Ctrl+Y)" aria-label="Redo" disabled={!props.canRedo || busy} onClick={props.onRedo}><Icon name="reset" size={14} /></button>
-        </span>
+  const schemeBar = <>
+    {index && index.proposals.length > 0 && !naming && <div className="plan-scheme">
+      <select aria-label="Active scheme" value={proposal?.id ?? ""} disabled={busy} onChange={(e) => props.onProposal(e.target.value)}>
+        {index.proposals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+      <button className="icon-button" data-tip="Undo (Ctrl+Z)" aria-label="Undo" disabled={!props.canUndo || busy} onClick={props.onUndo}><Icon name="reset" size={15} /></button>
+      <button className="icon-button plan-redo" data-tip="Redo (Ctrl+Y)" aria-label="Redo" disabled={!props.canRedo || busy} onClick={props.onRedo}><Icon name="reset" size={15} /></button>
+      <span className="plan-scheme-sep" />
+      <button className="icon-button" data-tip="New scheme" aria-label="New scheme" disabled={busy} onClick={() => { setNaming("new"); setName(`Scheme ${String.fromCharCode(65 + (index.proposals.length % 26))}`); }}><Icon name="plus" size={15} /></button>
+      <button className="icon-button" data-tip="Duplicate this scheme" aria-label="Duplicate scheme" disabled={busy || !proposal} onClick={() => proposal && props.onCreate(`${proposal.name} copy`, proposal.id)}><Icon name="file" size={15} /></button>
+      <button className="icon-button" data-tip="Rename" aria-label="Rename scheme" disabled={busy || !proposal} onClick={() => { setNaming("rename"); setName(proposal?.name ?? ""); }}><Icon name="settings" size={15} /></button>
+      <button className={`icon-button${confirmDelete ? " danger-armed" : ""}`} data-tip={confirmDelete ? "Click again to delete" : "Delete scheme"} aria-label="Delete scheme" disabled={busy || !proposal} onClick={() => { if (confirmDelete) { props.onDeleteProposal(); setConfirmDelete(false); } else setConfirmDelete(true); }} onBlur={() => setConfirmDelete(false)}><Icon name="trash" size={15} /></button>
+    </div>}
+    {(naming || (index && !index.proposals.length)) && <form className="plan-name" onSubmit={(e) => { e.preventDefault(); if (!naming) setNaming("new"); submitName(); }}>
+      {!naming && <p className="insp-lead">A scheme is a set of proposed roads, buildings and plots drawn over the scan. The scan itself is never changed. Name your first one:</p>}
+      <input aria-label="Scheme name" placeholder="Scheme A" value={naming ? name : name || ""} onChange={(e) => { if (!naming) setNaming("new"); setName(e.target.value); }} maxLength={80} />
+      <button className="button primary small" type="submit" disabled={busy || !(naming ? name : name).trim()}>{naming === "rename" ? "Rename" : "Create scheme"}</button>
+      {naming && <button className="text-button" type="button" onClick={() => { setNaming(null); setName(""); }}>Cancel</button>}
+    </form>}
+  </>;
+
+  const drawTask = <>
+    <div className="plan-tools">{TOOLS.map(({ tool: t, icon }) => <button key={t} className={`plan-tool${tool === t ? " active" : ""}`} aria-pressed={tool === t} disabled={locked} data-tip={TOOL_COPY[t].hint} onClick={() => props.onTool(tool === t ? null : t)}><Icon name={icon} size={18} /><span>{TOOL_COPY[t].label}</span></button>)}</div>
+    {!tool && <p className="plan-note">Tip: after drawing, drag corners in 3D to reshape. Hold Shift to snap.</p>}
+    {(tool === "object" || tool === "array") && <label className="insp-field"><span>What to place</span>
+      <select value={props.objectItem} onChange={(e) => props.onObjectItem(e.target.value)}>
+        {Object.keys(catalogue).map((item) => <option key={item} value={item}>{item.replace(/_/g, " ")} · {catalogue[item].size[1]} m tall</option>)}
+      </select></label>}
+    {tool === "array" && <div className="insp-form">
+      <div className="insp-setting"><NumberField label="Gap between items" unit="m" value={spacing} min={1} max={500} onCommit={(v) => { setSpacing(v ?? 30); props.onArray(v ?? 30, offset); }} /></div>
+      <div className="insp-setting"><NumberField label="Offset to the side" unit="m" value={offset} min={-50} max={50} step={0.5} onCommit={(v) => { setOffset(v ?? 0); props.onArray(spacing, v ?? 0); }} /></div>
+    </div>}
+    {tool && <OnViewer><div className="plan-drawing" role="status">
+      <p>{TOOL_COPY[tool].hint}</p>
+      <div className="plan-drawing-actions">
+        {tool !== "object" && <><span>{points} point{points === 1 ? "" : "s"}</span>
+        <button className="text-button" disabled={!points} onClick={props.onUndoPoint}>Undo point</button>
+        <button className="button primary small" disabled={points < TOOL_COPY[tool].min || busy} onClick={props.onFinish}><Icon name="check" size={13} />Finish</button></>}
+        <button className="button secondary small" onClick={() => props.onTool(null)}>{tool === "object" ? "Done" : "Cancel"}</button>
       </div>
-      {index && index.proposals.length > 0 && !naming && <div className="plan-scheme">
-        <select aria-label="Active scheme" value={proposal?.id ?? ""} disabled={busy} onChange={(e) => props.onProposal(e.target.value)}>
-          {index.proposals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <button className="icon-button" title="New scheme" aria-label="New scheme" disabled={busy} onClick={() => { setNaming("new"); setName(`Scheme ${String.fromCharCode(65 + (index.proposals.length % 26))}`); }}><Icon name="plus" size={15} /></button>
-        <button className="icon-button" title="Duplicate scheme" aria-label="Duplicate scheme" disabled={busy || !proposal} onClick={() => proposal && props.onCreate(`${proposal.name} copy`, proposal.id)}><Icon name="file" size={15} /></button>
-        <button className="icon-button" title="Rename scheme" aria-label="Rename scheme" disabled={busy || !proposal} onClick={() => { setNaming("rename"); setName(proposal?.name ?? ""); }}><Icon name="settings" size={15} /></button>
-        <button className={`icon-button${confirmDelete ? " danger-armed" : ""}`} title={confirmDelete ? "Click again to delete" : "Delete scheme"} aria-label="Delete scheme" disabled={busy || !proposal} onClick={() => { if (confirmDelete) { props.onDeleteProposal(); setConfirmDelete(false); } else setConfirmDelete(true); }} onBlur={() => setConfirmDelete(false)}><Icon name="trash" size={15} /></button>
+    </div></OnViewer>}
+  </>;
+
+  const detail = feature && state && <div className="insp-detail-view">
+    <button className="insp-back" onClick={() => props.onSelect(null)}><Icon name="left" size={14} />All shapes</button>
+    <div className="twin-asset-head"><span className="twin-kind" style={{ ["--kind" as string]: violating.has(feature.id) ? "hsl(4 100% 66%)" : "hsl(212 100% 66%)" }}><Icon name={TYPE_ICON[feature.type] ?? "cube"} size={20} /></span>
+      <div><input className="plan-title" aria-label="Shape name" defaultValue={feature.name} key={feature.id + feature.name} maxLength={120} disabled={locked}
+        onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== feature.name) props.onUpdate({ ...feature, name: v }); }}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} /><p>{TYPE_ONE[feature.type] ?? feature.type}{feature.hidden ? " · hidden" : ""}</p></div></div>
+    {violating.has(feature.id) && <div className="insp-verdict bad"><Icon name="alert" size={16} /><span>{violations.filter((v) => v.feature === feature.id).map((v, i) => <span key={i} className="plan-rule-line">{RULE_LABEL[v.rule] ?? v.rule}: {fmt(v.value, 2)}{v.unit ? " " + v.unit : ""}, allowed {v.rule === "setback_m" ? "at least" : "at most"} {fmt(v.limit, 2)}{v.unit ? " " + v.unit : ""}</span>)}</span></div>}
+    <Metrics feature={feature} state={state} />
+    <Location scene={scene} feature={feature} state={state} />
+    <FeatureForm feature={feature} disabled={locked || feature.locked} onUpdate={props.onUpdate} metrics={state.evaluation.features[feature.id]?.metrics as Record<string, unknown> | undefined} />
+    {view !== "flicker" && !feature.locked && <p className="plan-note"><b>In 3D:</b> drag a corner; drag a <b>+</b> to add one; double-click a corner to remove it. The orange square moves the shape, the blue dot turns it. Hold Shift to snap.</p>}
+    <div className="insp-actions">
+      <button className="button secondary small" disabled={locked} onClick={() => props.onUpdate({ ...feature, hidden: !feature.hidden })}><Icon name="eye" size={14} />{feature.hidden ? "Show" : "Hide"}</button>
+      <button className="button danger small" disabled={locked} onClick={() => props.onDeleteFeature(feature.id)}><Icon name="trash" size={14} />Delete</button>
+    </div>
+  </div>;
+
+  const shapesTask = detail || (proposal && proposal.features.length ? (["building", "road", "zone", "clip", "object"] as const).map((type) => {
+    const list = proposal.features.filter((f) => f.type === type);
+    if (!list.length) return null;
+    return <div key={type} className="plan-group"><h3>{TYPE_LABEL[type]} <small>{list.length}</small></h3>
+      <ul className="plan-list">{list.map((f) => <li key={f.id}><button className={selected === f.id ? "active" : ""} aria-pressed={selected === f.id} onClick={() => props.onSelect(f.id)}>
+        <span className={`plan-dot ${violating.has(f.id) ? "bad" : f.hidden ? "off" : "ok"}`} /><Icon name={TYPE_ICON[type]} size={14} /><span>{f.name}</span>{violating.has(f.id) ? <small className="bad">breaks a rule</small> : f.hidden ? <small>hidden</small> : <Icon name="chevron" size={13} />}
+      </button></li>)}</ul></div>;
+  }) : <div className="tool-empty"><Icon name="plus" size={26} /><p>Nothing drawn yet.</p><button className="button secondary small" onClick={() => setTask("draw")}><Icon name="plus" size={13} />Start drawing</button></div>);
+
+  const rulesTask = <>
+    {violations.length ? <>
+      <div className="insp-verdict bad"><Icon name="alert" size={16} />{violations.length} rule{violations.length === 1 ? " is" : "s are"} broken. Click one to fix the shape.</div>
+      <ul className="ops-rows-plain">{violations.map((v, i) => { const f = proposal?.features.find((x) => x.id === v.feature); return <li key={i}><button onClick={() => props.onSelect(v.feature)}>
+        <i /><span><strong>{RULE_LABEL[v.rule] ?? v.rule}</strong><small>{f?.name ?? "Plot"}: {fmt(v.value, 2)}{v.unit ? " " + v.unit : ""}, allowed {v.rule === "setback_m" ? "at least" : "at most"} {fmt(v.limit, 2)}{v.unit ? " " + v.unit : ""}</small></span><Icon name="chevron" size={14} /></button></li>; })}</ul>
+    </> : plots ? <div className="insp-verdict good"><Icon name="check" size={16} />Every shape meets the rules of its plot.</div>
+      : <div className="tool-empty"><Icon name="seal" size={26} /><p>No plots with rules yet.</p><small>Draw a Plot, then set its height, floor-area, coverage and setback limits.</small></div>}
+    <details className="ops-notes"><summary>What the rules mean</summary>
+      <p className="plan-note"><b>Height / floors</b>: tallest allowed. <b>Floor area ratio (FSI)</b>: total floor area divided by plot area. <b>Ground coverage</b>: share of the plot under buildings. <b>Setback</b>: minimum gap between a building and the plot edge.</p></details>
+  </>;
+
+  const impactTask = state && <>
+    <table className="plan-table"><thead><tr><th>Measure</th><th>Now</th><th>Proposed</th><th>Change</th></tr></thead>
+      <tbody>{state.evaluation.metrics.map((row) => <tr key={row.metric} title={row.note}><td>{row.metric}<small>{row.unit}</small></td><td>{fmt(row.existing)}</td><td>{fmt(row.proposal)}</td><td className={row.change > 0 ? "up" : row.change < 0 ? "down" : ""}>{row.change > 0 ? "+" : ""}{fmt(row.change)}</td></tr>)}</tbody></table>
+    {state.evaluation.notes.length > 0 && <details className="ops-notes"><summary>How this was worked out</summary>{state.evaluation.notes.map((note) => <p className="plan-note" key={note}>{note}</p>)}</details>}
+  </>;
+
+  const existingTask = state && <>
+    {state.existing.buildings.length ? <ul className="plan-existing">{state.existing.buildings.map((b, i) => <li key={b.id}><span><strong>Building {i + 1}</strong><small>{fmt(b.area_m2, 0)} m² · {fmt(b.height_m)} m tall · about {b.floors_estimate} floors{state.evaluation.buildings_hit.includes(b.id) ? " · in the way of the scheme" : ""}</small></span>
+      {demolished.has(b.id) ? <span className="plan-tag">to demolish</span> : <button className="button secondary small" disabled={locked} onClick={() => props.onDemolish(b)}>Demolish</button>}</li>)}</ul>
+      : <p className="plan-note">No existing buildings found in the scan.</p>}
+    {state.existing.buildings.length > 0 && <>
+      <button className="button secondary full" disabled={props.facadesBusy} onClick={props.onFacades}>{props.facadesBusy ? <><span className="spinner" />Checking walls…</> : <><Icon name="eye" size={15} />How much of each wall did the drone see?</>}</button>
+      {props.facades && <div className="insp-result">
+        {props.facades.overlay.length > 0 && <label className="insp-show"><input type="checkbox" checked={props.showFacades} onChange={(e) => props.onShowFacades(e.target.checked)} />Mark unseen walls on the model</label>}
+        <ul className="plan-existing">{props.facades.buildings.map((b, i) => <li key={b.id}><span><strong>Building {i + 1} · {fmt(b.observed_pct, 0)}% of walls seen</strong>
+          <small>{b.facades.map((f) => `${f.facade} ${fmt(f.observed_pct, 0)}%`).join(" · ")}{b.unobserved_pct > 0 ? ` · ${fmt(b.unobserved_pct, 0)}% never seen` : ""}</small></span></li>)}</ul>
+        <details className="ops-notes"><summary>How this was worked out</summary><p className="plan-note">{props.facades.basis}. {props.facades.notes.join(" ")}</p></details>
       </div>}
-      {(naming || (index && !index.proposals.length)) && <form className="plan-name" onSubmit={(e) => { e.preventDefault(); if (!naming) setNaming("new"); submitName(); }}>
-        {!naming && <p className="inspector-copy">Start a scheme to draw proposed roads, buildings and plots over this scan. The scan itself is never edited.</p>}
-        <input aria-label="Scheme name" placeholder="Scheme A" value={naming ? name : name || ""} onChange={(e) => { if (!naming) setNaming("new"); setName(e.target.value); }} maxLength={80} />
-        <button className="button primary small" type="submit" disabled={busy || !(naming ? name : name).trim()}>{naming === "rename" ? "Rename" : "Create scheme"}</button>
-        {naming && <button className="text-button" type="button" onClick={() => { setNaming(null); setName(""); }}>Cancel</button>}
-      </form>}
-      {state && <div className={`plan-frame plan-frame-${state.frame.status}`}>
-        <Icon name={state.frame.status === "georeferenced" ? "globe" : "info"} size={13} />
-        <span>{state.frame.status === "georeferenced" ? "Georeferenced — exports in WGS84 and UTM" : scale === "metric" ? "Metric, local coordinates — no GPS fit" : scale === "estimated" ? "Estimated scale — sizes are approximate" : "Relative scale — sizes are not metres"}</span>
-      </div>}
-      {state && <div className="plan-hypothesis">
-        <label className="plan-switch"><input type="checkbox" checked={!!state.proposal.inferred} disabled={busy}
-          onChange={(e) => props.onInferred(e.target.checked, state.proposal.inferred_basis ?? "")} />Hypothesis (inferred reconstruction)</label>
-        {state.proposal.inferred && <>
-          <p className="plan-tag plan-tag-inferred">INFERRED — a reconstruction of what is not there, not a measurement</p>
-          <input className="plan-title" aria-label="Basis of the hypothesis" key={state.proposal.id + (state.proposal.inferred_basis ?? "")} defaultValue={state.proposal.inferred_basis ?? ""}
-            placeholder="Basis: 1910 photograph, comparison with the sister temple…" maxLength={1000} disabled={busy}
-            onBlur={(e) => { if (e.target.value !== (state.proposal.inferred_basis ?? "")) props.onInferred(true, e.target.value); }} />
-        </>}
-      </div>}
-    </section>
-
-    {proposal && <>
-      <section className="inspector-section">
-        <div className="section-label"><span>DRAW</span><span>{proposal.features.length} FEATURES</span></div>
-        <div className="plan-tools">{TOOLS.map(({ tool: t, icon }) => <button key={t} className={`plan-tool${tool === t ? " active" : ""}`} aria-pressed={tool === t} disabled={locked} onClick={() => props.onTool(tool === t ? null : t)}><Icon name={icon} size={16} /><span>{TOOL_COPY[t].label}</span></button>)}</div>
-        {(tool === "object" || tool === "array") && <label className="plan-field plan-item"><span>Item</span>
-          <select value={props.objectItem} onChange={(e) => props.onObjectItem(e.target.value)}>
-            {Object.keys(catalogue).map((item) => <option key={item} value={item}>{item.replace(/_/g, " ")} · {catalogue[item].size[1]} m tall</option>)}
-          </select></label>}
-        {tool === "array" && <div className="plan-array">
-          <NumberField label="Spacing" unit="m" value={spacing} min={1} max={500} onCommit={(v) => { setSpacing(v ?? 30); props.onArray(v ?? 30, offset); }} />
-          <NumberField label="Side offset" unit="m" value={offset} min={-50} max={50} step={0.5} onCommit={(v) => { setOffset(v ?? 0); props.onArray(spacing, v ?? 0); }} />
-        </div>}
-        {tool && <div className="plan-drawing" role="status">
-          <p>{TOOL_COPY[tool].hint}</p>
-          {tool !== "object" && <div className="plan-drawing-actions">
-            <span>{points} point{points === 1 ? "" : "s"}</span>
-            <button className="text-button" disabled={!points} onClick={props.onUndoPoint}>Undo point</button>
-            <button className="button primary small" disabled={points < TOOL_COPY[tool].min || busy} onClick={props.onFinish}><Icon name="check" size={13} />Finish</button>
-            <button className="button secondary small" onClick={() => props.onTool(null)}>Cancel</button>
-          </div>}
-        </div>}
-        {message && <p className="plan-message" role="status">{message}</p>}
-      </section>
-
-      <section className="inspector-section">
-        <div className="section-label"><span>COMPARE</span></div>
-        <div className="plan-view" role="group" aria-label="Compare existing and proposed">
-          {VIEWS.map(([v, label, title]) => <button key={v} title={title} className={view === v ? "active" : ""} aria-pressed={view === v} onClick={() => props.onView(v)}>{label}</button>)}
-        </div>
-        {(view === "swipe" || view === "side") && <p className="plan-note">A second viewer shows the scan as it is; both cameras move together. Orbit in either half.</p>}
-      </section>
-
-      {feature && <section className="inspector-section plan-selected">
-        <div className="section-label"><span>{feature.type.toUpperCase()} · SELECTED</span><button className="icon-button" aria-label="Deselect" onClick={() => props.onSelect(null)}><Icon name="close" size={13} /></button></div>
-        <input className="plan-title" aria-label="Feature name" defaultValue={feature.name} key={feature.id + feature.name} maxLength={120} disabled={locked}
-          onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== feature.name) props.onUpdate({ ...feature, name: v }); }}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
-        {violating.has(feature.id) && <div className="plan-violation-card">{violations.filter((v) => v.feature === feature.id).map((v, i) => <p key={i}><Icon name="info" size={12} />{RULE_LABEL[v.rule] ?? v.rule}: {fmt(v.value, 2)}{v.unit ? " " + v.unit : ""} against {v.rule === "setback_m" ? "at least" : "at most"} {fmt(v.limit, 2)}{v.unit ? " " + v.unit : ""}</p>)}</div>}
-        <Metrics feature={feature} state={state!} />
-        <Location scene={scene} feature={feature} state={state!} />
-        {view !== "flicker" && !feature.locked && <p className="plan-hint-3d">In 3D: drag a corner, drag a <b>+</b> to add one, double-click a corner to remove it; the orange square (or the feature itself) moves it, the blue dot turns it. Hold Shift to snap.</p>}
-        <FeatureForm feature={feature} disabled={locked || feature.locked} onUpdate={props.onUpdate} metrics={state?.evaluation.features[feature.id]?.metrics as Record<string, unknown> | undefined} />
-        <div className="plan-feature-actions">
-          <button className="button secondary small" disabled={locked} onClick={() => props.onUpdate({ ...feature, hidden: !feature.hidden })}><Icon name="eye" size={13} />{feature.hidden ? "Show" : "Hide"}</button>
-          <button className="button danger small" disabled={locked} onClick={() => props.onDeleteFeature(feature.id)}><Icon name="trash" size={13} />Delete</button>
-        </div>
-      </section>}
-
-      {violations.length > 0 && <section className="inspector-section">
-        <div className="section-label"><span>RULE VIOLATIONS</span><span className="plan-count bad">{violations.length}</span></div>
-        <ul className="plan-violations">{violations.map((v, i) => { const f = proposal.features.find((x) => x.id === v.feature); return <li key={i}><button onClick={() => props.onSelect(v.feature)}><strong>{RULE_LABEL[v.rule] ?? v.rule}</strong><small>{f?.name ?? "Plot"} · {fmt(v.value, 2)} / {v.rule === "setback_m" ? "min" : "max"} {fmt(v.limit, 2)}{v.unit ? " " + v.unit : ""}</small></button></li>; })}</ul>
-      </section>}
-
-      {proposal.features.length > 0 && <section className="inspector-section">
-        <div className="section-label"><span>FEATURES</span></div>
-        {(["building", "road", "zone", "clip", "object"] as const).map((type) => {
-          const list = proposal.features.filter((f) => f.type === type);
-          if (!list.length) return null;
-          return <div key={type} className="plan-group"><h3>{TYPE_LABEL[type]} <small>{list.length}</small></h3>
-            <ul className="plan-list">{list.map((f) => <li key={f.id}><button className={selected === f.id ? "active" : ""} aria-pressed={selected === f.id} onClick={() => props.onSelect(selected === f.id ? null : f.id)}>
-              <span className={`plan-dot ${violating.has(f.id) ? "bad" : f.hidden ? "off" : "ok"}`} /><span>{f.name}</span>{f.hidden && <small>hidden</small>}
-            </button></li>)}</ul></div>;
-        })}
-      </section>}
-
-      <section className="inspector-section">
-        <div className="section-label"><span>BEFORE / AFTER</span></div>
-        <table className="plan-table"><thead><tr><th>Metric</th><th>Existing</th><th>Proposed</th><th>Change</th></tr></thead>
-          <tbody>{state!.evaluation.metrics.map((row) => <tr key={row.metric} title={row.note}><td>{row.metric}<small>{row.unit}</small></td><td>{fmt(row.existing)}</td><td>{fmt(row.proposal)}</td><td className={row.change > 0 ? "up" : row.change < 0 ? "down" : ""}>{row.change > 0 ? "+" : ""}{fmt(row.change)}</td></tr>)}</tbody></table>
-        {state!.evaluation.notes.map((note) => <p className="plan-note" key={note}>{note}</p>)}
-      </section>
-
-      {state!.existing.buildings.length > 0 && <section className="inspector-section">
-        <div className="section-label"><span>EXISTING BUILDINGS</span><span>{state!.existing.buildings.length}</span></div>
-        <ul className="plan-existing">{state!.existing.buildings.map((b, i) => <li key={b.id}><span><strong>Building {i + 1}</strong><small>{fmt(b.area_m2, 0)} m² · {fmt(b.height_m)} m · ~{b.floors_estimate} floors{state!.evaluation.buildings_hit.includes(b.id) ? " · in the way" : ""}</small></span>
-          {demolished.has(b.id) ? <span className="plan-tag">demolished</span> : <button className="button secondary small" disabled={locked} onClick={() => props.onDemolish(b)}>Demolish</button>}</li>)}</ul>
-        <p className="plan-note">{state!.existing.basis}</p>
-        <div className="plan-shadow-head"><button className="button secondary small" disabled={props.facadesBusy} onClick={props.onFacades}><Icon name="eye" size={13} />{props.facadesBusy ? "Checking walls…" : "Facade completeness"}</button>
-          {props.facades && props.facades.overlay.length > 0 && <label className="plan-switch"><input type="checkbox" checked={props.showFacades} onChange={(e) => props.onShowFacades(e.target.checked)} />Hatch unseen walls</label>}</div>
-        {props.facades && <>
-          <ul className="plan-existing">{props.facades.buildings.map((b, i) => <li key={b.id}><span><strong>Building {i + 1} · {fmt(b.observed_pct, 0)}% of walls seen</strong>
-            <small>{b.facades.map((f) => `${f.facade} ${fmt(f.observed_pct, 0)}%`).join(" · ")}{b.unobserved_pct > 0 ? ` — ${fmt(b.unobserved_pct, 0)}% never observed` : ""}</small></span></li>)}</ul>
-          {props.showFacades && <div className="plan-legend"><span><i style={{ background: "rgb(220,60,60)" }} />Not seen</span><span><i style={{ background: "rgb(240,170,50)" }} />Weak</span></div>}
-          <p className="plan-note">{props.facades.basis}. {props.facades.notes.join(" ")}</p>
-        </>}
-      </section>}
-
-      <ShadowStudy shadow={props.shadow} georeferenced={state!.frame.status === "georeferenced"} disabled={!state}
-        onToggle={props.onShadowToggle} onSettings={props.onShadowSettings} onRun={props.onShadowRun} />
-
-      <ExchangeSection busy={busy} locked={locked} georeferenced={state!.frame.status === "georeferenced"} onExport={props.onExport} onImport={props.onImport} />
     </>}
+    <details className="ops-notes"><summary>Where these buildings come from</summary><p className="plan-note">{state.existing.basis}</p></details>
+  </>;
+
+  const body: Record<Task, React.ReactNode> = {
+    draw: drawTask, shapes: shapesTask, rules: rulesTask, impact: impactTask, existing: existingTask,
+    sun: state && <ShadowStudy shadow={props.shadow} georeferenced={state.frame.status === "georeferenced"} disabled={!state} onToggle={props.onShadowToggle} onSettings={props.onShadowSettings} onRun={props.onShadowRun} />,
+    share: state && <ExchangeSection busy={busy} locked={locked} georeferenced={state.frame.status === "georeferenced"} onExport={props.onExport} onImport={props.onImport}
+      inferred={!!state.proposal.inferred} basis={state.proposal.inferred_basis ?? ""} proposalId={state.proposal.id} onInferred={props.onInferred} />,
+  };
+
+  return <div className="plan-panel">
+    <section className="inspector-section insp-top">
+      {schemeBar}
+      {state && <div className="plan-status">
+        <span className={`plan-frame-chip ${state.frame.status === "georeferenced" ? "is-geo" : ""}`} data-tip={state.frame.status === "georeferenced" ? "Exports are in WGS84 and UTM" : "No GPS fit, so exports are in local metres"}><Icon name={state.frame.status === "georeferenced" ? "globe" : "info"} size={13} />{state.frame.status === "georeferenced" ? "GPS-referenced" : scale === "metric" ? "Metric, local" : scale === "estimated" ? "Approximate scale" : "Relative scale"}</span>
+        {proposal && <button className={`plan-rules-chip ${violations.length ? "bad" : plots ? "good" : ""}`} onClick={() => setTask("rules")}><Icon name={violations.length ? "alert" : "check"} size={13} />{violations.length ? `${violations.length} rule problem${violations.length === 1 ? "" : "s"}` : plots ? "All rules met" : "No rules set"}</button>}
+        {state.proposal.inferred && <span className="plan-frame-chip is-guess" data-tip="Every view and export marks this scheme as inferred">Hypothesis</span>}
+      </div>}
+      {proposal && <div className="plan-compare"><span>Show</span><div className="plan-view" role="group" aria-label="Compare existing and proposed">
+        {VIEWS.map(([v, label, title]) => <button key={v} data-tip={title} className={view === v ? "active" : ""} aria-pressed={view === v} onClick={() => props.onView(v)}>{label}</button>)}
+      </div></div>}
+      {proposal && <div className="insp-tasks plan-tasks" role="tablist" aria-label="What do you want to do?">{TASKS.map((t) => <button key={t.id} role="tab" aria-selected={task === t.id} className={task === t.id ? "on" : ""} onClick={() => { setTask(t.id); if (t.id !== "draw" && tool) props.onTool(null); }}>
+        <Icon name={t.icon} size={17} /><span>{t.label}</span>
+        {t.id === "shapes" && proposal.features.length > 0 && <em>{proposal.features.length}</em>}
+        {t.id === "rules" && violations.length > 0 && <em className="bad">{violations.length}</em>}
+      </button>)}</div>}
+    </section>
+    {proposal && <section className="inspector-section insp-body" key={task}>
+      <header className="insp-head"><div><h3>{active.label}</h3><p>{active.what}</p></div></header>
+      {message && <p className="plan-message" role="status">{message}</p>}
+      {body[task]}
+    </section>}
   </div>;
 }
