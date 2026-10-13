@@ -1,1 +1,19 @@
 tools/colmap/bin/onnxruntime_providers_cuda.dll filter=lfs diff=lfs merge=lfs -text
+
+# --- GitHub language statistics (github-linguist) ---
+# The language bar and the repo's primary language should describe the code written
+# here. Left alone they describe what is vendored: ffmpeg ships 11 MB of HTML manuals
+# and the PlayCanvas engine bundle is 3.7 MB of JavaScript, which made GitHub file a
+# Python pipeline under "HTML".
+tools/colmap/**               linguist-vendored
+tools/ffmpeg/**               linguist-vendored
+tools/chrome-gpu/**           linguist-vendored
+viewer/pc/playcanvas.mjs      linguist-vendored
+viewer/pc/ammo/**             linguist-vendored
+
+# The demo film's motion-graphics compositions and capture rig: how the walkthrough
+# video was made, not part of the pipeline.
+video_production/**           linguist-documentation
+
+# Evidence images and pair keys.
+results/**                    linguist-documentation

@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Drone / Phone Video to Walkable 3D World"
+abstract: >-
+  An open-source pipeline that turns a single drone or phone video into a walkable,
+  physics-backed 3D world. It combines COLMAP structure-from-motion, gsplat 3D Gaussian
+  Splatting training with a VRAM-derived budget, metric scale and gravity recovery, a
+  voxel collision mesh and an automated world gate with a headless walk test, plus a
+  Ground Control Station and a survey lane for georeferenced deliverables.
+authors:
+  - family-names: "Garg"
+    given-names: "Kris"
+repository-code: "https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world"
+url: "https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world"
+license: MIT
+keywords:
+  - 3D Gaussian Splatting
+  - photogrammetry
+  - structure from motion
+  - 3D reconstruction
+  - COLMAP
+  - gsplat
+  - drone mapping
+  - digital twin
+  - collision mesh
+  - PlayCanvas

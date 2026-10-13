@@ -1,0 +1,85 @@
+name: Bug report
+description: A step failed, or the result is wrong (floating character, missing floor, bad scale).
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Failures here depend on the footage and the machine, so both are needed to act on a report.
+        `pipeline.py doctor` catches most install problems before they become a bug.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact command, with flags.
+      placeholder: .venv\Scripts\python.exe pipeline.py run myscene --quality high
+    validations:
+      required: true
+  - type: dropdown
+    id: step
+    attributes:
+      label: Failing step
+      description: The step named in the last line of the run, if any.
+      options:
+        - Not sure / not a pipeline step
+        - keyframes
+        - colmap
+        - train
+        - frame
+        - export
+        - collider
+        - surface
+        - gate
+        - walktest
+        - another pipeline step
+        - survey lane (survey.py)
+        - viewer
+        - phone capture page
+        - Ground Control Station
+    validations:
+      required: true
+  - type: dropdown
+    id: capture
+    attributes:
+      label: Footage
+      options:
+        - Drone
+        - Phone, handheld
+        - Phone, with AR pose log
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Step log
+      description: The last 50 lines of `work/<scene>/logs/<nn>-<step>.log`.
+      render: text
+  - type: textarea
+    id: doctor
+    attributes:
+      label: pipeline.py doctor
+      description: Paste the full output of `.venv\Scripts\python.exe pipeline.py doctor`.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and VRAM
+      placeholder: RTX 3050, 6 GB
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Clip length and resolution, `pipeline.py scan <scene>` output, screenshots.

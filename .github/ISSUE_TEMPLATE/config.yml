@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Capture guide
+    url: https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/blob/main/docs/PHONE_CAPTURE.md
+    about: Most failed reconstructions are capture problems. How to record footage that solves.
+  - name: Report a security issue
+    url: https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/security/policy
+    about: Please report vulnerabilities privately. See the security policy.

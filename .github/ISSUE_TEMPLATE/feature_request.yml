@@ -1,0 +1,38 @@
+name: Feature request
+description: Something the pipeline, viewer or Ground Control Station should do.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task, not the solution. Who is doing it, with what kind of scan?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Capture (phone or drone)
+        - Reconstruction (COLMAP, training)
+        - World building (scale, collider, ground)
+        - Viewer
+        - Ground Control Station
+        - Survey lane and exports
+        - Platform support
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: How would we know it works?
+      description: A measurement, a known answer, or a scene it should pass on. Optional, but it is the first thing a pull request will be asked for.
