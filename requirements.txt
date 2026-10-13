@@ -14,6 +14,21 @@ pycolmap==4.1.1             # must match tools/colmap (COLMAP 4.1.1) — see pip
 playwright==1.62.0          # headless viewer for the walk test — then:
                             #   python -m playwright install chromium
 
+# Survey, measurement and application modules. These five were installed in the
+# development .venv but never listed here, so a clean install (CI, or anyone cloning)
+# got a survey lane that could not be imported: 21 scripts import scipy, six of them at
+# module level, and 26 of the fast suites failed on that machine and no other.
+#
+# laspy and rasterio are independent readers: survey_formats writes LAS and GeoTIFF with
+# the stdlib and NumPy, then has a second implementation decode the file, which is the
+# check a round trip through its own reader cannot give. The scripts skip that check
+# when the reader is absent; the suites do not.
+scipy==1.18.1               # ndimage, cKDTree, ConvexHull, griddata — 21 scripts
+matplotlib==3.11.1          # point-in-polygon paths; figures and PDF reports
+laspy==2.7.0                # decodes the LAS files survey_formats writes
+pyproj==3.8.0               # CRS names and transforms for georeferenced exports
+rasterio==1.5.1             # GDAL's reading of the GeoTIFFs survey_formats writes
+
 # Optional, and only for these paths:
 #   cryptography          — _serve.py uses it to self-sign the HTTPS dev certificate
 #                           the WebXR phone capture page needs. Without it the page

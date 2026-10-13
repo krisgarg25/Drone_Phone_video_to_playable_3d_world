@@ -26,7 +26,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/python-3.12%20%7C%203.10-3776AB?logo=python&logoColor=white" alt="Python 3.12 and 3.10">
   <img src="https://img.shields.io/badge/CUDA-12.4-76B900?logo=nvidia&logoColor=white" alt="CUDA 12.4">
-  <img src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/Next.js-16-0070F3?logo=nextdotjs&logoColor=white" alt="Next.js 16">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4" alt="Windows 10 and 11">
   <a href="https://github.com/krisgarg25/Drone_Phone_video_to_playable_3d_world/stargazers"><img src="https://img.shields.io/github/stars/krisgarg25/Drone_Phone_video_to_playable_3d_world?style=flat&color=f5a623" alt="GitHub stars"></a>
 </p>
@@ -350,7 +350,7 @@ mobile.py            One-command phone capture launcher
 scripts/             116 Python modules: SfM, training, colliders, survey, analysis
 viewer/              PlayCanvas walkable viewer and the phone capture page
 groundcontrol/       Next.js 16 Ground Control Station
-tests/               65 fast suites, browser checks and the end-to-end run
+tests/               64 fast suites, browser checks and the end-to-end run
 tools/               Vendored COLMAP, ffmpeg, splat-transform, navmesh baker
 docs/                Capture guide, application playbooks, readiness evidence
 results/             Blinded A/B stacks, texture comparisons, critic verdicts
@@ -363,7 +363,7 @@ video_production/    How the demo film was made
 .venv\Scripts\python.exe tests\check_all.py
 ```
 
-65 fast suites with more than 1,000 test functions cover the scenario engine, capture
+64 fast suites with more than 1,000 test functions cover the scenario engine, capture
 diagnostics, the collider, the world gate and the survey modules. None of them need a
 GPU. CI runs them on Windows on every push, because Windows is the platform people
 actually run this on.

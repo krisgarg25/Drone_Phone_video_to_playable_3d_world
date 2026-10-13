@@ -6,7 +6,7 @@
 .venv\Scripts\python.exe tests\check_all.py
 ```
 
-65 suites, more than 1,000 test functions, no GPU. This is exactly what CI runs on every
+64 suites, more than 1,000 test functions, no GPU. This is exactly what CI runs on every
 push, on Windows. Suites run cheapest first, so a long failure at the end cannot hide that
 the first ten were clean.
 
