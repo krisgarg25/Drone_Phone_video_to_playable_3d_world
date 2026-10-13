@@ -2151,6 +2151,7 @@ def main() -> None:
     common(st := sub.add_parser("status", help="per-step completion state"))
     sub.add_parser("doctor", help="toolchain health check")
     sub.add_parser("benchmark", help="profile GPU 3DGS training speed and VRAM throughput")
+    sub.add_parser("mobile", help="serve Mobile AR capture HTTPS portal on port 8138")
     capp = sub.add_parser("capture", help="print capture checklist for a preset")
     common(capp, need_name=False)
     capp.add_argument("name", nargs="?", default="_")
@@ -2159,6 +2160,11 @@ def main() -> None:
                               "(run the pipeline, view a model, capture)")
 
     args = ap.parse_args()
+
+    if args.cmd == "mobile":
+        import mobile
+        mobile.main()
+        return
 
     if args.cmd in (None, "ui"):
         do_ui()

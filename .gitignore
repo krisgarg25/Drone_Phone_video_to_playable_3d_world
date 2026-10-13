@@ -32,7 +32,11 @@ tools/ffmpeg.zip
 *.crt
 
 # --- Video production & media workspace ---
-video_production/film/renders/*.mp4
+# Everything recut.py/build.py writes: the renders, plus the mixed WAV (54 MB) and the
+# ffmpeg cue/filter scripts they are assembled from.
+video_production/film/renders/
+# HyperFrames' hash-named preview bundle, regenerated on every build.
+video_production/film/.hyperframes/preview/
 video_production/rig/.chrome-profile/
 video_production/raw/
 video_production/film/assets/cut/

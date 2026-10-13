@@ -22,6 +22,7 @@ set PY=%ROOT%.venv\Scripts\python.exe
 if "%~1"=="" goto :ui
 if /i "%~1"=="view" goto :view
 if /i "%~1"=="check" goto :check
+if /i "%~1"=="mobile" goto :mobile
 
 "%PY%" "%ROOT%pipeline.py" %*
 exit /b %errorlevel%
@@ -44,8 +45,13 @@ if "%~2"=="" goto :usage
 "%PY%" "%ROOT%pipeline.py" view %~2
 exit /b %errorlevel%
 
+:mobile
+"%PY%" "%ROOT%mobile.py" %*
+exit /b %errorlevel%
+
 :usage
 echo usage: mvp.bat                     (open the dashboard)
+echo        mvp.bat mobile               (launch Mobile AR capture HTTPS portal)
 echo        mvp.bat run ^<video_name^> [--quality standard] [--from STEP]
 echo        mvp.bat status ^<video_name^>
 echo        mvp.bat view ^<video_name^>
