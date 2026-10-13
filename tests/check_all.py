@@ -138,6 +138,21 @@ def run_suite(script: str, minutes: float, extra: list[str]) -> tuple[bool, floa
     return ok, time.time() - t0, out
 
 
+def annotate(name: str, script: str, out: str) -> None:
+    """On GitHub Actions, turn a failed suite into an error annotation on the run.
+
+    The step log can only be read when signed in, and the summary printed below keeps
+    the word "Traceback" but not the exception under it - so a red run named the suite
+    and never the reason. An annotation carries the tail of the suite's own output to
+    the run page and to the checks API. GitHub shows the first ten per step.
+    """
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return
+    tail = "\n".join(out.strip().splitlines()[-25:])[-3000:]
+    data = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::error file=tests/{script},title=suite {name} failed::{data}", flush=True)
+
+
 def main() -> int:
     rb.configure_streams()
     ap = argparse.ArgumentParser()
@@ -171,6 +186,8 @@ def main() -> int:
         print(out.strip() if args.verbose else
               ("\n".join(keep[-40:]) if keep else out.strip()[-1500:]))
         print(f"{'PASS' if ok else 'FAIL'}  {name}: {secs / 60:.1f} min")
+        if not ok:
+            annotate(name, script, out)
         results.append((name, ok))
 
     print(f"\n{'=' * 70}\nSUITE SUMMARY\n{'=' * 70}")
