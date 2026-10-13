@@ -7,13 +7,13 @@
 </p>
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=xMRw3slJjIo" title="Watch the demo on YouTube">
+  <a href="https://youtu.be/3zk7qT2mFZs" title="Watch the demo on YouTube">
     <img src="docs/media/demo-poster.jpg" width="760" alt="A real drone video frame beside a 3D Gaussian Splatting render of the same view, reconstructed from one 12 second clip">
   </a>
 </p>
 
 <p align="center">
-  <b><a href="https://www.youtube.com/watch?v=xMRw3slJjIo">▶ Watch the demo</a></b> ·
+  <b><a href="https://youtu.be/3zk7qT2mFZs">▶ Watch the demo</a></b> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#measured-not-promised">Measured results</a> ·
   <a href="#how-a-video-becomes-a-world">How it works</a> ·
@@ -98,27 +98,48 @@ is kept in a separate file ([`results/`](results/)).
 
 ## See it running
 
-Screen recordings of the actual tools. No mock-ups.
+Frames from the [demo video](https://youtu.be/3zk7qT2mFZs): the Ground Control Station
+working on the scan of one 12 second drone clip. Screen recordings, not mock-ups.
 
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/media/phone-scan.gif" alt="Phone AR room scan in the browser with a live coverage gauge and path map"><br/>
-      <sub><b>Phone capture.</b> Live coverage gauge and angle cues, served to the phone over HTTPS.</sub>
+      <img src="docs/media/film/explore.jpg" alt="Explore mode: the drone's solved flight path and point overlay on the Gaussian splat"><br/>
+      <sub><b>Explore.</b> The solved flight path and the points behind the model, over the splat.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/media/walk-result-part13.gif" alt="Third-person character walking across a reconstructed boulder field with a live telemetry HUD"><br/>
-      <sub><b>The result.</b> Walking the reconstructed boulder field on its collision mesh.</sub>
+      <img src="docs/media/film/measure.jpg" alt="Measure mode: taking a height by clicking the foot and top of a boulder"><br/>
+      <sub><b>Measure.</b> Heights, distances, areas and volumes by clicking on the model.</sub>
     </td>
   </tr>
   <tr>
-    <td align="center">
-      <img src="docs/media/pipeline-gui.gif" alt="Reconstruction dashboard: choose a scene, capture preset and quality tier"><br/>
-      <sub><b>One-click run.</b> Scene, capture preset and quality tier.</sub>
+    <td width="50%" align="center">
+      <img src="docs/media/film/inspect.jpg" alt="Inspect mode: the original drone photos that observed a selected point"><br/>
+      <sub><b>Inspect.</b> Click a spot and see every source photo that saw it.</sub>
     </td>
-    <td align="center">
-      <img src="docs/media/train-live.gif" alt="Live run monitor showing COLMAP camera solves and Gaussian splat training progress"><br/>
-      <sub><b>Live monitor.</b> Camera solves, loss curve and Gaussian count, read from the run's logs.</sub>
+    <td width="50%" align="center">
+      <img src="docs/media/film/heritage.jpg" alt="Inspect mode: a local relief map draped over the reconstructed site"><br/>
+      <sub><b>Relief.</b> Local relief draped on the model for heritage and terrain reading.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/media/film/operations.jpg" alt="Operations mode: a drivable access route drawn across the scanned terrain"><br/>
+      <sub><b>Operations.</b> A route a vehicle can still drive, found on the measured surface.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/media/film/mission.jpg" alt="Mission mode: route exposure analysis with visible and hidden ground"><br/>
+      <sub><b>Mission.</b> Route exposure: what an observer can see of the way in.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/media/film/plan.jpg" alt="Plan mode: swipe comparison of the existing site against a proposed building"><br/>
+      <sub><b>Plan.</b> A proposed building on the scan, swiped against what exists.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/media/film/walk.jpg" alt="Walk mode: first-person view among the reconstructed boulders"><br/>
+      <sub><b>Walk.</b> First person inside the reconstruction, on its collision mesh.</sub>
     </td>
   </tr>
 </table>
